@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* Manual dark mode via a `.dark` class on <html> (set by the theme provider). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * OneStats design tokens. These are deliberately NEUTRAL (no hardcoded club branding).
+ * Workspace-specific branding (deliverable 9) will override --brand-* at runtime, and the
+ * foreground tokens are chosen for WCAG-AA contrast against their surfaces.
+ */
+:root {
+  --background: #f7f8fa;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --muted: #eef1f5;
+  --muted-foreground: #5b6472;
+  --border: #e2e6ec;
+  --input: #e2e6ec;
+  --ring: #2563eb;
+
+  /* Brand tokens (workspace-overridable). Default: professional OneStats blue. */
+  --brand: #2563eb;
+  --brand-foreground: #ffffff;
+  --accent: #0ea5e9;
+
+  --sidebar: #0f172a;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-muted: #94a3b8;
+  --sidebar-active: #1e293b;
+
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: #0b1120;
+  --foreground: #e6eaf2;
+  --card: #111a2e;
+  --card-foreground: #e6eaf2;
+  --muted: #16213a;
+  --muted-foreground: #9aa6bd;
+  --border: #233049;
+  --input: #233049;
+  --ring: #3b82f6;
+
+  --brand: #3b82f6;
+  --brand-foreground: #ffffff;
+  --accent: #38bdf8;
+
+  --sidebar: #070c17;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-muted: #64748b;
+  --sidebar-active: #15213a;
+
+  --danger: #f87171;
+  --success: #4ade80;
+  --warning: #fbbf24;
+}
+
+/* Expose tokens as Tailwind color utilities (bg-background, text-foreground, ...). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-accent: var(--accent);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-app: var(--radius);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
