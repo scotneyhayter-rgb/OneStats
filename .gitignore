@@ -1,0 +1,50 @@
+# === Secrets & environment (NEVER commit) ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+secrets/
+.pgpass
+
+# === Real cricket data / exports / media (provenance & privacy) ===
+fixtures-private/
+*.mxp
+# Cricket Statz / real workspace data must never enter source control
+data-private/
+*.onestats-export.json
+
+# === Python ===
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# === Node / frontend ===
+node_modules/
+apps/*/dist/
+apps/*/.vite/
+*.local
+
+# === Rust / Tauri ===
+target/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
+# === Logs & local ===
+*.log
+logs/
+.DS_Store
+Thumbs.db
+
+# === Editor ===
+.vscode/*
+!.vscode/extensions.json
+.idea/
