@@ -43,8 +43,18 @@ flowchart LR
 - Ask OneStats available in read-only, deterministic form (deliverable 28), permission-
   and privacy-scoped.
 
-## 30.5 Phasing
+## 30.5 Mobile uploads (authenticated, write path)
 
-Built in **Phase 16** (Mobile Records Portal), reusing the publishing edge from Phase 15.
+Beyond the read-only records portal, authorised users can **upload media/documents from a
+phone** (camera, library, PDFs) through a QR-paired, time-limited session — see
+[20a-mobile-upload-architecture.md](20a-mobile-upload-architecture.md). This is a
+**permissioned write path** distinct from the public read-only portal: it never exposes the
+admin database, local-network uploads are session-gated, and extracted statistics need human
+verification before entering official records.
+
+## 30.6 Phasing
+
+Read-only portal built in **Phase 16**, reusing the publishing edge from Phase 15; the
+**mobile upload UI is coordinated with Phase 16** while core media lands in Phase 11.
 Likely a separate lightweight web app (`apps/portal/`, deliverable 4) deployed with the
 publication cache.

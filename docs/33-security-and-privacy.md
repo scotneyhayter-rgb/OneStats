@@ -51,6 +51,20 @@ entity, before/after, workspace, timestamp. Audit records are **not editable**.
 - Store source copyright metadata; published outputs respect it (deliverables 19–20, 29).
 - Provider tokens in the credential store; rate-limit per terms.
 
+## 33.5a Desktop app hardening — CSP & Tauri permissions `[DECISION D23]`
+
+Recorded per the Phase 2 review:
+
+- **Current state (development-only limitation):** the Tauri Content-Security-Policy is
+  `null` (the scaffold default), which is **acceptable for development only** and is logged
+  here as a known limitation to remove before any release.
+- **Production plan:** ship a **restrictive CSP** (no `unsafe-inline`/`unsafe-eval`; default
+  `'self'`; connect-src limited to the local backend origin; no remote script/style) and a
+  **least-privilege Tauri capability set** (only the commands/plugins the app actually uses;
+  no broad filesystem/shell access). Window/webview permissions are scoped per capability.
+- The desktop↔backend channel stays **loopback/LAN only**; the webview never loads remote
+  code.
+
 ## 33.6 Application security hygiene
 
 - Input validation (Pydantic) on all API inputs; parameterised queries (no string SQL).

@@ -54,6 +54,17 @@ without breaking references (stable IDs). Internal storage partitions by workspa
 - Junior/private imagery is protected (deliverables 24, 33) and excluded from public
   portal/website unless explicitly cleared.
 
-## 20.5 Phasing
+## 20.5 Mobile uploads
 
-Specified now; built in **Phase 11** (Media Archive & Optional OneVault Integration).
+Media can be uploaded **directly from a mobile phone** (camera, photo library, PDFs) via a
+QR-paired, time-limited secure session — full design in
+[20a-mobile-upload-architecture.md](20a-mobile-upload-architecture.md) (`[DECISION D22]`).
+Originals + metadata are preserved, previews/thumbnails generated, uploads associated with
+players/matches/seasons/orgs/research or sent to a review queue, and any extracted
+statistics require human verification before entering official records.
+
+## 20.6 Phasing
+
+Core media management built in **Phase 11** (Media Archive & Optional OneVault Integration);
+the **mobile upload interface is coordinated with Phase 16** (mobile portal). Foundational
+hooks are accommodated in Phase 2 (20a §20a.8) without building later-phase functionality.

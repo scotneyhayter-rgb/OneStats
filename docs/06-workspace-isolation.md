@@ -75,3 +75,40 @@ system reference enums.
 - A "no unscoped query" lint/review gate in CI.
 - RLS policy tests (e.g. pgTAP) verify rows are invisible without the correct session
   workspace.
+
+## 6.7 RLS enforcement & role separation (user-approved plan — Phase 3) `[DECISION D2a]`
+
+Refined per the Phase 2 review. Three parts:
+
+### FORCE RLS where appropriate
+Workspace-scoped domain tables use **`FORCE ROW LEVEL SECURITY`** so that **even a table
+owner is subject to the policy** (owners bypass plain RLS). This closes the gap noted in the
+Phase 2 foundation (the v1 scaffold enables RLS but not FORCE). Global/shared tables (user
+registry, reference enums) are not force-scoped.
+
+### Transaction-scoped workspace context
+The current workspace is set with **`SET LOCAL onestats.workspace_id = ...` inside each
+request's transaction** (not a session-wide `SET`), so the GUC cannot leak between pooled
+connections or requests. The data-access layer opens a transaction, sets the workspace,
+runs the work, and the setting is discarded at commit/rollback. A missing/empty GUC yields
+**no rows** (the policy's `NULLIF(...)::uuid` comparison fails closed).
+
+### Separate migration ownership from the runtime role `[DECISION D24]`
+Investigated and adopted as the target model:
+
+| Role | Owns tables? | Privileges | RLS |
+|---|---|---|---|
+| **`onestats_migrator`** (or the DB owner) | **Yes** | DDL (migrations) | runs migrations; not used at runtime |
+| **`onestats_app`** (runtime) | **No** | granted DML only (SELECT/INSERT/UPDATE/DELETE), `USAGE` on schema | **always subject to RLS** (non-owners cannot bypass) |
+
+Because the runtime `onestats_app` **does not own** the tables, RLS applies to it without
+relying on FORCE, and it cannot `ALTER`/`DROP` protected tables or disable policies —
+least privilege by construction. FORCE is still set so that administrative/owner access is
+also policy-bound. Migrations are applied by the migrator/owner role; the app connects only
+as the non-owner runtime role.
+
+> **Phase 2 status:** the foundation currently has `onestats_app` owning the `onestats`
+> database (it created the v1 tables), and RLS is enabled but not forced. Moving to the
+> owner/runtime split and `FORCE` is a **Phase 3** task (it needs a superuser to create the
+> migrator role and re-grant), done before any domain tables carry real data. Creating that
+> role requires explicit user action (superuser) and is not performed automatically.

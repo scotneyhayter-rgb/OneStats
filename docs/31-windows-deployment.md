@@ -46,6 +46,28 @@ flowchart TB
 - `onestats_app` is non-superuser; admin tasks use `postgres`/`scotney` manually, outside
   the app.
 
+## 31.3a Packaged backend process management `[DECISION D7 — deferred; design recorded]`
+
+Final sidecar packaging is deferred, but how the **packaged desktop app securely manages its
+backend process** is specified now (per the Phase 2 review):
+
+- **Lifecycle bound to the shell:** the Tauri shell starts the bundled FastAPI backend
+  (PyInstaller sidecar) on app launch and **terminates it on exit/crash** — no orphaned
+  process. A single instance per app.
+- **Loopback-only by default:** the backend binds `127.0.0.1` on an **ephemeral port**; the
+  shell passes the chosen port to the webview. It is **never bound to a public interface**;
+  LAN binding is an explicit, session-gated opt-in (e.g. mobile upload pairing, 20a).
+- **Local handshake:** the shell injects a **short-lived local token/secret** (via env/stdin
+  to the sidecar, never a file) that the webview includes on requests, so only the paired
+  desktop client can call the backend — defence against other local processes.
+- **Secrets from the OS store:** the DB credential and any tokens come from the **Windows
+  Credential Manager** at runtime, never from bundled files, and are never logged.
+- **Health/supervision:** the shell polls `/api/v1/health` on startup and restarts the
+  sidecar on failure, surfacing a clear error state in the UI.
+- In **development** the backend and app run as two independent processes (deliverable
+  DEVELOPMENT.md); the above describes the **packaged** app. The exact packaging
+  (PyInstaller flags, signing) remains `[DECISION D7]`.
+
 ## 31.4 Updates, migration, recovery
 
 - **Application updates:** Tauri auto-updater for clients; the server service updated via

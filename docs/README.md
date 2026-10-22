@@ -65,6 +65,11 @@ Supporting documents:
 - [12a-player-profile-and-badges.md](12a-player-profile-and-badges.md) — player-profile
   design and milestone badge catalogue, from inspecting the **real** RMCC player-profile
   page (backs deliverables 12, 26, 29, 30; branding per deliverable 9).
+- [20a-mobile-upload-architecture.md](20a-mobile-upload-architecture.md) — mobile image &
+  document upload (QR pairing, time-limited sessions, review queue, security); core media
+  → Phase 11, mobile UI → Phase 16 (backs deliverables 20, 21, 30, 33).
+
+Phase 2 build: [DEVELOPMENT.md](DEVELOPMENT.md) · [PHASE2_COMPLETION_REPORT.md](PHASE2_COMPLETION_REPORT.md).
 
 ## How to read these documents
 

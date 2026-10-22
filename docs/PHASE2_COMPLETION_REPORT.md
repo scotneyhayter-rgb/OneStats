@@ -117,15 +117,36 @@ therefore builds natively end-to-end. `npm run tauri dev` launches it as a nativ
 > scaffold), while the Tauri `productName` and window title are **OneStats**. Renaming the
 > Cargo package to `onestats-desktop` is a safe polish item for early Phase 3.
 
-## 8. Decisions requiring approval
+## 8. Decisions — resolved in the Phase 2 review (2026-10-23)
 
-1. **Bleeding-edge toolchain** (React 19 / Vite 8 / Tailwind v4 / TS 6, from the current
-   `create-tauri-app`) — confirm acceptable, or pin to more conservative versions.
-2. **RLS enforcement strategy** — `FORCE ROW LEVEL SECURITY` + the per-request workspace
-   GUC in Phase 3 (and whether the app should connect as a non-owner role vs the DB owner).
-3. **D7 packaging** (PyInstaller sidecar vs. other process management) — still deferred.
-4. **Git identity** was set **locally** to `Scotney Hayter <scotney.hayter@gmail.com>` for
-   commits — confirm or adjust.
+1. **Toolchain** (React 19 / Vite 8 / Tailwind 4 / TS 6) — **accepted provisionally**,
+   subject to compatibility checks + passing tests (all green). `[D-toolchain]`
+2. **RLS enforcement** — adopt **`FORCE ROW LEVEL SECURITY` + transaction-scoped (`SET
+   LOCAL`) workspace context** in Phase 3. `[D2a]`, deliverable 6 §6.7.
+3. **Migration vs runtime role** — adopt a **migrator/owner role for DDL** and a
+   **non-owner runtime `onestats_app`** (DML only, always RLS-bound). `[D24]`, deliverable
+   6 §6.7. (Creating the migrator role needs a superuser — a Phase 3 user action.)
+4. **Packaged backend process management** — documented (loopback-only ephemeral port, shell
+   lifecycle binding, local token handshake, OS credential store, health supervision);
+   final packaging still deferred `[D7]`. Deliverable 31 §31.3a.
+5. **Desktop CSP** — current `null` **recorded as a development-only limitation**;
+   restrictive production CSP + least-privilege Tauri capabilities planned. `[D23]`,
+   deliverable 33 §33.5a.
+6. **Git identity** — **left unchanged** (local `Scotney Hayter
+   <scotney.hayter@gmail.com>`) per instruction; will not change without explicit approval.
+7. **Mobile image/document uploads** — new confirmed requirement; architecture in
+   [20a](20a-mobile-upload-architecture.md) `[D22]`; Phase 2 foundational accommodations
+   noted (20a §20a.8), nothing later-phase built.
+
+## 8a. Live database verification — PENDING (not yet run)
+
+The `onestats_app` credential is **not configured** in the environment (no `.env`, env var
+unset). Per the review, the live checks run **once the credential is securely set**.
+**Phase 2 is therefore NOT claimed as fully verified.** When configured, the following run
+(no passwords shown or committed; no database reset): connectivity as the non-superuser app
+role · confirm db name/role · apply the Alembic migration via the privileged migration role
+· verify schema · confirm `alembic_version` tracking · verify authorised app operations ·
+confirm no secrets in Git/logs/output · run all tests · report & resolve any failures.
 
 ## 9. Readiness for Phase 3
 
