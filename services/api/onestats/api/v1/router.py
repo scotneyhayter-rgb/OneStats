@@ -19,6 +19,7 @@ from onestats.api.v1 import (
     matches,
     onboarding,
     organisations,
+    partnerships,
     people,
     people_import,
     playing_conditions,
@@ -54,3 +55,4 @@ api_v1.include_router(matches.router)
 api_v1.include_router(innings.router)
 api_v1.include_router(batting.router)
 api_v1.include_router(bowling.router)
+api_v1.include_router(partnerships.router)
