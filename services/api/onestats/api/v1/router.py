@@ -12,6 +12,7 @@ from onestats.api.v1 import (
     onboarding,
     organisations,
     playing_conditions,
+    relationships,
     setup,
     teams,
     venues,
@@ -30,3 +31,4 @@ api_v1.include_router(venues.router)
 api_v1.include_router(teams.router)
 api_v1.include_router(competitions.router)
 api_v1.include_router(playing_conditions.router)
+api_v1.include_router(relationships.router)
