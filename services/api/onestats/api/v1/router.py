@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from onestats.api.v1 import (
+    affiliations,
     auth,
     branding,
     competitions,
@@ -38,3 +39,4 @@ api_v1.include_router(relationships.router)
 api_v1.include_router(imports.router)
 api_v1.include_router(finals_series.router)
 api_v1.include_router(people.router)
+api_v1.include_router(affiliations.router)
