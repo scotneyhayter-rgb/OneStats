@@ -1,0 +1,246 @@
+/**
+ * Matches & scorecard entry (Phase 6, Stage 7). A single screen: search/select existing matches,
+ * create a new one, and open the integrated scorecard editor in place — no hopping between screens.
+ * Incomplete matches save as drafts. Connected to the real Phase 6 backend; management actions are
+ * gated by match.manage (the backend is the authority; this only decides what to show).
+ */
+
+import { Plus, Trophy } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AppShell } from "../../components/layout/AppShell";
+import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Modal } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
+import {
+  api, ApiError, type Competition, type CompetitionDetail, type Match, type Team, type Venue,
+} from "../../lib/api";
+import { Field, NoWorkspace, useManage } from "../manage/_shared";
+import { ScorecardEditor } from "./ScorecardEditor";
+
+export function Scorecard() {
+  const { workspaceId, canManage } = useManage();
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [comps, setComps] = useState<Competition[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [compFilter, setCompFilter] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [openMatch, setOpenMatch] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!workspaceId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [m, c] = await Promise.all([
+        api.listMatches(workspaceId, { competition_id: compFilter || undefined }),
+        api.listCompetitions(workspaceId),
+      ]);
+      setMatches(m);
+      setComps(c);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load matches");
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, compFilter]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!workspaceId) {
+    return (
+      <AppShell title="Matches" subtitle="Match management and scorecard entry">
+        <NoWorkspace />
+      </AppShell>
+    );
+  }
+
+  if (openMatch) {
+    return (
+      <AppShell title="Scorecard" subtitle="Integrated match & scorecard editor">
+        <ScorecardEditor
+          workspaceId={workspaceId}
+          matchId={openMatch}
+          canManage={canManage}
+          onBack={() => { setOpenMatch(null); void load(); }}
+          onSaved={() => void load()}
+        />
+      </AppShell>
+    );
+  }
+
+  const compName = (id: string | null) => (id ? comps.find((c) => c.id === id)?.name ?? "—" : "No competition");
+  const filtered = matches.filter((m) => {
+    const hay = `${m.round ?? ""} ${m.match_date ?? ""} ${compName(m.competition_id)}`.toLowerCase();
+    return hay.includes(search.toLowerCase());
+  });
+
+  return (
+    <AppShell title="Matches" subtitle="Match management and scorecard entry">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Input placeholder="Search matches…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+        <Select value={compFilter} onChange={(e) => setCompFilter(e.target.value)} className="max-w-xs">
+          <option value="">All competitions</option>
+          {comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+        <div className="flex-1" />
+        {canManage && (
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" aria-hidden /> New match
+          </Button>
+        )}
+      </div>
+
+      {loading && <LoadingState label="Loading matches…" />}
+      {!loading && error && <ErrorState message={error} onRetry={() => void load()} />}
+      {!loading && !error && filtered.length === 0 && (
+        <EmptyState icon={<Trophy className="h-8 w-8" aria-hidden />} title="No matches"
+          description="Create a match to start a scorecard. Incomplete matches save as drafts." />
+      )}
+      {!loading && !error && filtered.length > 0 && (
+        <div className="grid gap-3">
+          {filtered.map((m) => (
+            <Card key={m.id} className="cursor-pointer hover:border-brand">
+              <CardContent className="flex items-center gap-3 py-4" onClick={() => setOpenMatch(m.id)}>
+                <Trophy className="h-5 w-5 text-muted-foreground" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">
+                    {compName(m.competition_id)}{m.round ? ` · ${m.round}` : ""}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {m.match_date ?? "Date unknown"}
+                    {m.format ? ` · ${m.format}` : ""}
+                  </div>
+                </div>
+                {m.classification !== "unclassified" && <Badge variant="brand">{m.classification.replace(/_/g, " ")}</Badge>}
+                <Badge variant={m.status === "final" ? "success" : m.status === "abandoned" ? "warning" : "muted"}>{m.status}</Badge>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateMatchModal
+          workspaceId={workspaceId}
+          comps={comps}
+          onClose={() => setShowCreate(false)}
+          onCreated={(id) => { setShowCreate(false); setOpenMatch(id); }}
+        />
+      )}
+    </AppShell>
+  );
+}
+
+function CreateMatchModal({ workspaceId, comps, onClose, onCreated }: {
+  workspaceId: string; comps: Competition[]; onClose: () => void; onCreated: (matchId: string) => void;
+}) {
+  const [competitionId, setCompetitionId] = useState("");
+  const [detail, setDetail] = useState<CompetitionDetail | null>(null);
+  const [gradeId, setGradeId] = useState("");
+  const [seasonId, setSeasonId] = useState("");
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [homeId, setHomeId] = useState("");
+  const [awayId, setAwayId] = useState("");
+  const [venueId, setVenueId] = useState("");
+  const [matchDate, setMatchDate] = useState("");
+  const [format, setFormat] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const [t, v] = await Promise.all([api.listTeams(workspaceId), api.listVenues(workspaceId)]);
+      setTeams(t);
+      setVenues(v);
+    })();
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void (async () => {
+      setGradeId("");
+      setSeasonId("");
+      if (competitionId) setDetail(await api.getCompetition(workspaceId, competitionId));
+      else setDetail(null);
+    })();
+  }, [workspaceId, competitionId]);
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const created = await api.createMatch(workspaceId, {
+        competition_id: competitionId || null, grade_id: gradeId || null, season_id: seasonId || null,
+        venue_id: venueId || null, match_date: matchDate || null, format: format || null, status: "draft",
+      });
+      // teams are optional at creation; set whichever were chosen
+      if (homeId) await api.setMatchTeam(workspaceId, created.id, { team_id: homeId, is_home: true });
+      if (awayId && awayId !== homeId) await api.setMatchTeam(workspaceId, created.id, { team_id: awayId, is_home: false });
+      onCreated(created.id);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not create match");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open title="New match" onClose={onClose} footer={
+      <>
+        <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button size="sm" onClick={() => void submit()} disabled={busy}>{busy ? "Creating…" : "Create & open"}</Button>
+      </>
+    }>
+      <div className="flex flex-col gap-3">
+        {err && <ErrorState message={err} />}
+        <Field label="Competition" hint="Optional — a match can be recorded without one.">
+          <Select value={competitionId} onChange={(e) => setCompetitionId(e.target.value)}>
+            <option value="">— none —</option>
+            {comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </Field>
+        {detail && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Grade">
+              <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)}>
+                <option value="">— none —</option>
+                {detail.grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Season">
+              <Select value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+                <option value="">— none —</option>
+                {detail.seasons.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </Select>
+            </Field>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Home team"><Select value={homeId} onChange={(e) => setHomeId(e.target.value)}>
+            <option value="">— set later —</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select></Field>
+          <Field label="Away team"><Select value={awayId} onChange={(e) => setAwayId(e.target.value)}>
+            <option value="">— set later —</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select></Field>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Venue"><Select value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+            <option value="">— unknown —</option>
+            {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </Select></Field>
+          <Field label="Date" hint="Leave blank if unknown."><Input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} /></Field>
+        </div>
+        <Field label="Format"><Input value={format} placeholder="e.g. two-day, limited overs" onChange={(e) => setFormat(e.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}

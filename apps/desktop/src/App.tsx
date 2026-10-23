@@ -2,7 +2,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { EmptyState, LoadingState } from "./components/states/States";
 import { Dashboard } from "./features/Dashboard";
-import { Ask, Matches, Settings, Statistics } from "./features/sections";
+import { Ask, Settings, Statistics } from "./features/sections";
+import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
@@ -36,7 +37,7 @@ function AuthedApp() {
         <Route path="/manage/competitions" element={<Competitions />} />
         <Route path="/manage/conditions" element={<PlayingConditions />} />
         <Route path="/manage/history" element={<OrgHistory />} />
-        <Route path="/matches" element={<Matches />} />
+        <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/statistics" element={<Statistics />} />
         <Route path="/ask" element={<Ask />} />

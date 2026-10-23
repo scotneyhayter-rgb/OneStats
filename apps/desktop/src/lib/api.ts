@@ -321,6 +321,135 @@ export interface ImportRecord {
   issues: unknown;
 }
 
+// --- Phase 6 (matches & scorecards) types ---
+export interface MatchTeam {
+  id: string;
+  team_id: string;
+  is_home: boolean;
+  captain_person_id: string | null;
+  wicketkeeper_person_id: string | null;
+  bonus_points: number | null;
+}
+export interface Match {
+  id: string;
+  competition_id: string | null;
+  grade_id: string | null;
+  season_id: string | null;
+  venue_id: string | null;
+  match_date: string | null;
+  date_precision: string;
+  round: string | null;
+  matchtype: string | null;
+  format: string | null;
+  status: string;
+  classification: string;
+  finals_stage: string | null;
+  classification_verified: boolean;
+  result_type: string | null;
+  result_raw: string | null;
+  won_by_team_id: string | null;
+  margin_runs: number | null;
+  margin_wickets: number | null;
+  include_in_statistics: boolean;
+  notes: string | null;
+  source_system: string | null;
+  source_ref: string | null;
+}
+export interface MatchDetail extends Match {
+  teams: MatchTeam[];
+}
+export interface Innings {
+  id: string;
+  match_id: string;
+  inns_number: number;
+  batting_team_id: string | null;
+  bowling_team_id: string | null;
+  status: string;
+  byes: number | null;
+  legbyes: number | null;
+  wides: number | null;
+  noballs: number | null;
+  penalty: number | null;
+  official_total: number | null;
+  official_wickets: number | null;
+  override_reason: string | null;
+  iresult_raw: string | null;
+  iresult_status: string;
+  notes: string | null;
+}
+export interface InningsTotals {
+  innings_id: string;
+  extras_total: number | null;
+  batting_runs: number | null;
+  bowling_conceded: number | null;
+  derived_total: number | null;
+  derived_wickets: number | null;
+  official_total: number | null;
+  official_wickets: number | null;
+}
+export interface BattingEntry {
+  id: string;
+  innings_id: string;
+  person_id: string | null;
+  batting_position: number | null;
+  runs: number | null;
+  balls_faced: number | null;
+  fours: number | null;
+  sixes: number | null;
+  minutes: number | null;
+  dismissal_type: string | null;
+  dismissal_source_code: string | null;
+  bowler_person_id: string | null;
+  fielder_person_id: string | null;
+  notes: string | null;
+  evidence: string | null;
+}
+export interface BowlingEntry {
+  id: string;
+  innings_id: string;
+  person_id: string | null;
+  bowling_order: number | null;
+  overs_text: string | null;
+  legal_balls: number | null;
+  maidens: number | null;
+  runs_conceded: number | null;
+  wickets: number | null;
+  wides: number | null;
+  noballs: number | null;
+  bowling_type_raw: string | null;
+  notes: string | null;
+  evidence: string | null;
+}
+export interface FallOfWicket {
+  id: string;
+  innings_id: string;
+  wicket_number: number | null;
+  team_score: number | null;
+  dismissed_person_id: string | null;
+  not_out_person_id: string | null;
+  batting_entry_id: string | null;
+  overs_text: string | null;
+  legal_balls: number | null;
+  notes: string | null;
+  evidence: string | null;
+}
+export interface Partnership {
+  id: string;
+  innings_id: string;
+  wicket_number: number | null;
+  runs: number | null;
+  balls: number | null;
+  player1_person_id: string | null;
+  player2_person_id: string | null;
+  unbroken: boolean | null;
+  end_reason: string | null;
+  notes: string | null;
+  evidence: string | null;
+}
+export interface Warnings {
+  warnings: string[];
+}
+
 export const api = {
   baseUrl: BASE_URL,
   health: () => request<{ status: string; version: string; env: string }>("/api/v1/health", { auth: false }),
@@ -538,4 +667,85 @@ export const api = {
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/rollback`, { method: "POST" }),
   reconcilePeopleImport: (w: string, batchId: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/reconcile`),
+
+  // --- Phase 6: matches ---
+  listMatches: (
+    w: string,
+    opts: { competition_id?: string; grade_id?: string; season_id?: string; venue_id?: string; classification?: string; status_?: string } = {},
+  ) => request<Match[]>(`/api/v1/workspaces/${w}/matches${qs(opts)}`),
+  getMatch: (w: string, id: string) => request<MatchDetail>(`/api/v1/workspaces/${w}/matches/${id}`),
+  createMatch: (w: string, body: Record<string, unknown>) =>
+    request<MatchDetail>(`/api/v1/workspaces/${w}/matches`, { method: "POST", body }),
+  updateMatch: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Match>(`/api/v1/workspaces/${w}/matches/${id}`, { method: "PATCH", body }),
+  setMatchClassification: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Match>(`/api/v1/workspaces/${w}/matches/${id}/classification`, { method: "POST", body }),
+  setMatchResult: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Match>(`/api/v1/workspaces/${w}/matches/${id}/result`, { method: "POST", body }),
+  setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
+    request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
+  getMatchConditions: (w: string, id: string) =>
+    request<ResolvedConditions>(`/api/v1/workspaces/${w}/matches/${id}/conditions`),
+
+  // --- Phase 6: innings ---
+  listInnings: (w: string, matchId: string) =>
+    request<Innings[]>(`/api/v1/workspaces/${w}/matches/${matchId}/innings`),
+  createInnings: (w: string, matchId: string, body: Record<string, unknown>) =>
+    request<Innings>(`/api/v1/workspaces/${w}/matches/${matchId}/innings`, { method: "POST", body }),
+  updateInnings: (w: string, matchId: string, id: string, body: Record<string, unknown>) =>
+    request<Innings>(`/api/v1/workspaces/${w}/matches/${matchId}/innings/${id}`, { method: "PATCH", body }),
+  setInningsOfficialTotal: (w: string, matchId: string, id: string, body: Record<string, unknown>) =>
+    request<Innings>(`/api/v1/workspaces/${w}/matches/${matchId}/innings/${id}/official-total`, { method: "POST", body }),
+  getInningsTotals: (w: string, matchId: string, id: string) =>
+    request<InningsTotals>(`/api/v1/workspaces/${w}/matches/${matchId}/innings/${id}/totals`),
+  validateInnings: (w: string, matchId: string, id: string) =>
+    request<Warnings>(`/api/v1/workspaces/${w}/matches/${matchId}/innings/${id}/validate`),
+
+  // --- Phase 6: batting ---
+  listBatting: (w: string, iid: string) =>
+    request<BattingEntry[]>(`/api/v1/workspaces/${w}/innings/${iid}/batting`),
+  createBatting: (w: string, iid: string, body: Record<string, unknown>) =>
+    request<BattingEntry>(`/api/v1/workspaces/${w}/innings/${iid}/batting`, { method: "POST", body }),
+  updateBatting: (w: string, iid: string, id: string, body: Record<string, unknown>) =>
+    request<BattingEntry>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}`, { method: "PATCH", body }),
+  deleteBatting: (w: string, iid: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}`, { method: "DELETE" }),
+  battingCard: (w: string, iid: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/innings/${iid}/batting/card`),
+  validateBatting: (w: string, iid: string) =>
+    request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/batting/validate`),
+
+  // --- Phase 6: bowling ---
+  listBowling: (w: string, iid: string) =>
+    request<BowlingEntry[]>(`/api/v1/workspaces/${w}/innings/${iid}/bowling`),
+  createBowling: (w: string, iid: string, body: Record<string, unknown>) =>
+    request<BowlingEntry>(`/api/v1/workspaces/${w}/innings/${iid}/bowling`, { method: "POST", body }),
+  updateBowling: (w: string, iid: string, id: string, body: Record<string, unknown>) =>
+    request<BowlingEntry>(`/api/v1/workspaces/${w}/innings/${iid}/bowling/${id}`, { method: "PATCH", body }),
+  deleteBowling: (w: string, iid: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/innings/${iid}/bowling/${id}`, { method: "DELETE" }),
+  bowlingCard: (w: string, iid: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/innings/${iid}/bowling/card`),
+  validateBowling: (w: string, iid: string) =>
+    request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/bowling/validate`),
+
+  // --- Phase 6: fall of wicket & partnerships ---
+  listFow: (w: string, iid: string) =>
+    request<FallOfWicket[]>(`/api/v1/workspaces/${w}/innings/${iid}/fall-of-wicket`),
+  createFow: (w: string, iid: string, body: Record<string, unknown>) =>
+    request<FallOfWicket>(`/api/v1/workspaces/${w}/innings/${iid}/fall-of-wicket`, { method: "POST", body }),
+  updateFow: (w: string, iid: string, id: string, body: Record<string, unknown>) =>
+    request<FallOfWicket>(`/api/v1/workspaces/${w}/innings/${iid}/fall-of-wicket/${id}`, { method: "PATCH", body }),
+  deleteFow: (w: string, iid: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/innings/${iid}/fall-of-wicket/${id}`, { method: "DELETE" }),
+  listPartnerships: (w: string, iid: string) =>
+    request<Partnership[]>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships`),
+  createPartnership: (w: string, iid: string, body: Record<string, unknown>) =>
+    request<Partnership>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships`, { method: "POST", body }),
+  updatePartnership: (w: string, iid: string, id: string, body: Record<string, unknown>) =>
+    request<Partnership>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships/${id}`, { method: "PATCH", body }),
+  deletePartnership: (w: string, iid: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships/${id}`, { method: "DELETE" }),
+  validatePartnerships: (w: string, iid: string) =>
+    request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships-validate`),
 };
