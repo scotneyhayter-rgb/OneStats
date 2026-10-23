@@ -8,7 +8,9 @@ from onestats.api.v1 import (
     auth,
     branding,
     competitions,
+    finals_series,
     health,
+    imports,
     onboarding,
     organisations,
     playing_conditions,
@@ -32,3 +34,5 @@ api_v1.include_router(teams.router)
 api_v1.include_router(competitions.router)
 api_v1.include_router(playing_conditions.router)
 api_v1.include_router(relationships.router)
+api_v1.include_router(imports.router)
+api_v1.include_router(finals_series.router)

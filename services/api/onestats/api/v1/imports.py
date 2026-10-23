@@ -1,0 +1,125 @@
+"""Cricket Statz structural-import endpoints (Phase 4, Stage 6).
+
+Workspace-scoped, gated by ``import.manage``, audited. Staging-first: upload stages rows,
+validate/preview inspect them, and promote (explicit admin approval) writes only confirmed
+structural entities into canonical tables. Cancel/rollback reverse a batch. No scorecards.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.db.session import get_engine
+from onestats.db.workspace import workspace_transaction
+from onestats.domain import imports
+
+router = APIRouter(prefix="/workspaces/{workspace_id}/imports", tags=["imports"])
+
+ImportCtx = Annotated[RequestContext, Depends(require_permission("import.manage"))]
+
+_VALUE_ERR_STATUS = {
+    "batch_not_found": status.HTTP_404_NOT_FOUND,
+    "no_importable_collections": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "invalid_payload": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "batch_has_promoted_rows_use_rollback": status.HTTP_409_CONFLICT,
+    "batch_cancelled": status.HTTP_409_CONFLICT,
+    "batch_promoted": status.HTTP_409_CONFLICT,
+}
+
+
+def _engine(settings):
+    eng = get_engine(settings)
+    if eng is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Database not configured")
+    return eng
+
+
+def _value_error(exc: ValueError) -> HTTPException:
+    code = str(exc)
+    return HTTPException(_VALUE_ERR_STATUS.get(code, status.HTTP_400_BAD_REQUEST), code)
+
+
+def _ids_to_str(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in d.items()}
+
+
+class StageRequest(BaseModel):
+    data: dict[str, Any] = Field(description="Cricket Statz export payload (clubs/teams/venues/divisions/matches)")
+    filename: str | None = None
+    source_system: str | None = None
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def stage(workspace_id: UUID, body: StageRequest, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids_to_str(
+                imports.parse_and_stage(conn, workspace_id, str(ctx.user["id"]), payload=body.data, filename=body.filename)
+            )
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.get("")
+def list_batches(workspace_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_ids_to_str(b) for b in imports.list_batches(conn)]
+
+
+@router.get("/{batch_id}")
+def get_batch(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        batch = imports.get_batch(conn, batch_id)
+        if batch is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "batch_not_found")
+        return {"batch": _ids_to_str(batch), "preview": imports.preview_batch(conn, batch_id)}
+
+
+@router.get("/{batch_id}/records")
+def list_records(
+    workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx,
+    entity_type: str | None = None, status_: str | None = None,
+) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_ids_to_str(r) for r in imports.list_records(conn, batch_id, entity_type=entity_type, status=status_)]
+
+
+@router.post("/{batch_id}/validate")
+def validate(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids_to_str(imports.validate_batch(conn, workspace_id, str(ctx.user["id"]), batch_id))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{batch_id}/promote")
+def promote(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return imports.promote_batch(conn, workspace_id, str(ctx.user["id"]), batch_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{batch_id}/cancel")
+def cancel(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return imports.cancel_batch(conn, workspace_id, str(ctx.user["id"]), batch_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{batch_id}/rollback")
+def rollback(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return imports.rollback_batch(conn, workspace_id, str(ctx.user["id"]), batch_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
