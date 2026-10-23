@@ -6,6 +6,11 @@ import { Ask, Matches, People, Settings, Statistics } from "./features/sections"
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
+import { Organisations } from "./features/manage/Organisations";
+import { TeamsVenues } from "./features/manage/TeamsVenues";
+import { Competitions } from "./features/manage/Competitions";
+import { PlayingConditions } from "./features/manage/PlayingConditions";
+import { OrgHistory } from "./features/manage/OrgHistory";
 import { useAuth } from "./lib/auth";
 import { WorkspaceProvider } from "./lib/workspace-context";
 
@@ -25,6 +30,11 @@ function AuthedApp() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/workspaces" element={<MyWorkspaces />} />
         <Route path="/onboarding" element={<OnboardingWizard />} />
+        <Route path="/manage/organisations" element={<Organisations />} />
+        <Route path="/manage/teams-venues" element={<TeamsVenues />} />
+        <Route path="/manage/competitions" element={<Competitions />} />
+        <Route path="/manage/conditions" element={<PlayingConditions />} />
+        <Route path="/manage/history" element={<OrgHistory />} />
         <Route path="/matches" element={<Matches />} />
         <Route path="/people" element={<People />} />
         <Route path="/statistics" element={<Statistics />} />

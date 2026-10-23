@@ -1,8 +1,11 @@
 import {
   BarChart3,
+  Building2,
+  GitBranch,
   LayoutDashboard,
   MessageCircleQuestion,
   Settings,
+  SlidersHorizontal,
   Trophy,
   Users,
   type LucideIcon,
@@ -59,5 +62,47 @@ export const NAV_SECTIONS: NavSection[] = [
     path: "/settings",
     icon: Settings,
     blurb: "Workspace, branding, users and configuration.",
+  },
+];
+
+/**
+ * Phase 4 club-management screens. These are a distinct, workspace-scoped group — separate from
+ * the six approved primary sections above — surfaced under their own sidebar heading.
+ */
+export const MANAGEMENT_SECTIONS: NavSection[] = [
+  {
+    key: "organisations",
+    label: "Organisations",
+    path: "/manage/organisations",
+    icon: Building2,
+    blurb: "Clubs, associations and historical organisations.",
+  },
+  {
+    key: "teams-venues",
+    label: "Teams & Venues",
+    path: "/manage/teams-venues",
+    icon: Users,
+    blurb: "Teams, cricket programs and grounds.",
+  },
+  {
+    key: "competitions",
+    label: "Competitions",
+    path: "/manage/competitions",
+    icon: Trophy,
+    blurb: "Competitions, divisions, grades and seasons.",
+  },
+  {
+    key: "conditions",
+    label: "Playing Conditions",
+    path: "/manage/conditions",
+    icon: SlidersHorizontal,
+    blurb: "Historical rules by competition, season, grade and match.",
+  },
+  {
+    key: "history",
+    label: "Organisation History",
+    path: "/manage/history",
+    icon: GitBranch,
+    blurb: "Timeline, relationships and provenance.",
   },
 ];

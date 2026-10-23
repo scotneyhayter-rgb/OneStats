@@ -1,6 +1,6 @@
 import { Building2, LogOut } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { NAV_SECTIONS } from "../../app/navigation";
+import { MANAGEMENT_SECTIONS, NAV_SECTIONS } from "../../app/navigation";
 import { useAuth } from "../../lib/auth";
 import { APP_VERSION, PHASE } from "../../lib/version";
 import { cn } from "../../lib/utils";
@@ -46,6 +46,31 @@ export function Sidebar() {
           </NavLink>
         </li>
         {NAV_SECTIONS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <li key={s.key}>
+              <NavLink
+                to={s.path}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 rounded-[var(--radius-app)] px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-sidebar-active text-sidebar-foreground"
+                      : "text-sidebar-muted hover:bg-sidebar-active hover:text-sidebar-foreground",
+                  )
+                }
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                <span>{s.label}</span>
+              </NavLink>
+            </li>
+          );
+        })}
+
+        <li className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
+          Club Management
+        </li>
+        {MANAGEMENT_SECTIONS.map((s) => {
           const Icon = s.icon;
           return (
             <li key={s.key}>

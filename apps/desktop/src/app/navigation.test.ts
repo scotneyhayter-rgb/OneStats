@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAV_SECTIONS } from "./navigation";
+import { MANAGEMENT_SECTIONS, NAV_SECTIONS } from "./navigation";
 
 describe("primary navigation", () => {
   it("defines exactly the six approved sections", () => {
@@ -26,5 +26,26 @@ describe("primary navigation", () => {
       expect(s.icon).toBeTruthy();
       expect(s.path.startsWith("/")).toBe(true);
     }
+  });
+});
+
+describe("club-management navigation (Phase 4, Stage 7)", () => {
+  it("defines the five management screens under /manage", () => {
+    expect(MANAGEMENT_SECTIONS.map((s) => s.label)).toEqual([
+      "Organisations",
+      "Teams & Venues",
+      "Competitions",
+      "Playing Conditions",
+      "Organisation History",
+    ]);
+    for (const s of MANAGEMENT_SECTIONS) {
+      expect(s.path.startsWith("/manage/")).toBe(true);
+      expect(s.icon).toBeTruthy();
+    }
+  });
+
+  it("does not collide with the primary sections", () => {
+    const primary = new Set(NAV_SECTIONS.map((s) => s.path));
+    for (const s of MANAGEMENT_SECTIONS) expect(primary.has(s.path)).toBe(false);
   });
 });
