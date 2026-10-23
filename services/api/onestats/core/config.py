@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     migrator_user: str = Field(default="onestats_migrator")
     migrator_password: str | None = Field(default=None)
 
+    # --- Media / logo uploads (workspace-isolated; deliverable 9/20) ---
+    media_root: str = Field(default="media")
+    max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
+    max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
+
     # --- Auth / sessions ---
     session_ttl_hours: int = Field(default=12)
     # Local file where the one-time super-admin setup token is written on first run

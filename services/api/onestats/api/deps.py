@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 
 from onestats.core.config import Settings, get_settings
 from onestats.db.session import get_engine
@@ -49,12 +49,15 @@ def require_super_admin(user: CurrentUser) -> dict[str, Any]:
 
 
 def get_workspace_id(
+    request: Request,
     x_workspace_id: Annotated[str | None, Header()] = None,
 ) -> UUID:
-    if not x_workspace_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing X-Workspace-Id header")
+    # Prefer the path's {workspace_id}; fall back to the X-Workspace-Id header.
+    raw = request.path_params.get("workspace_id") or x_workspace_id
+    if not raw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing workspace id")
     try:
-        return UUID(x_workspace_id)
+        return UUID(str(raw))
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid workspace id") from exc
 

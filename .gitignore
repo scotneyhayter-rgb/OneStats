@@ -10,6 +10,9 @@ secrets/
 # One-time super-admin setup token (first run)
 .onestats-setup-token
 **/.onestats-setup-token
+# Uploaded media (logos, etc.) — workspace artwork, not source
+services/api/media/
+media/
 
 # === Real cricket data / exports / media (provenance & privacy) ===
 fixtures-private/
