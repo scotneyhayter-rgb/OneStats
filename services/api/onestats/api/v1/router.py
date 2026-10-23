@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from onestats.api.v1 import (
     affiliations,
     auth,
+    batting,
     branding,
     competitions,
     finals_series,
@@ -50,3 +51,4 @@ api_v1.include_router(profiles.router)
 api_v1.include_router(people_import.router)
 api_v1.include_router(matches.router)
 api_v1.include_router(innings.router)
+api_v1.include_router(batting.router)

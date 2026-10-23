@@ -157,9 +157,12 @@ def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
             text("SELECT sum(runs) FROM batting_entry WHERE innings_id = :i AND runs IS NOT NULL"),
             {"i": innings_id},
         ).scalar_one_or_none()
+        # genuine dismissals only — no-innings (dnb/absent), not-out and unresolved statuses are
+        # not wickets; unknown_out (batter was out, manner unknown) counts. Mirrors
+        # batting.NON_WICKET_STATUSES.
         derived_wickets = conn.execute(
             text("SELECT count(*) FROM batting_entry WHERE innings_id = :i AND dismissal_type IS NOT NULL "
-                 "AND dismissal_type NOT IN ('dnb','not_out','retired_not_out')"),
+                 "AND dismissal_type NOT IN ('dnb','absent','not_out','retired_not_out','retired','unknown')"),
             {"i": innings_id},
         ).scalar_one()
     if conn.execute(text("SELECT to_regclass('public.bowling_entry')")).scalar_one() is not None:
