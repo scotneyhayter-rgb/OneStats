@@ -275,6 +275,52 @@ export interface OrgTimeline {
   events: TimelineEvent[];
 }
 
+// --- Phase 5 (people) types ---
+export interface Person {
+  id: string;
+  display_name: string;
+  status: string;
+  is_junior: boolean;
+  privacy_protected: boolean;
+  dob: string | null;
+  dob_precision: string;
+  notes: string | null;
+  merged_into_id: string | null;
+  protected_fields_hidden?: boolean;
+}
+export interface PersonDuplicateCandidate {
+  person_id: string;
+  display_name: string;
+  evidence: string[];
+  confidence: string;
+}
+export interface PersonMerge {
+  id: string;
+  canonical_person_id: string;
+  merged_person_id: string;
+  reason: string | null;
+  evidence: string | null;
+  is_undone: boolean;
+}
+export interface ImportBatch {
+  id: string;
+  source_system: string;
+  source_filename: string | null;
+  status: string;
+  counts: Record<string, number> | null;
+}
+export interface ImportRecord {
+  id: string;
+  entity_type: string;
+  source_ref: string;
+  raw: Record<string, unknown>;
+  normalised: Record<string, unknown>;
+  status: string;
+  resolution: string | null;
+  matched_canonical_id: string | null;
+  issues: unknown;
+}
+
 export const api = {
   baseUrl: BASE_URL,
   health: () => request<{ status: string; version: string; env: string }>("/api/v1/health", { auth: false }),
@@ -429,4 +475,67 @@ export const api = {
     request<OrgRelationship>(`/api/v1/workspaces/${w}/organisation-relationships/${id}/void`, { method: "POST" }),
   restoreRelationship: (w: string, id: string) =>
     request<OrgRelationship>(`/api/v1/workspaces/${w}/organisation-relationships/${id}/restore`, { method: "POST" }),
+
+  // --- Phase 5: people ---
+  listPeople: (w: string, opts: { search?: string; role?: string; include_merged?: boolean; include_protected?: boolean } = {}) =>
+    request<Person[]>(`/api/v1/workspaces/${w}/people${qs(opts)}`),
+  getPerson: (w: string, id: string, include_protected = false) =>
+    request<Person & { names: unknown[]; source_identities: unknown[]; roles: string[] }>(
+      `/api/v1/workspaces/${w}/people/${id}${qs({ include_protected })}`),
+  createPerson: (w: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people`, { method: "POST", body }),
+  addPersonName: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/names`, { method: "POST", body }),
+  addPersonRole: (w: string, id: string, role: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/roles`, { method: "POST", body: { role } }),
+
+  // profiles (career view)
+  getProfile: (w: string, id: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`),
+  upsertProfile: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`, { method: "PUT", body }),
+  addPersonNumber: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/numbers`, { method: "POST", body }),
+  addPersonLeadership: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/leadership`, { method: "POST", body }),
+  addPersonRecognition: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/recognition`, { method: "POST", body }),
+
+  // affiliations
+  listAffiliations: (w: string, opts: { person_id?: string; organisation_id?: string } = {}) =>
+    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/affiliations${qs(opts)}`),
+  createAffiliation: (w: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/affiliations`, { method: "POST", body }),
+
+  // identity resolution
+  identityCandidates: (w: string, person_id: string) =>
+    request<PersonDuplicateCandidate[]>(`/api/v1/workspaces/${w}/identity/candidates${qs({ person_id })}`),
+  identityCompare: (w: string, a: string, b: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/identity/compare${qs({ a, b })}`),
+  identityMerge: (w: string, body: { canonical_person_id: string; merged_person_id: string; reason?: string; evidence?: string }) =>
+    request<Record<string, string>>(`/api/v1/workspaces/${w}/identity/merge`, { method: "POST", body }),
+  identityUndoMerge: (w: string, mergeId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/identity/merges/${mergeId}/undo`, { method: "POST" }),
+  identityAssertDistinct: (w: string, body: { person_a_id: string; person_b_id: string; reason?: string }) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/identity/assert-distinct`, { method: "POST", body }),
+  listPersonMerges: (w: string, person_id?: string) =>
+    request<PersonMerge[]>(`/api/v1/workspaces/${w}/identity/merges${qs({ person_id })}`),
+
+  // Cricket Statz people import
+  listPeopleImports: (w: string) =>
+    request<ImportBatch[]>(`/api/v1/workspaces/${w}/people-imports`),
+  stagePeopleImport: (w: string, data: Record<string, unknown>, filename?: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports`, { method: "POST", body: { data, filename } }),
+  detectPeopleImport: (w: string, batchId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/detect`, { method: "POST" }),
+  listPeopleImportRecords: (w: string, batchId: string, opts: { entity_type?: string; status_?: string } = {}) =>
+    request<ImportRecord[]>(`/api/v1/workspaces/${w}/people-imports/${batchId}/records${qs(opts)}`),
+  decidePeopleImportRecord: (w: string, batchId: string, recordId: string, body: { decision: string; existing_person_id?: string }) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/records/${recordId}/decide`, { method: "POST", body }),
+  promotePeopleImport: (w: string, batchId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/promote`, { method: "POST" }),
+  rollbackPeopleImport: (w: string, batchId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/rollback`, { method: "POST" }),
+  reconcilePeopleImport: (w: string, batchId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/reconcile`),
 };
