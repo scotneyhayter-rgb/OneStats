@@ -1,34 +1,7 @@
 import { Placeholder } from "./Placeholder";
 
-export function Matches() {
-  return (
-    <Placeholder
-      title="Matches"
-      subtitle="Match management, scorecard entry, import and research"
-      planned={[
-        "Match management (list, filter, create, edit)",
-        "Fast spreadsheet-style scorecard entry",
-        "Import matches (Cricket Statz, PlayHQ)",
-        "Research Centre (historical scorecards, discovery, timeline)",
-      ]}
-    />
-  );
-}
-
-export function People() {
-  return (
-    <Placeholder
-      title="People"
-      subtitle="Player registry, profiles and identity management"
-      planned={[
-        "Canonical people registry and profiles",
-        "Player Management — Find & Merge Duplicates",
-        "Roles, history and affiliations",
-        "Milestone badges and achievements",
-      ]}
-    />
-  );
-}
+// Matches and People now have full feature screens (features/scorecard, features/people);
+// their old placeholders were removed. The sections below remain placeholders until built.
 
 export function Statistics() {
   return (

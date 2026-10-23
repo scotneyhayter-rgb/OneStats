@@ -63,7 +63,14 @@ def list_matches(
     season_id: UUID | None = None, venue_id: UUID | None = None, classification: str | None = None,
     status: str | None = None, date_from: Any | None = None, date_to: Any | None = None,
 ) -> list[dict[str, Any]]:
-    sql = f"SELECT {_COLS} FROM match"
+    # include the home/away team ids (from match_team) so a list view can show both sides without
+    # a per-row detail fetch; nullable when a side is not yet recorded.
+    sql = (
+        f"SELECT {_COLS}, "
+        "(SELECT team_id FROM match_team mt WHERE mt.match_id = match.id AND mt.is_home) AS home_team_id, "
+        "(SELECT team_id FROM match_team mt WHERE mt.match_id = match.id AND NOT mt.is_home) AS away_team_id "
+        "FROM match"
+    )
     clauses: list[str] = []
     params: dict[str, Any] = {}
     for col, val in (("competition_id", competition_id), ("grade_id", grade_id),

@@ -354,6 +354,9 @@ export interface Match {
   notes: string | null;
   source_system: string | null;
   source_ref: string | null;
+  // present on list responses (from the match_team relationship); nullable until a side is set
+  home_team_id?: string | null;
+  away_team_id?: string | null;
 }
 export interface MatchDetail extends Match {
   teams: MatchTeam[];

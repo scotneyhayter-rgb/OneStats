@@ -113,6 +113,22 @@ def test_list_and_filter(conn):
     assert len(matches.list_matches(conn, date_from=date(2025, 11, 15))) == 1
 
 
+def test_list_includes_home_and_away_team_ids(conn):
+    wid = _ws(conn, "MATCH WS2b")
+    cid = _comp(conn, wid)
+    org = _org(conn, wid, "Club")
+    home = _team(conn, wid, org, "Home XI")
+    away = _team(conn, wid, org, "Away XI")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    # before sides are set, both are unknown (None) — never invented
+    row = next(m for m in matches.list_matches(conn) if m["id"] == mid)
+    assert row["home_team_id"] is None and row["away_team_id"] is None
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    row = next(m for m in matches.list_matches(conn) if m["id"] == mid)
+    assert row["home_team_id"] == home and row["away_team_id"] == away
+
+
 # ----------------------------------------------- teams, result, margins
 
 

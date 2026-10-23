@@ -18,6 +18,7 @@ import { Select } from "../../components/ui/select";
 import {
   api, ApiError, type Competition, type CompetitionDetail, type Match, type Team, type Venue,
 } from "../../lib/api";
+// (Team is used by the create modal and the list's team-name lookup.)
 import { Field, NoWorkspace, useManage } from "../manage/_shared";
 import { ScorecardEditor } from "./ScorecardEditor";
 
@@ -25,6 +26,7 @@ export function Scorecard() {
   const { workspaceId, canManage } = useManage();
   const [matches, setMatches] = useState<Match[]>([]);
   const [comps, setComps] = useState<Competition[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -37,12 +39,14 @@ export function Scorecard() {
     setLoading(true);
     setError(null);
     try {
-      const [m, c] = await Promise.all([
+      const [m, c, t] = await Promise.all([
         api.listMatches(workspaceId, { competition_id: compFilter || undefined }),
         api.listCompetitions(workspaceId),
+        api.listTeams(workspaceId),
       ]);
       setMatches(m);
       setComps(c);
+      setTeams(t);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load matches");
     } finally {
@@ -77,8 +81,15 @@ export function Scorecard() {
   }
 
   const compName = (id: string | null) => (id ? comps.find((c) => c.id === id)?.name ?? "—" : "No competition");
+  const teamName = (id: string | null | undefined) => (id ? teams.find((t) => t.id === id)?.name ?? "—" : null);
+  const matchTitle = (m: Match) => {
+    const h = teamName(m.home_team_id);
+    const a = teamName(m.away_team_id);
+    if (h || a) return `${h ?? "TBC"} v ${a ?? "TBC"}`;
+    return "Teams not set";
+  };
   const filtered = matches.filter((m) => {
-    const hay = `${m.round ?? ""} ${m.match_date ?? ""} ${compName(m.competition_id)}`.toLowerCase();
+    const hay = `${matchTitle(m)} ${m.round ?? ""} ${m.match_date ?? ""} ${compName(m.competition_id)}`.toLowerCase();
     return hay.includes(search.toLowerCase());
   });
 
@@ -111,11 +122,11 @@ export function Scorecard() {
               <CardContent className="flex items-center gap-3 py-4" onClick={() => setOpenMatch(m.id)}>
                 <Trophy className="h-5 w-5 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">
-                    {compName(m.competition_id)}{m.round ? ` · ${m.round}` : ""}
-                  </div>
+                  <div className="truncate font-medium">{matchTitle(m)}</div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {m.match_date ?? "Date unknown"}
+                    {compName(m.competition_id)}
+                    {m.round ? ` · ${m.round}` : ""}
+                    {m.match_date ? ` · ${m.match_date}` : " · date unknown"}
                     {m.format ? ` · ${m.format}` : ""}
                   </div>
                 </div>
