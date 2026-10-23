@@ -66,8 +66,8 @@ own history and provenance.
 - Service + API for venues and teams; link teams to their organisation.
 
 **Dependencies:** Stage 1. **DB migration:** `0006_venues_teams`.
-**Security:** workspace_id + FORCE RLS; permission `venue.manage` (or reuse
-`organisation.manage` — see Decisions); audited. **Tests:** create/list, team→org link,
+**Security:** workspace_id + FORCE RLS; **separate** permissions `venue.manage` (venues) and
+`organisation.manage` (teams/orgs) per D34; audited. **Tests:** create/list, team→org link,
 program classification, venue/team isolation + merge + provenance.
 **Acceptance:** teams are attributable to an organisation and program; venues reusable;
 same-named teams/venues distinct unless merged; period names resolvable.
@@ -85,8 +85,9 @@ distinction reconciled with Cricket Statz, and seasons over time.
 - `grade` (competition, name, junior/girls default **max 15 players**, `source_ref`).
 - `season` (competition, label e.g. "2024/25", `start`/`end` nullable precision).
 - `team_grade_entry` (team × grade × season) — which teams contested which grade when.
-- Service + API; map Cricket Statz `divisions` (which are really **grades**, 16a) and
-  finals markers correctly.
+- Service + API; map Cricket Statz `divisions` → **grades** (16a). `[D32 provisional]` the
+  **numeric enum codes, finals flags and match classifications are verified against source
+  evidence**; any mapping that cannot be confirmed is left **unresolved, not guessed**.
 
 **Dependencies:** Stages 1–2. **DB migration:** `0007_competitions`.
 **Security:** workspace_id + FORCE RLS; permission `competition.manage`; audited.
@@ -196,9 +197,9 @@ competition structure through the UI, in OneStats' identity (not a Cricket Statz
 - **Migrations** `0005`–`0009` run as `onestats_migrator`; every workspace-scoped table gets
   RLS **+ FORCE** and a `workspace_isolation` policy; reference seeds (permissions) added
   before enabling RLS where needed (lesson from Phase 3).
-- **Permissions** added this phase: `organisation.manage`, `venue.manage` (optional),
-  `competition.manage` — seeded and mapped to roles (Decisions). Merges reuse the identity-
-  merge permission pattern.
+- **Permissions** added this phase (D34, **separate**): `organisation.manage`,
+  `competition.manage`, `venue.manage` — seeded (before enabling RLS) and mapped to roles
+  (Super/Workspace Admin manage; read to members). Merges reuse the identity-merge permission.
 - **Audit** on every create/update/merge/relationship/import-approval.
 - **Isolation tests** (requirement, as in Phase 3) for each new workspace-scoped table.
 - Backend: pytest (live rolled-back) + ruff; Frontend: tsc + vite + vitest; Native: cargo
@@ -215,33 +216,41 @@ Stages 1–5 ─> Stage 6 (needs CS enum/grade confirmations) ─> Stage 7 (UI)
 External gate for **Stage 6**: the Phase 1 outstanding Cricket Statz confirmations
 (enum legends, finals/grade mapping) — deliverable 37 §37.3.
 
-## Decisions requiring your approval (before implementation)
+## Approved decisions (D28–D36, recorded in deliverable 37 §37.1)
 
-- **D28 — Organisation/team identity & merge model.** Adopt the Phase 3 player-identity
-  pattern for organisations and teams (source_ref, controlled reversible merge, "Definitely
-  Different")? *Recommended: yes.*
-- **D29 — Lifecycle modelling.** Represent renames/mergers/association-transfers as
-  **time-bounded `organisation_relationship` records + name history** (not destructive edits)?
-  *Recommended: yes.*
-- **D30 — Team identity across seasons.** A **stable `team`** entity + `team_grade_entry`
-  per season (vs. a new team per season)? *Recommended: stable team + per-season entries.*
-- **D31 — Competition ownership.** Competitions optionally linked to an **association
-  organisation** (vs. workspace-level only)? *Recommended: optional association link.*
-- **D32 — Division vs grade mapping.** Treat Cricket Statz `divisions` as **grades**, with
-  finals markers derived separately (16a)? Confirm the terminology (division = optional
-  grouping; grade = playing level). *Recommended: as stated.*
-- **D33 — Playing-conditions schema.** **Structured core columns + JSONB extras**,
-  unknown-aware (vs. all-JSONB)? *Recommended: structured core + JSONB.*
-- **D34 — New permissions & role mapping.** Add `organisation.manage`,
-  `competition.manage`, `venue.manage`; grant to Super/Workspace Admin (and read to all)?
-  Confirm whether a separate `venue.manage` is wanted or folded into `organisation.manage`.
-- **D35 — Stage 6 timing.** Proceed with the Cricket Statz **structural import** in Phase 4
-  only once the **enum legends + finals/grade mapping are confirmed** (§37.3); otherwise
-  defer Stage 6 to Phase 8. *Recommended: build Stages 1–5 + 7 now; gate Stage 6 on the
-  confirmations.*
-- **D36 — Import staging foundation.** Introduce the minimal `import_batch`/staging tables in
-  Phase 4 Stage 6, or keep all import tables for Phase 8? *Recommended: minimal staging in
-  Stage 6, extended in Phase 8.*
+All **approved by the user (2026-10-23)**; D32 is **provisionally approved** pending source
+verification.
+
+- **D28 — APPROVED.** Preserve historical organisation/team identities; **admin-approved
+  merge** of genuine duplicates, **audited and reversible/safely recoverable**; **never merge
+  on names alone** (Phase 3 player-identity pattern).
+- **D29 — APPROVED.** **Time-bound** organisation relationships + historical names;
+  preserve **effective dates** and historical attribution.
+- **D30 — APPROVED.** **Stable team identities** + season-specific competition entries.
+- **D31 — APPROVED.** Competitions with **optional association ownership**.
+- **D32 — PROVISIONALLY APPROVED.** Map Cricket Statz `divisions` → OneStats grades, but the
+  **numeric enum codes, finals flags and match classifications must be verified against
+  source evidence**; **unknown mappings remain unresolved, never guessed** (16a.6/16a.7).
+- **D33 — APPROVED.** **Structured core + controlled JSONB extensions**; support historical
+  rule changes incl. **balls-per-over, match formats, points, season-specific conditions**.
+- **D34 — APPROVED.** **Separate** `organisation.manage`, `competition.manage` and
+  `venue.manage` permissions, consistent with isolation/RBAC/audit.
+- **D35 — APPROVED.** The Stage 1–7 sequence, with **Stage 6 gated on confirmed Cricket
+  Statz enum + finals mappings**.
+- **D36 — APPROVED.** **Minimal import-staging** where needed for Phase 4; **full Cricket
+  Statz & third-party import deferred to Phase 8**.
+
+## Additional requirements (per Phase 4 approval)
+
+- Preserve all existing **Phase 2 & Phase 3** functionality; **never reset or overwrite
+  existing database records**; migration history preserved (migrations `0005`+ only add).
+- Maintain **OneStats' independent visual identity** (never a rebranded Cricket Statz).
+- Ensure historical organisations, clubs, associations, grades and competition structures can
+  be **researched accurately** (period-correct names, effective-dated relationships,
+  unknown-aware).
+- Provide a **stage-by-stage progress report after every completed stage**.
+- At the **end of Phase 4**, provide the **complete 18-phase roadmap** and the **phase
+  completion report**.
 
 ## Out of scope for Phase 4 (later phases)
 

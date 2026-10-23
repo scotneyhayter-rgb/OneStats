@@ -37,6 +37,15 @@ Priority: 🔴 blocks/shapes Phase 2 · 🟠 shapes a later phase · 🟡 refine
 | **D2a** | **RLS enforcement model** | Plain RLS **/** FORCE + transaction-scoped context | **User-approved** — `FORCE ROW LEVEL SECURITY` on domain tables + **`SET LOCAL` transaction-scoped** workspace GUC; fail-closed. Phase 3 (deliverable 6 §6.7) | 🔴 (Ph 3) |
 | **D24** | **Migration vs runtime DB role** | Single `onestats_app` owner+runtime **/** separate migrator(owner) + non-owner runtime | **User-approved to adopt** — `onestats_migrator`/owner runs DDL; runtime `onestats_app` is a **non-owner** with DML grants only (always RLS-bound, cannot alter/disable policies). Needs superuser to create the role. Phase 3 (deliverable 6 §6.7) | 🔴 (Ph 3) |
 | **D-toolchain** | Frontend toolchain | React 19 / Vite 8 / Tailwind 4 / TS 6 | **ACCEPTED PROVISIONALLY by user** — subject to compatibility checks + passing tests (currently all green) | 🟡 |
+| **D28** | **Organisation/team identity & merge** (Phase 4) | — | **APPROVED** — preserve historical org/team identities; **admin-approved merge** of genuine duplicates, audited and **reversible/safely recoverable**; **never merge on names alone** (mirrors Phase 3 player model). Plan Stage 1–2 | 🟠 (Ph 4) |
+| **D29** | **Org lifecycle & historical names** | — | **APPROVED** — **time-bound** organisation relationships + name history; preserve **effective dates** and historical attribution. Plan Stage 1/5 | 🟠 (Ph 4) |
+| **D30** | **Team identity across seasons** | — | **APPROVED** — **stable team identities** + season-specific competition entries. Plan Stage 2–3 | 🟠 (Ph 4) |
+| **D31** | **Competition ownership** | — | **APPROVED** — competitions with **optional association ownership**. Plan Stage 3 | 🟠 (Ph 4) |
+| **D32** | **Cricket Statz divisions → grades** | — | **PROVISIONALLY APPROVED** — map CS divisions to OneStats grades, but **numeric enum codes, finals flags and match classifications must be verified against source evidence**; **unknown mappings remain unresolved, never guessed**. Plan Stage 3/6 | 🟠 (Ph 4) |
+| **D33** | **Playing-conditions schema** | — | **APPROVED** — **structured core + controlled JSONB extensions**; support historical rule changes incl. **balls-per-over, match formats, points, season-specific conditions**. Plan Stage 4 | 🟠 (Ph 4) |
+| **D34** | **New Phase 4 permissions** | — | **APPROVED** — **separate `organisation.manage`, `competition.manage`, `venue.manage`**, consistent with workspace isolation, RBAC and auditing. Plan all stages | 🟠 (Ph 4) |
+| **D35** | **Phase 4 stage sequence** | — | **APPROVED** — the Stage 1–7 sequence, with **Stage 6 gated on confirmed Cricket Statz enum + finals mappings**. Plan Stage 6 | 🟠 (Ph 4) |
+| **D36** | **Import-staging scope** | — | **APPROVED** — **minimal import-staging** where needed for Phase 4; **full Cricket Statz & third-party import deferred to Phase 8**. Plan Stage 6 | 🟠 (Ph 4) |
 
 ## 37.2 Risk register
 
