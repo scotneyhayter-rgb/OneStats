@@ -11,6 +11,7 @@ from onestats.api.v1 import (
     health,
     onboarding,
     organisations,
+    playing_conditions,
     setup,
     teams,
     venues,
@@ -28,3 +29,4 @@ api_v1.include_router(organisations.router)
 api_v1.include_router(venues.router)
 api_v1.include_router(teams.router)
 api_v1.include_router(competitions.router)
+api_v1.include_router(playing_conditions.router)
