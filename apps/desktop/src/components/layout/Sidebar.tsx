@@ -1,9 +1,13 @@
+import { Building2, LogOut } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { NAV_SECTIONS } from "../../app/navigation";
+import { useAuth } from "../../lib/auth";
 import { APP_VERSION, PHASE } from "../../lib/version";
 import { cn } from "../../lib/utils";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Sidebar() {
+  const { user, logout } = useAuth();
   return (
     <nav
       aria-label="Primary"
@@ -22,7 +26,25 @@ export function Sidebar() {
         </div>
       </div>
 
+      <WorkspaceSwitcher />
+
       <ul className="flex-1 space-y-1 px-3">
+        <li>
+          <NavLink
+            to="/workspaces"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 rounded-[var(--radius-app)] px-3 py-2 text-sm transition-colors",
+                isActive
+                  ? "bg-sidebar-active text-sidebar-foreground"
+                  : "text-sidebar-muted hover:bg-sidebar-active hover:text-sidebar-foreground",
+              )
+            }
+          >
+            <Building2 className="h-4 w-4 shrink-0" aria-hidden />
+            <span>My Workspaces</span>
+          </NavLink>
+        </li>
         {NAV_SECTIONS.map((s) => {
           const Icon = s.icon;
           return (
@@ -46,7 +68,28 @@ export function Sidebar() {
         })}
       </ul>
 
-      <div className="px-5 py-4 text-[11px] text-sidebar-muted">
+      {user && (
+        <div className="border-t border-[color:var(--sidebar-active)] px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm">{user.display_name ?? user.username}</div>
+              <div className="truncate text-[11px] text-sidebar-muted">
+                {user.is_super_admin ? "Super Administrator" : user.username}
+              </div>
+            </div>
+            <button
+              onClick={() => void logout()}
+              aria-label="Sign out"
+              title="Sign out"
+              className="rounded-[var(--radius-app)] p-2 text-sidebar-muted hover:bg-sidebar-active hover:text-sidebar-foreground"
+            >
+              <LogOut className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="px-5 py-3 text-[11px] text-sidebar-muted">
         <div>v{APP_VERSION}</div>
         <div>{PHASE}</div>
       </div>
