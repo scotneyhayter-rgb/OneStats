@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     migrator_user: str = Field(default="onestats_migrator")
     migrator_password: str | None = Field(default=None)
 
+    # --- Auth / sessions ---
+    session_ttl_hours: int = Field(default=12)
+    # Local file where the one-time super-admin setup token is written on first run
+    # (gitignored; operator-readable). Never logged.
+    setup_token_file: str = Field(default=".onestats-setup-token")
+
     def _build_url(self, user: str, password: str) -> str:
         return str(
             PostgresDsn.build(

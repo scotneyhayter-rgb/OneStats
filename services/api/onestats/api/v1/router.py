@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from onestats.api.v1 import health
+from onestats.api.v1 import auth, health, setup
 
 api_v1 = APIRouter()
 api_v1.include_router(health.router)
+api_v1.include_router(auth.router)
+api_v1.include_router(setup.router)

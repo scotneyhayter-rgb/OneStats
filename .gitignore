@@ -7,6 +7,9 @@
 *.pfx
 secrets/
 .pgpass
+# One-time super-admin setup token (first run)
+.onestats-setup-token
+**/.onestats-setup-token
 
 # === Real cricket data / exports / media (provenance & privacy) ===
 fixtures-private/

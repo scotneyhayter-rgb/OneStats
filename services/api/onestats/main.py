@@ -29,6 +29,18 @@ async def lifespan(app: FastAPI):
             "Database credential not configured - DB features unavailable until "
             "ONESTATS_DB_PASSWORD (or ONESTATS_DB_URL) is set in the environment/.env"
         )
+    else:
+        # First-run bootstrap: ensure a Super Admin setup token exists if none set up yet.
+        try:
+            from onestats.db.session import get_engine
+            from onestats.domain.bootstrap import ensure_setup_token
+
+            engine = get_engine(settings)
+            if engine is not None:
+                with engine.begin() as conn:
+                    ensure_setup_token(conn, settings)
+        except Exception as exc:  # noqa: BLE001 - never block startup on bootstrap check
+            log.warning("Setup-token bootstrap skipped: %s", type(exc).__name__)
     yield
     log.info("Shutting down %s", settings.app_name)
 
