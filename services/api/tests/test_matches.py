@@ -183,9 +183,9 @@ def test_match_id_fks_resolved(conn):
     sid = finals_series.create_series(conn, wid, ACTOR, competition_id=cid, name="GF Series", format="single")
     finals_series.add_game(conn, wid, ACTOR, sid, game_number=1, match_id=mid)
     assert finals_series.list_games(conn, sid)[0]["match_id"] == mid
-    # a non-existent match id violates the new FK
-    from sqlalchemy.exc import IntegrityError
-    with pytest.raises(IntegrityError):
+    # a non-existent match id is rejected: since Stage 6, add_game validates match_id at the
+    # domain level (clean error) ahead of the underlying FK, which remains as defense-in-depth.
+    with pytest.raises(ValueError, match="match_not_found"):
         finals_series.add_game(conn, wid, ACTOR, sid, game_number=2, match_id=uuid.uuid4())
 
 

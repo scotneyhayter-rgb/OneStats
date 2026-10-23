@@ -23,6 +23,7 @@ from onestats.api.v1 import (
     people,
     people_import,
     playing_conditions,
+    premierships,
     profiles,
     relationships,
     setup,
@@ -56,3 +57,4 @@ api_v1.include_router(innings.router)
 api_v1.include_router(batting.router)
 api_v1.include_router(bowling.router)
 api_v1.include_router(partnerships.router)
+api_v1.include_router(premierships.router)

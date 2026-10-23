@@ -118,15 +118,22 @@ def list_teams(conn: Connection, series_id: UUID) -> list[dict[str, Any]]:
 def add_game(
     conn: Connection, workspace_id: UUID, actor: str, series_id: UUID, *, game_number: int,
     match_id: UUID | None = None, match_source_ref: str | None = None, notes: str | None = None,
+    game_label: str | None = None,
 ) -> dict[str, Any]:
-    """Add an ordered game to the series. A multi-day/multi-innings match is ONE game — never split
-    into several. ``match_id`` links a canonical match (Phase 8); ``match_source_ref`` links an
-    imported historical match now, to be resolved later without destructive change. Idempotent on
+    """Add an ordered game to the series, recording its sequence (``game_number``) and relationship
+    (``game_label`` — e.g. ``semi_final``, ``grand_final``, ``replay``). A multi-day/multi-innings
+    match is ONE game — never split into several. ``match_id`` links a canonical match (validated
+    against the match table, which exists since 0018); ``match_source_ref`` links an imported
+    historical match now, to be resolved later without destructive change. Idempotent on
     (series, game_number)."""
     if get_series(conn, series_id) is None:
         raise ValueError("series_not_found")
     if game_number < 1:
         raise ValueError("invalid_game_number")
+    if match_id is not None and conn.execute(
+        text("SELECT 1 FROM match WHERE id = :m"), {"m": match_id}
+    ).first() is None:
+        raise ValueError("match_not_found")
     existing = conn.execute(
         text("SELECT id FROM finals_series_game WHERE series_id = :s AND game_number = :g"),
         {"s": series_id, "g": game_number},
@@ -135,29 +142,33 @@ def add_game(
         conn.execute(
             text(
                 "UPDATE finals_series_game SET match_id = coalesce(:mid, match_id), "
-                "match_source_ref = coalesce(:sr, match_source_ref), notes = coalesce(:n, notes) WHERE id = :id"
+                "match_source_ref = coalesce(:sr, match_source_ref), notes = coalesce(:n, notes), "
+                "game_label = coalesce(:gl, game_label) WHERE id = :id"
             ),
-            {"mid": match_id, "sr": match_source_ref, "n": notes, "id": existing},
+            {"mid": match_id, "sr": match_source_ref, "n": notes, "gl": game_label, "id": existing},
         )
         return {"game_id": existing, "created": False}
     gid = conn.execute(
         text(
-            "INSERT INTO finals_series_game(workspace_id, series_id, game_number, match_id, match_source_ref, notes) "
-            "VALUES (:w, :s, :g, :mid, :sr, :n) RETURNING id"
+            "INSERT INTO finals_series_game"
+            "(workspace_id, series_id, game_number, match_id, match_source_ref, notes, game_label) "
+            "VALUES (:w, :s, :g, :mid, :sr, :n, :gl) RETURNING id"
         ),
-        {"w": workspace_id, "s": series_id, "g": game_number, "mid": match_id, "sr": match_source_ref, "n": notes},
+        {"w": workspace_id, "s": series_id, "g": game_number, "mid": match_id,
+         "sr": match_source_ref, "n": notes, "gl": game_label},
     ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "finals_series.add_game", entity="finals_series",
                       entity_id=str(series_id),
-                      after={"game_number": game_number, "match_source_ref": match_source_ref})
+                      after={"game_number": game_number, "match_source_ref": match_source_ref,
+                             "game_label": game_label})
     return {"game_id": gid, "created": True}
 
 
 def list_games(conn: Connection, series_id: UUID) -> list[dict[str, Any]]:
     rows = conn.execute(
         text(
-            "SELECT id, game_number, match_id, match_source_ref, notes FROM finals_series_game "
-            "WHERE series_id = :s ORDER BY game_number"
+            "SELECT id, game_number, match_id, match_source_ref, notes, game_label "
+            "FROM finals_series_game WHERE series_id = :s ORDER BY game_number"
         ),
         {"s": series_id},
     ).mappings().all()

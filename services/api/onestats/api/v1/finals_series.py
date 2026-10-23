@@ -26,6 +26,7 @@ _VALUE_ERR_STATUS = {
     "series_not_found": status.HTTP_404_NOT_FOUND,
     "competition_not_found": status.HTTP_404_NOT_FOUND,
     "team_not_found": status.HTTP_404_NOT_FOUND,
+    "match_not_found": status.HTTP_404_NOT_FOUND,
     "invalid_format": status.HTTP_400_BAD_REQUEST,
     "invalid_outcome": status.HTTP_400_BAD_REQUEST,
     "winner_not_participant": status.HTTP_409_CONFLICT,
@@ -71,6 +72,7 @@ class GameAdd(BaseModel):
     match_id: UUID | None = None
     match_source_ref: str | None = None
     notes: str | None = None
+    game_label: str | None = None
 
 
 class OutcomeSet(BaseModel):
@@ -127,6 +129,7 @@ def add_game(workspace_id: UUID, series_id: UUID, body: GameAdd, settings: Setti
             return _ids(finals_series.add_game(
                 conn, workspace_id, str(ctx.user["id"]), series_id, game_number=body.game_number,
                 match_id=body.match_id, match_source_ref=body.match_source_ref, notes=body.notes,
+                game_label=body.game_label,
             ))
         except ValueError as exc:
             raise _value_error(exc) from exc
