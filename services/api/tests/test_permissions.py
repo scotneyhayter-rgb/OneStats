@@ -63,10 +63,11 @@ def test_role_permissions_follow_the_matrix(conn):
 def test_super_admin_has_all_permissions_without_membership(conn):
     ws = _mk_workspace(conn, "SA WS")
     perms = permissions.effective_permissions(conn, uuid.uuid4(), ws, True)
-    # 24 Phase 3 perms + organisation.manage (S1) + venue.manage (S2) + competition.manage (S3)
-    # + import.manage (S6).
-    assert len(perms) == 28
-    assert {"organisation.manage", "venue.manage", "competition.manage", "import.manage"} <= perms
+    # 24 Phase 3 perms + organisation.manage + venue.manage + competition.manage + import.manage
+    # (Phase 4) + person.manage (Phase 5 Stage 1).
+    assert len(perms) == 29
+    assert {"organisation.manage", "venue.manage", "competition.manage", "import.manage",
+            "person.manage"} <= perms
     assert permissions.has_permission(conn, uuid.uuid4(), ws, True, "record.verify")
 
 
