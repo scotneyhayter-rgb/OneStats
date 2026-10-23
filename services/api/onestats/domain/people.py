@@ -20,7 +20,7 @@ from sqlalchemy.engine import Connection
 
 from onestats.domain import audit
 
-ROLES = ("player", "umpire", "scorer", "coach", "administrator", "selector", "captain", "other")
+ROLES = ("player", "umpire", "scorer", "coach", "administrator", "selector", "captain", "official", "other")
 NAME_TYPES = ("primary", "alias", "initials", "maiden", "incomplete", "other")
 DOB_PRECISIONS = ("unknown", "exact", "year", "month", "approx")
 # Cricket Statz placeholder DOB — never a genuine birth date.

@@ -84,7 +84,7 @@ class SourceIdentityAdd(BaseModel):
 
 
 class RoleAdd(BaseModel):
-    role: str = Field(pattern="^(player|umpire|scorer|coach|administrator|selector|captain|other)$")
+    role: str = Field(pattern="^(player|umpire|scorer|coach|administrator|selector|captain|official|other)$")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

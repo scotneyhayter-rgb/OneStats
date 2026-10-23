@@ -16,6 +16,7 @@ from onestats.api.v1 import (
     onboarding,
     organisations,
     people,
+    people_import,
     playing_conditions,
     profiles,
     relationships,
@@ -44,3 +45,4 @@ api_v1.include_router(people.router)
 api_v1.include_router(affiliations.router)
 api_v1.include_router(identity.router)
 api_v1.include_router(profiles.router)
+api_v1.include_router(people_import.router)
