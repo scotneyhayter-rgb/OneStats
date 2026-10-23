@@ -13,6 +13,7 @@ from onestats.api.v1 import (
     health,
     identity,
     imports,
+    innings,
     matches,
     onboarding,
     organisations,
@@ -48,3 +49,4 @@ api_v1.include_router(identity.router)
 api_v1.include_router(profiles.router)
 api_v1.include_router(people_import.router)
 api_v1.include_router(matches.router)
+api_v1.include_router(innings.router)
