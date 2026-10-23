@@ -37,7 +37,8 @@ def write_audit(
             "action": action,
             "entity": entity,
             "eid": entity_id,
-            "before": json.dumps(before) if before is not None else None,
-            "after": json.dumps(after) if after is not None else None,
+            # default=str keeps non-JSON-native values (UUID, date, datetime) serialisable.
+            "before": json.dumps(before, default=str) if before is not None else None,
+            "after": json.dumps(after, default=str) if after is not None else None,
         },
     )
