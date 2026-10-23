@@ -69,7 +69,7 @@ check --fix` · `alembic upgrade head --sql` (offline) · `npm create tauri-app@
 
 | Check | Command | Result |
 |---|---|---|
-| Backend unit/integration | `pytest -q` | **7 passed** |
+| Backend unit/integration | `pytest -q` | **11 passed** (7 + 4 config) |
 | Backend lint | `ruff check` | **clean** (0 issues) |
 | Migration compiles | `alembic upgrade head --sql` | **exit 0** (valid SQL generated) |
 | Migration safety guard | `alembic upgrade head` (no creds) | **refused** with a clear message (exit 1, by design) |
@@ -138,20 +138,33 @@ therefore builds natively end-to-end. `npm run tauri dev` launches it as a nativ
    [20a](20a-mobile-upload-architecture.md) `[D22]`; Phase 2 foundational accommodations
    noted (20a §20a.8), nothing later-phase built.
 
-## 8a. Live database verification — PENDING (not yet run)
+## 8a. Live database verification — COMPLETE ✅ (2026-10-23)
 
-The `onestats_app` credential is **not configured** in the environment (no `.env`, env var
-unset). Per the review, the live checks run **once the credential is securely set**.
-**Phase 2 is therefore NOT claimed as fully verified.** When configured, the following run
-(no passwords shown or committed; no database reset): connectivity as the non-superuser app
-role · confirm db name/role · apply the Alembic migration via the privileged migration role
-· verify schema · confirm `alembic_version` tracking · verify authorised app operations ·
-confirm no secrets in Git/logs/output · run all tests · report & resolve any failures.
+Performed with Option B (separate `onestats_migrator` owner + non-owner `onestats_app`
+runtime). No passwords shown/committed; no database reset; no data left behind.
+
+- **PostgreSQL security:** service running; `pg_hba.conf` all `scram-sha-256` (local +
+  127.0.0.1 + ::1, incl. replication), **no `trust`**; wrong admin password **rejected**;
+  runtime `password_encryption = scram-sha-256`.
+- **Roles:** `postgres` superuser (admin); **`onestats_app` and `onestats_migrator` both
+  non-superuser, no BYPASSRLS, no CREATEROLE/CREATEDB**.
+- **Migration:** applied as `onestats_migrator`; `alembic_version = 0001_foundation`;
+  tables `workspace`, `app_user`, `audit_log` (+ `alembic_version`) **all owned by
+  `onestats_migrator`**.
+- **RLS:** enabled on `audit_log` with policy `audit_log_workspace_isolation`.
+- **`onestats_app` least privilege proven live:** authenticates; **DDL denied** (CREATE/
+  ALTER/DROP → 42501); authorised **read+write OK**; **RLS denies writes with no workspace
+  context and hides rows across workspaces**; all test writes **rolled back** (row counts 0).
+- **App↔DB over HTTP:** `/api/v1/health/db` → `database_connected: true`.
+- **Secrets:** none in logs; `.env` gitignored and **never committed**; no hardcoded
+  secrets in tracked files.
 
 ## 9. Readiness for Phase 3
 
-The foundation (desktop shell + six-section nav + themes, FastAPI backend with health/
-config/logging/errors, Alembic + v1 migration with RLS scaffold, dev workflow, tests) is in
-place and verified except live DB application (pending the credential). Once the credential
-is provided and the migration applied/verified, **Phase 3 (Workspaces, Onboarding & User
-Permissions)** can begin. **Phase 3 has not been started.**
+**Phase 2 is now fully verified, including the live database** (§8a). The foundation —
+desktop shell + six-section nav + themes, FastAPI backend (health/config/logging/errors),
+Alembic + applied v1 migration with the migrator/runtime role split and RLS, dev workflow,
+and all tests + builds green — is complete. **Phase 3 (Workspaces, Onboarding & User
+Permissions)** can begin on approval. Carry-over for early Phase 3: apply `FORCE ROW LEVEL
+SECURITY` + transaction-scoped workspace context (D2a) when domain tables land; tighten the
+Tauri CSP/permissions (D23). **Phase 3 has not been started.**
