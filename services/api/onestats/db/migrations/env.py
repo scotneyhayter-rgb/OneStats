@@ -17,11 +17,14 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    url = get_settings().database_url
+    # Migrations run as the migrator role (Option B) when ONESTATS_MIGRATOR_PASSWORD is
+    # set, else fall back to the runtime credential.
+    url = get_settings().migration_url
     if not url:
         raise RuntimeError(
-            "No database credential configured. Set ONESTATS_DB_PASSWORD (or "
-            "ONESTATS_DB_URL) in the environment/.env before running migrations."
+            "No database credential configured. Set ONESTATS_MIGRATOR_PASSWORD (to run "
+            "migrations as onestats_migrator) or ONESTATS_DB_PASSWORD in the "
+            "environment/.env before running migrations."
         )
     return url
 

@@ -42,28 +42,46 @@ class Settings(BaseSettings):
     db_port: int = Field(default=5432)
     db_name: str = Field(default="onestats")
     db_user: str = Field(default="onestats_app")
-    # Password comes from ONESTATS_DB_PASSWORD (env/.env) — never committed.
+    # Runtime password comes from ONESTATS_DB_PASSWORD (env/.env) — never committed.
     db_password: str | None = Field(default=None)
     # Optional full override; if set, takes precedence (e.g. ONESTATS_DB_URL=...).
     db_url_override: str | None = Field(default=None, alias="ONESTATS_DB_URL")
 
+    # --- Migration role (Option B: separate migration-owner from runtime) ---
+    # Migrations run as onestats_migrator (owner of the tables / runs DDL). The runtime
+    # app NEVER uses this; only Alembic does. Password from ONESTATS_MIGRATOR_PASSWORD.
+    migrator_user: str = Field(default="onestats_migrator")
+    migrator_password: str | None = Field(default=None)
+
+    def _build_url(self, user: str, password: str) -> str:
+        return str(
+            PostgresDsn.build(
+                scheme="postgresql+psycopg",
+                username=user,
+                password=password,
+                host=self.db_host,
+                port=self.db_port,
+                path=self.db_name,
+            )
+        )
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def database_url(self) -> str | None:
-        """Assemble the SQLAlchemy URL, or None if no credential is configured."""
+        """Runtime (onestats_app) SQLAlchemy URL, or None if no credential is configured."""
         if self.db_url_override:
             return self.db_url_override
         if self.db_password is None:
             return None
-        dsn = PostgresDsn.build(
-            scheme="postgresql+psycopg",
-            username=self.db_user,
-            password=self.db_password,
-            host=self.db_host,
-            port=self.db_port,
-            path=self.db_name,
-        )
-        return str(dsn)
+        return self._build_url(self.db_user, self.db_password)
+
+    @property
+    def migration_url(self) -> str | None:
+        """URL used to APPLY migrations: the migrator role if configured, else the runtime
+        URL (fallback for single-role setups). None if nothing is configured."""
+        if self.migrator_password is not None:
+            return self._build_url(self.migrator_user, self.migrator_password)
+        return self.database_url
 
     @property
     def db_configured(self) -> bool:

@@ -9,8 +9,9 @@ from onestats.main import create_app
 
 @pytest.fixture
 def settings() -> Settings:
-    # Explicit test settings; no DB password → DB reported as not configured.
-    return Settings(env="test", db_password=None)
+    # Explicit test settings isolated from the developer's local .env (_env_file=None);
+    # no DB password → DB reported as not configured.
+    return Settings(env="test", db_password=None, _env_file=None)
 
 
 @pytest.fixture
