@@ -1,0 +1,190 @@
+"""Match endpoints (Phase 6, Stage 1).
+
+Workspace-scoped, gated by ``match.manage``, audited. Classification is explicit and never
+derived from the round label; results use an explicit vocabulary; match-scope playing conditions
+resolve through match → grade → season → competition. Scorecard body and statistics are later.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.db.session import get_engine
+from onestats.db.workspace import workspace_transaction
+from onestats.domain import matches
+
+router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
+
+MatchCtx = Annotated[RequestContext, Depends(require_permission("match.manage"))]
+
+_VALUE_ERR_STATUS = {
+    "match_not_found": status.HTTP_404_NOT_FOUND,
+    "competition_not_found": status.HTTP_404_NOT_FOUND,
+    "grade_not_found": status.HTTP_404_NOT_FOUND,
+    "season_not_found": status.HTTP_404_NOT_FOUND,
+    "venue_not_found": status.HTTP_404_NOT_FOUND,
+    "team_not_found": status.HTTP_404_NOT_FOUND,
+    "winner_not_in_match": status.HTTP_409_CONFLICT,
+}
+
+
+def _engine(settings):
+    eng = get_engine(settings)
+    if eng is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Database not configured")
+    return eng
+
+
+def _value_error(exc: ValueError) -> HTTPException:
+    return HTTPException(_VALUE_ERR_STATUS.get(str(exc), status.HTTP_400_BAD_REQUEST), str(exc))
+
+
+def _ids(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in d.items()}
+
+
+class MatchCreate(BaseModel):
+    competition_id: UUID | None = None
+    grade_id: UUID | None = None
+    season_id: UUID | None = None
+    venue_id: UUID | None = None
+    match_date: date | None = None
+    date_precision: str = "exact"
+    round: str | None = None
+    matchtype: str | None = None
+    format: str | None = None
+    status: str = "draft"
+    notes: str | None = None
+    source_system: str | None = None
+    source_ref: str | None = None
+
+
+class MatchUpdate(BaseModel):
+    competition_id: UUID | None = None
+    grade_id: UUID | None = None
+    season_id: UUID | None = None
+    venue_id: UUID | None = None
+    match_date: date | None = None
+    date_precision: str | None = None
+    round: str | None = None
+    matchtype: str | None = None
+    format: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    include_in_statistics: bool | None = None
+
+
+class ClassificationSet(BaseModel):
+    classification: str = Field(pattern="^(home_away|final|grand_final|other|unclassified)$")
+    finals_stage: str | None = None
+    verified: bool = False
+    classification_ref_id: UUID | None = None
+
+
+class ResultSet(BaseModel):
+    result_type: str = Field(pattern="^(home_win|away_win|tie|draw|no_result|abandoned|washout|forfeit|unknown)$")
+    won_by_team_id: UUID | None = None
+    margin_runs: int | None = Field(default=None, ge=0)
+    margin_wickets: int | None = Field(default=None, ge=0, le=10)
+    result_raw: str | None = None
+
+
+class TeamSet(BaseModel):
+    team_id: UUID
+    is_home: bool
+    captain_person_id: UUID | None = None
+    wicketkeeper_person_id: UUID | None = None
+    bonus_points: float | None = None
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_match(workspace_id: UUID, body: MatchCreate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            mid = matches.create_match(conn, workspace_id, str(ctx.user["id"]), **body.model_dump())
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+        return _ids(matches.detail(conn, mid))
+
+
+@router.get("")
+def list_matches(
+    workspace_id: UUID, settings: SettingsDep, ctx: MatchCtx,
+    competition_id: UUID | None = None, grade_id: UUID | None = None, season_id: UUID | None = None,
+    venue_id: UUID | None = None, classification: str | None = None, status_: str | None = None,
+    date_from: date | None = None, date_to: date | None = None,
+) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_ids(m) for m in matches.list_matches(
+            conn, competition_id=competition_id, grade_id=grade_id, season_id=season_id, venue_id=venue_id,
+            classification=classification, status=status_, date_from=date_from, date_to=date_to)]
+
+
+@router.get("/{match_id}")
+def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        d = matches.detail(conn, match_id)
+        if d is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "match_not_found")
+        d["teams"] = [_ids(t) for t in d["teams"]]
+        return _ids(d)
+
+
+@router.patch("/{match_id}")
+def update_match(workspace_id: UUID, match_id: UUID, body: MatchUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids(matches.update_match(conn, workspace_id, str(ctx.user["id"]), match_id,
+                                             **body.model_dump(exclude_none=True)))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{match_id}/classification")
+def set_classification(workspace_id: UUID, match_id: UUID, body: ClassificationSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids(matches.set_classification(
+                conn, workspace_id, str(ctx.user["id"]), match_id, classification=body.classification,
+                finals_stage=body.finals_stage, verified=body.verified, classification_ref_id=body.classification_ref_id))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{match_id}/result")
+def set_result(workspace_id: UUID, match_id: UUID, body: ResultSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids(matches.set_result(
+                conn, workspace_id, str(ctx.user["id"]), match_id, result_type=body.result_type,
+                won_by_team_id=body.won_by_team_id, margin_runs=body.margin_runs,
+                margin_wickets=body.margin_wickets, result_raw=body.result_raw))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{match_id}/teams", status_code=status.HTTP_201_CREATED)
+def set_team(workspace_id: UUID, match_id: UUID, body: TeamSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids(matches.set_team(
+                conn, workspace_id, str(ctx.user["id"]), match_id, team_id=body.team_id, is_home=body.is_home,
+                captain_person_id=body.captain_person_id, wicketkeeper_person_id=body.wicketkeeper_person_id,
+                bonus_points=body.bonus_points))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.get("/{match_id}/conditions")
+def effective_conditions(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return matches.effective_conditions(conn, match_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc

@@ -118,7 +118,11 @@ def test_match_scope_has_highest_priority(conn):
     wid = _ws(conn, "PC WS3b")
     cid = _comp(conn, wid)
     grade = competitions.create_grade(conn, wid, ACTOR, cid, name="A")
-    match_id = uuid.uuid4()  # matches table arrives later; match-scoped rows keyed by id now
+    # Phase 6 resolved the match_id FK, so a match-scoped condition needs a real match.
+    match_id = conn.execute(
+        text("INSERT INTO match(workspace_id, competition_id, grade_id) VALUES (:w, :c, :g) RETURNING id"),
+        {"w": wid, "c": cid, "g": grade},
+    ).scalar_one()
     playing_conditions.set_conditions(conn, wid, ACTOR, scope="grade", target_id=grade, overs_limit=50)
     playing_conditions.set_conditions(conn, wid, ACTOR, scope="match", target_id=match_id, overs_limit=20)
     eff = playing_conditions.resolve_effective(conn, competition_id=cid, grade_id=grade, match_id=match_id)
