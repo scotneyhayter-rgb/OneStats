@@ -11,6 +11,8 @@ from onestats.api.v1 import (
     onboarding,
     organisations,
     setup,
+    teams,
+    venues,
     workspaces,
 )
 
@@ -22,3 +24,5 @@ api_v1.include_router(workspaces.router)
 api_v1.include_router(onboarding.router)
 api_v1.include_router(branding.router)
 api_v1.include_router(organisations.router)
+api_v1.include_router(venues.router)
+api_v1.include_router(teams.router)
