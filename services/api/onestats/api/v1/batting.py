@@ -17,6 +17,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import batting as batting_domain
+from onestats.domain import partnerships as pshp
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/innings/{innings_id}/batting", tags=["batting"]
@@ -125,10 +126,16 @@ class BattingReorder(BaseModel):
 def reorder(workspace_id: UUID, innings_id: UUID, body: BattingReorder, settings: SettingsDep, ctx: MatchCtx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return [_ids(e) for e in batting_domain.reorder_entries(
+            rows = [_ids(e) for e in batting_domain.reorder_entries(
                 conn, workspace_id, str(ctx.user["id"]), innings_id, body.ordered_ids)]
         except ValueError as exc:
             raise _value_error(exc) from exc
+        # the batting order drives partnership pairing — re-derive automatically (Phase 7.2)
+        try:
+            pshp.derive_from_fow(conn, workspace_id, str(ctx.user["id"]), innings_id)
+        except ValueError:
+            pass
+        return rows
 
 
 @router.get("/card")

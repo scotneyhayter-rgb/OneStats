@@ -119,6 +119,16 @@ class PartnershipUpdate(_Contrib):
 
 # ----- fall of wicket -------------------------------------------------------------------------
 
+def _auto_derive(conn: Any, workspace_id: UUID, actor: str, innings_id: UUID) -> None:
+    """Re-derive this innings' CALCULATED partnerships automatically (Phase 7.2) whenever its fall
+    of wickets change — no manual button. Idempotent; manual/verified partnerships are preserved;
+    a derivation that cannot proceed is non-blocking (the FOW change still saves)."""
+    try:
+        pshp.derive_from_fow(conn, workspace_id, actor, innings_id)
+    except ValueError:
+        pass
+
+
 @router.post("/fall-of-wicket", status_code=status.HTTP_201_CREATED)
 def create_fow(workspace_id: UUID, innings_id: UUID, body: FowCreate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
@@ -126,6 +136,7 @@ def create_fow(workspace_id: UUID, innings_id: UUID, body: FowCreate, settings: 
             fid = pshp.create_fow(conn, workspace_id, str(ctx.user["id"]), innings_id=innings_id, **body.model_dump())
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_derive(conn, workspace_id, str(ctx.user["id"]), innings_id)
         return _ids(pshp.get_fow(conn, fid))
 
 
@@ -139,10 +150,12 @@ def list_fow(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ctx: M
 def update_fow(workspace_id: UUID, innings_id: UUID, fow_id: UUID, body: FowUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(pshp.update_fow(conn, workspace_id, str(ctx.user["id"]), fow_id,
-                                        **body.model_dump(exclude_none=True)))
+            updated = _ids(pshp.update_fow(conn, workspace_id, str(ctx.user["id"]), fow_id,
+                                           **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_derive(conn, workspace_id, str(ctx.user["id"]), innings_id)
+        return updated
 
 
 @router.delete("/fall-of-wicket/{fow_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -152,6 +165,7 @@ def delete_fow(workspace_id: UUID, innings_id: UUID, fow_id: UUID, settings: Set
             pshp.delete_fow(conn, workspace_id, str(ctx.user["id"]), fow_id)
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_derive(conn, workspace_id, str(ctx.user["id"]), innings_id)
 
 
 # ----- partnerships ---------------------------------------------------------------------------

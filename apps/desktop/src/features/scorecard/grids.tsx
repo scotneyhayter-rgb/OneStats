@@ -5,7 +5,7 @@
  * (arrows / Enter / Tab) within the numeric cells via the tested nextCell helper.
  */
 
-import { ChevronDown, ChevronUp, GripVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -30,6 +30,7 @@ interface GridCtx {
   onPersonLoaded: (p: Person) => void;
   onDirty: Saver;
   onChanged: () => void; // ask parent to recompute totals/validation
+  refreshKey?: number;   // bumped by the parent so sibling grids re-fetch (e.g. FOW -> partnerships)
 }
 
 /** A focus grid: register inputs by (row,col); handle arrow/Enter keys to move focus. */
@@ -95,7 +96,7 @@ function NumCell({
   );
 }
 
-function useRows<T>(load: () => Promise<T[]>, onError: Saver) {
+function useRows<T>(load: () => Promise<T[]>, onError: Saver, refreshKey = 0) {
   const [rows, setRows] = useState<T[]>([]);
   const refresh = useCallback(async () => {
     try {
@@ -105,9 +106,10 @@ function useRows<T>(load: () => Promise<T[]>, onError: Saver) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // re-fetch on mount and whenever a sibling signals derived data changed (e.g. FOW -> partnerships)
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, refreshKey]);
   return { rows, setRows, refresh };
 }
 
@@ -115,7 +117,7 @@ function useRows<T>(load: () => Promise<T[]>, onError: Saver) {
 
 export function BattingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
-  const { rows, refresh } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty);
+  const { rows, refresh } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty, ctx.refreshKey);
   const nav = useFocusGrid(4, rows.length); // runs, balls, 4s, 6s
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BattingEntry | null>(null);
@@ -298,7 +300,7 @@ export function BattingGrid(ctx: GridCtx) {
 
 export function BowlingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
-  const { rows, refresh } = useRows<BowlingEntry>(() => api.listBowling(workspaceId, inningsId), onDirty);
+  const { rows, refresh } = useRows<BowlingEntry>(() => api.listBowling(workspaceId, inningsId), onDirty, ctx.refreshKey);
   const [overs, setOvers] = useState<Record<string, string>>({});
 
   const commit = async (id: string, body: Record<string, unknown>) => {
@@ -388,7 +390,7 @@ export function BowlingGrid(ctx: GridCtx) {
 
 export function FowGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
-  const { rows, refresh } = useRows<FallOfWicket>(() => api.listFow(workspaceId, inningsId), onDirty);
+  const { rows, refresh } = useRows<FallOfWicket>(() => api.listFow(workspaceId, inningsId), onDirty, ctx.refreshKey);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -458,7 +460,7 @@ export function FowGrid(ctx: GridCtx) {
 
 export function PartnershipsGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
-  const { rows, refresh } = useRows<Partnership>(() => api.listPartnerships(workspaceId, inningsId), onDirty);
+  const { rows, refresh } = useRows<Partnership>(() => api.listPartnerships(workspaceId, inningsId), onDirty, ctx.refreshKey);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -470,18 +472,6 @@ export function PartnershipsGrid(ctx: GridCtx) {
     }
   };
   const remove = async (id: string) => { await api.deletePartnership(workspaceId, inningsId, id); await refresh(); onChanged(); };
-  const derive = async () => {
-    try {
-      const result = await api.derivePartnerships(workspaceId, inningsId); // regenerate calculated rows from FOW
-      await refresh();
-      onChanged();
-      if (!result.some((p) => p.origin === "calculated")) {
-        onDirty("No partnerships generated — enter Fall of Wickets with team scores first (nothing was invented).");
-      }
-    } catch (e) {
-      onDirty(e instanceof ApiError ? `Auto-generate failed: ${e.message}` : "Could not generate partnerships from FOW");
-    }
-  };
   const originBadge = (o: string) =>
     o === "calculated" ? <Badge variant="brand">Auto</Badge>
       : o === "verified" ? <Badge variant="success">Verified</Badge>
@@ -543,19 +533,12 @@ export function PartnershipsGrid(ctx: GridCtx) {
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No partnerships yet. Enter Fall of Wickets with team scores, then Auto-generate.</td></tr>
+            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No partnerships yet. They generate automatically once Fall of Wickets (with team scores) are entered.</td></tr>
           )}
         </tbody>
       </table>
-      {canManage && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void derive()}>
-            <RefreshCw className="h-4 w-4" aria-hidden /> Auto-generate from Fall of Wickets
-          </Button>
-        </div>
-      )}
-      <p className="mt-1 text-xs text-muted-foreground">
-        <Badge variant="brand">Auto</Badge> partnerships are calculated from Fall of Wickets (runs include extras);
+      <p className="mt-2 text-xs text-muted-foreground">
+        <Badge variant="brand">Auto</Badge> partnerships are calculated automatically from Fall of Wickets (runs include extras) whenever the FOW or batting order changes;
         <Badge variant="muted">Manual</Badge>/<Badge variant="success">Verified</Badge> entries are preserved and stay editable.
       </p>
     </div>

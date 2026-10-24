@@ -534,6 +534,7 @@ function InningsEditor({
   const [backendWarnings, setBackendWarnings] = useState<string[]>([]);
   const [clientWarnings, setClientWarnings] = useState<{ code: string; message: string }[]>([]);
   const [pendingBatting, setPendingBatting] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);  // bumped so sibling grids re-fetch (e.g. FOW -> partnerships)
   const w = workspaceId;
 
   const recompute = useCallback(async () => {
@@ -583,7 +584,7 @@ function InningsEditor({
   };
 
   const ctx = { workspaceId: w, inningsId: innings.id, canManage, nameOf, onPersonLoaded: addName,
-    onDirty, onChanged: () => void recompute() };
+    onDirty, refreshKey, onChanged: () => { setRefreshKey((k) => k + 1); void recompute(); } };
 
   // Batting side is explicit (never assumed). Choosing it sets bowling to the other recorded side.
   const applyBatting = (battingId: string | null) => {
