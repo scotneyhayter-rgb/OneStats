@@ -3,13 +3,34 @@
 Lightweight, evidence-based status. Updated by hand from verified test/build runs — **no invented
 completion percentages**. Full assessment: [43. Testing & Acceleration](43-testing-and-acceleration.md).
 
-_Last updated: 2026-10-24 · branch `phase-2-foundation` · migration head `0025_affiliation_temporary`._
+_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0032_scorecard_approval`._
 
 ## Verified test evidence (last run)
 | Suite | Result | Command |
 |---|---|---|
-| Backend (pytest) | **301 tests, passing** (DB tests roll back) | `run-tests.cmd backend` |
-| Desktop (vitest) | **26 tests, passing** (incl. 2 jsdom interaction) | `run-tests.cmd desktop` |
+| Backend (pytest) | **348 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
+| Desktop (vitest) | **42 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+
+## Phase 7 — Validation, Integrity & Automatic Scorecard Intelligence (in progress)
+| Stage | Status |
+|---|---|
+| 7.2 Automatic partnership generation (no button; on FOW/order/import change) | ✅ done |
+| 7.3 Automatic match results & winning margins (+ recorded-vs-calculated conflict) | ✅ done |
+| 7.4 Automatic season assignment (AU/calendar/UK/custom rules; manual preserved) | ✅ done |
+| 7.7 Prominent innings score + Australian/English display | ✅ done |
+| 7.5 Workspace-configurable match formats (enable/default/custom; history preserved) | ✅ done |
+| 7.6 Historical team names & aliases (rename + source name; no auto-merge) | ✅ done |
+| 7.1 Validation aggregation + Scorecard Approval workflow (draft/awaiting/approved/rejected) | ✅ done |
+| 7.8 Automatic recalculation framework (approved-only, idempotent ledger) | ⏳ next |
+| 7.9 Import integrity · 7.10 comprehensive tests · 7.11 manual acceptance | ⏳ outstanding |
+
+**Known limitations / outstanding (Phase 7):**
+- "Preserve last approved version" is flagged (`revised_since_approval`); the durable last-approved
+  statistics preservation is implemented by the 7.8 recalculation ledger (next).
+- Player-selector **club scoping** (backend ready: `list_people(organisation_id)` + MyClub
+  affiliations) still needs the frontend wired — to be completed before final acceptance.
+- Competition **points/ladders** architecture exists (`playing_conditions`); the user-friendly
+  Points Manager + ladder calc is a later phase.
 | Desktop type-check / build | **clean** | `cd apps\desktop && npm run build` |
 | Native Tauri window | **manual only** (no automated coverage) | — |
 
