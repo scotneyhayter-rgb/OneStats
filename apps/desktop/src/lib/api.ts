@@ -528,6 +528,11 @@ export const api = {
     request<Workspace>("/api/v1/workspaces", { method: "POST", body: { name, short_name, type } }),
   updateWorkspace: (w: string, body: Record<string, unknown>) =>
     request<Workspace>(`/api/v1/workspaces/${w}`, { method: "PATCH", body }),
+  // --- Phase 7.8: official-statistics recalculation ---
+  recalcStats: (w: string) =>
+    request<{ matches: number; contributions: number }>(`/api/v1/workspaces/${w}/stats/recalc`, { method: "POST" }),
+  officialPersonStats: (w: string, personId: string) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/stats/people/${personId}`),
   // --- Phase 7.5: workspace-configurable match formats ---
   listMatchFormats: (w: string, opts: { enabled_only?: boolean } = {}) =>
     request<MatchFormat[]>(`/api/v1/workspaces/${w}/match-formats${qs(opts)}`),

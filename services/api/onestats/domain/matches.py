@@ -240,6 +240,11 @@ def set_approval(
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.approval", entity="match", entity_id=str(match_id),
                       before=before, after=after)
+    # update the official-statistics ledger (Stage 7.8): approving writes the match's contributions,
+    # any other status removes them. Editing an approved scorecard does NOT run this, so the ledger
+    # keeps the last approved version until re-approval.
+    from onestats.domain import recalc  # local import avoids a module cycle
+    recalc.recompute_match(conn, workspace_id, actor, match_id)
     return after
 
 

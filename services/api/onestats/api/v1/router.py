@@ -29,6 +29,7 @@ from onestats.api.v1 import (
     profiles,
     relationships,
     setup,
+    stats,
     teams,
     venues,
     workspaces,
@@ -61,4 +62,5 @@ api_v1.include_router(batting.router)
 api_v1.include_router(bowling.router)
 api_v1.include_router(partnerships.router)
 api_v1.include_router(participation.router)
+api_v1.include_router(stats.router)
 api_v1.include_router(premierships.router)

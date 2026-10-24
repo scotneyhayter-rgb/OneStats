@@ -89,8 +89,34 @@ export function Settings() {
           </label>
         </CardContent></Card>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
+        {admin && <RecalcStatsSettings workspaceId={current?.id ?? null} />}
       </div>
     </AppShell>
+  );
+}
+
+function RecalcStatsSettings({ workspaceId }: { workspaceId: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const run = async () => {
+    if (!workspaceId) return;
+    setBusy(true); setNote(null);
+    try {
+      const r = await api.recalcStats(workspaceId);
+      setNote(`Recalculated ${r.matches} match(es); ${r.contributions} official contribution(s) stored.`);
+    } catch (e) {
+      setNote(e instanceof ApiError ? e.message : "Recalculation failed.");
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card><CardContent className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">Official Statistics</h3>
+        <p className="text-xs text-muted-foreground">Only approved scorecards contribute to official statistics. Recalculation is idempotent and never double counts. Use this after bulk-approving historical imports.</p>
+      </div>
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      <div><Button size="sm" disabled={busy} onClick={() => void run()}>{busy ? "Recalculating…" : "Recalculate official statistics"}</Button></div>
+    </CardContent></Card>
   );
 }
 
