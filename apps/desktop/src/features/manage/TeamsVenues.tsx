@@ -434,12 +434,13 @@ function EntityDetailModal({
   onClose: () => void;
   onChanged: (msg: string) => void;
 }) {
-  const [data, setData] = useState<(Team | Venue) & { name_history: { id: string; name: string; valid_from: string | null; valid_to: string | null }[]; source_identities: { id: string; source_system: string; source_ref: string }[] } | null>(null);
+  const [data, setData] = useState<(Team | Venue) & { name_history: { id: string; name: string; valid_from: string | null; valid_to: string | null }[]; source_identities: { id: string; source_system: string; source_ref: string; source_display_name: string | null }[] } | null>(null);
   const [candidates, setCandidates] = useState<DuplicateCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ candidateId: string; candidateName: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rename, setRename] = useState<string>("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -486,6 +487,20 @@ function EntityDetailModal({
     }
   };
 
+  const saveRename = async () => {
+    const next = rename.trim();
+    if (!next || !data || next === data.name) return;
+    setBusy(true); setErr(null);
+    try {
+      if (kind === "team") await api.updateTeam(workspaceId, entityId, { name: next, name_change_note: "renamed" });
+      else await api.updateVenue(workspaceId, entityId, { name: next });
+      onChanged(`Renamed to "${next}". The previous name is kept as an alias; scorecards update automatically.`);
+      setRename(""); await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Rename failed");
+    } finally { setBusy(false); }
+  };
+
   const idKey = kind === "team" ? "team_id" : "venue_id";
 
   return (
@@ -509,6 +524,15 @@ function EntityDetailModal({
               </>
             )}
             <Detail label="Status">{data.status}</Detail>
+            {canManage && (
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="flex flex-1 flex-col gap-1 text-sm">Rename display name
+                  <Input value={rename} placeholder={data.name} onChange={(e) => setRename(e.target.value)} />
+                </label>
+                <Button size="sm" disabled={busy || !rename.trim() || rename.trim() === data.name} onClick={() => void saveRename()}>Rename</Button>
+              </div>
+            )}
+            {canManage && <p className="mt-1 text-xs text-muted-foreground">The previous name is preserved as an alias and the original source name is never changed; scorecards update automatically.</p>}
           </section>
 
           <section>
@@ -536,9 +560,9 @@ function EntityDetailModal({
             ) : (
               <ul className="space-y-1 text-sm">
                 {data.source_identities.map((s) => (
-                  <li key={s.id} className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">{s.source_system}</span>
-                    <span>{s.source_ref}</span>
+                  <li key={s.id} className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{s.source_system}{s.source_display_name ? <> · <span className="text-foreground">original name: “{s.source_display_name}”</span></> : null}</span>
+                    <span className="tabular-nums text-muted-foreground">{s.source_ref}</span>
                   </li>
                 ))}
               </ul>

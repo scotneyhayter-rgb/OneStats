@@ -307,3 +307,36 @@ def test_invalid_and_conflicting_inputs(conn):
     teams.merge_teams(conn, wid, ACTOR, a, b)
     with pytest.raises(ValueError, match="already_merged"):
         teams.merge_teams(conn, wid, ACTOR, c, b)
+
+
+def test_team_rename_preserves_alias_and_original_source_name(conn):
+    """Phase 7.6: renaming a team's display name keeps the previous name as an alias and never
+    changes the original imported source name; links by team_id are unaffected (scorecards follow)."""
+    wid = _ws(conn, "TEAM RENAME")
+    org = _org(conn, wid, "Wickliffe Lake Bolac CC")
+    # imported with the abbreviated CricketStatz name
+    tid = teams.create_team(conn, wid, ACTOR, organisation_id=org, name="Wick/L Bolac",
+                            source_system="cricket_statz", source_ref="19999")
+    assert teams.get_team(conn, tid)["name"] == "Wick/L Bolac"
+
+    teams.update_team(conn, wid, ACTOR, tid, name="Wickliffe/Lake Bolac", name_change_note="corrected abbreviation")
+    renamed = teams.get_team(conn, tid)
+    assert renamed["name"] == "Wickliffe/Lake Bolac"                              # display name updated
+    assert renamed["merged_into_id"] is None                                     # identity (team_id) unchanged
+
+    names = {h["name"] for h in teams.list_name_history(conn, tid)}
+    assert {"Wick/L Bolac", "Wickliffe/Lake Bolac"} <= names                      # previous name kept as alias
+    src = teams.list_source_identities(conn, tid)
+    assert any(s["source_display_name"] == "Wick/L Bolac" for s in src)           # original source name preserved
+
+
+def test_similar_team_names_are_not_auto_merged(conn):
+    """Two similarly named teams stay distinct; a merge is a deliberate administrator action."""
+    wid = _ws(conn, "TEAM DISTINCT")
+    org = _org(conn, wid, "Club")
+    a = teams.create_team(conn, wid, ACTOR, organisation_id=org, name="Moyston")
+    b = teams.create_team(conn, wid, ACTOR, organisation_id=org, name="Moyston Reserves")
+    assert a != b
+    # both remain un-merged until an administrator explicitly merges them
+    assert teams.get_team(conn, a)["merged_into_id"] is None
+    assert teams.get_team(conn, b)["merged_into_id"] is None
