@@ -257,6 +257,53 @@ def test_derive_partnerships_from_fow_standard(conn):
     assert len(again) == 4
 
 
+def test_derive_pairs_both_batters_from_batting_order(conn):
+    """Sandbox scenario: with a recorded batting order, BOTH batters of each stand are named by
+    simulating the crease (the not-out batter stays, the next in order comes in) — never left
+    Unknown when the order and the dismissed batter are sufficient."""
+    wid = _ws(conn, "PART PAIRS")
+    iid = _innings(conn, wid)
+    jack, bill, frank, daniel = (_person(conn, wid, n) for n in ("Jack", "Bill", "Frank", "Daniel"))
+    for pos, p in enumerate((jack, bill, frank, daniel), start=1):
+        bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=p, batting_position=pos)
+    # 1st wicket @26 — Bill out; 2nd wicket @32 — Frank out
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=26, dismissed_person_id=bill)
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=2, team_score=32, dismissed_person_id=frank)
+    calc = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert [p["runs"] for p in calc] == [26, 6]
+    # 1st stand: Jack & Bill ; 2nd stand: Jack (not out) & Frank — neither Unknown
+    assert {calc[0]["player1_person_id"], calc[0]["player2_person_id"]} == {jack, bill}
+    assert {calc[1]["player1_person_id"], calc[1]["player2_person_id"]} == {jack, frank}
+
+
+def test_derive_pairs_both_batters_from_fow_not_out(conn):
+    """Even without a batting order, when the FOW records the not-out partner both batters of the
+    stand are named (the partner is taken from the FOW, never guessed)."""
+    wid = _ws(conn, "PART PAIRS NOTOUT")
+    iid = _innings(conn, wid)
+    jack, bill, frank = (_person(conn, wid, n) for n in ("Jack", "Bill", "Frank"))
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=26,
+                    dismissed_person_id=bill, not_out_person_id=jack)
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=2, team_score=32,
+                    dismissed_person_id=frank, not_out_person_id=jack)
+    calc = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert {calc[0]["player1_person_id"], calc[0]["player2_person_id"]} == {jack, bill}
+    assert {calc[1]["player1_person_id"], calc[1]["player2_person_id"]} == {jack, frank}
+
+
+def test_derive_pairs_no_order_no_partner_stays_unknown(conn):
+    """With neither a batting order nor a recorded not-out partner, the partner is left Unknown —
+    nothing is invented, and a dismissed batter is never carried into the next stand."""
+    wid = _ws(conn, "PART PAIRS UNKNOWN")
+    iid = _innings(conn, wid)
+    bill, frank = _person(conn, wid, "Bill"), _person(conn, wid, "Frank")
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=26, dismissed_person_id=bill)
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=2, team_score=32, dismissed_person_id=frank)
+    calc = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert calc[0]["player1_person_id"] == bill and calc[0]["player2_person_id"] is None
+    assert calc[1]["player1_person_id"] == frank and calc[1]["player2_person_id"] is None
+
+
 def test_derive_preserves_manual_and_flags_conflict(conn):
     wid = _ws(conn, "PART DERIVE2")
     iid = _innings(conn, wid)

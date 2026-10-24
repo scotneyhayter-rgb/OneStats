@@ -243,7 +243,8 @@ def _fow_partnership_runs(conn: Connection, innings_id: UUID) -> tuple[list[dict
     """The reliable per-wicket partnership runs from FOW: runs added between consecutive falls
     (= score at wicket N minus score at wicket N-1), which INCLUDES extras (the team score does).
     Only wickets with a known number AND score contribute; player1 is the dismissed batter at that
-    fall (a genuine participant — never invented); the partner is left unknown."""
+    fall (a genuine participant — never invented); ``not_out`` is the partner the FOW recorded, if
+    any (used by the pairing step; still never guessed)."""
     fows = sorted(
         [f for f in list_fow(conn, innings_id) if f["wicket_number"] is not None and f["team_score"] is not None],
         key=lambda f: f["wicket_number"],
@@ -256,7 +257,8 @@ def _fow_partnership_runs(conn: Connection, innings_id: UUID) -> tuple[list[dict
             prev = f["team_score"]
             continue
         out.append({"wicket_number": f["wicket_number"], "runs": runs,
-                    "player1_person_id": f["dismissed_person_id"], "last_score": f["team_score"]})
+                    "player1_person_id": f["dismissed_person_id"],
+                    "not_out_person_id": f["not_out_person_id"], "last_score": f["team_score"]})
         prev = f["team_score"]
     return out, prev
 
@@ -295,33 +297,46 @@ def derive_from_fow(conn: Connection, workspace_id: UUID, actor: str, innings_id
 
 
 def _derive_pairs(derived: list[dict[str, Any]], order: list[Any]) -> tuple[list[tuple[Any, Any]], list[Any], int]:
-    """Work out the two batters of each wicket's stand from the batting order and the dismissed
-    batter at each fall. Nothing is invented: if the order is unknown or the dismissed batter does
-    not fit the simulation, the stand keeps only the known participant (the dismissed batter) and
-    leaves the partner unknown. Returns (pairs, final-crease, next-index)."""
+    """Work out the two batters of each wicket's stand by simulating the crease: the opening pair is
+    the first two in the batting order; when a batter is dismissed the not-out partner stays and the
+    next batter in the order comes in. Where the order is unknown or does not fit, the FOW-recorded
+    not-out partner is used instead. Nothing is invented — a batter is left unknown only when neither
+    the simulated crease nor the FOW supplies one. Returns (pairs, final-crease, next-index)."""
     pairs: list[tuple[Any, Any]] = []
     if len(order) >= 2:
         crease = [order[0], order[1]]
         nxt = 2
     else:
-        crease = []
+        crease = list(order)  # 0 or 1 known openers; the rest comes from FOW not-out where recorded
         nxt = len(order)
+
     for d in derived:
-        dismissed = d["player1_person_id"]  # the dismissed batter at this fall (from FOW)
+        dismissed = d["player1_person_id"]       # dismissed batter at this fall (from FOW)
+        not_out = d.get("not_out_person_id")      # partner still in, where the FOW recorded it
+        # top the crease up to two for THIS stand, drawing only on batters the FOW actually names
+        # (the dismissed batter and the recorded not-out partner) — never a guessed name.
+        for who in (dismissed, not_out):
+            if who is not None and who not in crease and len(crease) < 2:
+                crease.append(who)
+
         if len(crease) == 2 and (dismissed is None or dismissed in crease):
             pairs.append((crease[0], crease[1]))
-            if dismissed in crease:
-                crease.remove(dismissed)
+            # the survivor stays at the crease; the dismissed batter leaves
+            if dismissed is not None and dismissed in crease:
+                survivor = [c for c in crease if c != dismissed]
+            elif not_out is not None and not_out in crease:
+                survivor = [not_out]
             else:
-                crease.pop(0)
-            if nxt < len(order):
+                survivor = crease[1:]  # don't know who fell — keep the later batter as best effort
+            crease = survivor
+            if nxt < len(order):            # the incoming batter, where the order is known
                 crease.append(order[nxt])
                 nxt += 1
-            else:
-                crease.append(None)
-                crease = [c for c in crease if c is not None]  # keep the lone survivor
         else:
-            pairs.append((dismissed, None))  # can't reconcile with the order — keep only what we know
+            # can't reconcile with the order — still name both from the FOW where it recorded them;
+            # the dismissed batter definitely leaves, so never carry them into the next stand
+            pairs.append((dismissed, not_out))
+            crease = [c for c in crease if c is not None and c != dismissed]
     return pairs, crease, nxt
 
 
