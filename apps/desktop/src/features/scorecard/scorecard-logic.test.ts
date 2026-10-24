@@ -142,3 +142,25 @@ describe("draft persistence", () => {
     expect(deserializeDraft(JSON.stringify({ v: 99 }))).toBeNull();
   });
 });
+
+import { formatScore, scoreStatusLabel } from "./scorecard-logic";
+
+describe("score display formatting (Phase 7.7)", () => {
+  it("formats Australian (wickets/runs) and English (runs/wickets)", () => {
+    expect(formatScore(127, 10, { format: "au" })).toBe("10/127");
+    expect(formatScore(127, 10, { format: "en" })).toBe("127/10");
+    expect(formatScore(90, 3, { format: "au" })).toBe("3/90");
+    expect(formatScore(90, 3, { format: "en" })).toBe("90/3");
+  });
+  it("handles declared, unknown total and unknown wickets without inventing values", () => {
+    expect(formatScore(180, 3, { format: "en", declared: true })).toBe("180/3 dec");
+    expect(formatScore(null, 5, { format: "au" })).toBe("—");       // unknown total stays "—"
+    expect(formatScore(45, null, { format: "au" })).toBe("?/45");   // unknown wickets show "?"
+  });
+  it("labels all out, declared and in-progress innings", () => {
+    expect(scoreStatusLabel(10, "in_progress")).toBe("All out");
+    expect(scoreStatusLabel(3, "declared")).toBe("Declared");
+    expect(scoreStatusLabel(4, "in_progress")).toBe("In progress");
+    expect(scoreStatusLabel(2, null)).toBeNull();
+  });
+});

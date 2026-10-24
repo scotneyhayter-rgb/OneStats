@@ -97,6 +97,7 @@ export interface Workspace {
   short_name: string | null;
   type: string;
   status: string;
+  score_format?: string;   // Phase 7.7: 'au' (wickets/runs) | 'en' (runs/wickets)
   roles?: string[];
 }
 export interface Draft {
@@ -510,6 +511,8 @@ export const api = {
   myWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),
   createWorkspace: (name: string, short_name: string, type: string) =>
     request<Workspace>("/api/v1/workspaces", { method: "POST", body: { name, short_name, type } }),
+  updateWorkspace: (w: string, body: Record<string, unknown>) =>
+    request<Workspace>(`/api/v1/workspaces/${w}`, { method: "PATCH", body }),
 
   // onboarding
   startDraft: (template?: string) =>

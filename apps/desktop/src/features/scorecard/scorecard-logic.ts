@@ -248,3 +248,35 @@ export function deserializeDraft(raw: string | null): { savedAt: string; state: 
     return null;
   }
 }
+
+// ---- score display (Phase 7.7) ---------------------------------------------------------------
+export type ScoreFormat = "au" | "en";
+
+/**
+ * Format an innings score for display. DISPLAY ONLY — runs and wickets are stored separately and
+ * are never altered by the chosen format. Australian shows wickets/runs (10/127); English shows
+ * runs/wickets (127/10). An unknown total stays "—"; an unknown wicket count shows "?"; a declared
+ * innings is suffixed "dec". Supports fewer than, or (in special formats) more than, ten wickets.
+ */
+export function formatScore(
+  runs: number | null | undefined,
+  wickets: number | null | undefined,
+  opts: { format: ScoreFormat; declared?: boolean } = { format: "au" },
+): string {
+  if (runs === null || runs === undefined) return "—";
+  const w = wickets === null || wickets === undefined ? "?" : String(wickets);
+  const pair = opts.format === "en" ? `${runs}/${w}` : `${w}/${runs}`;
+  return opts.declared ? `${pair} dec` : pair;
+}
+
+/** All out / declared / in-progress label for a score where known, else null. */
+export function scoreStatusLabel(
+  wickets: number | null | undefined, status: string | null | undefined, maxWickets = 10,
+): string | null {
+  if (status === "declared") return "Declared";
+  if (status === "forfeited") return "Forfeited";
+  if (wickets != null && wickets >= maxWickets) return "All out";
+  if (status === "completed" || status === "closed") return "Completed";
+  if (status === "in_progress") return "In progress";
+  return null;
+}

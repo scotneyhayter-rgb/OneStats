@@ -29,8 +29,10 @@ import { BattingGrid, BowlingGrid, FowGrid, PartnershipsGrid } from "./grids";
 import { PlayerSelect } from "./PlayerSelect";
 import { SectionCard, SubPanel, SubtleBar, TeamPanel } from "./ui";
 import {
-  deserializeDraft, draftKey, inningsAdvisories, INNINGS_STATUSES, serializeDraft, showNum,
+  deserializeDraft, draftKey, formatScore, inningsAdvisories, INNINGS_STATUSES,
+  scoreStatusLabel, serializeDraft, showNum,
 } from "./scorecard-logic";
+import { useScoreFormat } from "../../lib/score-format";
 
 /** "no_toss" -> "No Toss", "in_progress" -> "In Progress" — consistent, readable option labels. */
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -48,6 +50,28 @@ function formatResult(m: MatchDetail, teamName: (id: string | null) => string | 
   if (m.margin_runs != null) return `${w} won by ${m.margin_runs} run${m.margin_runs === 1 ? "" : "s"}`;
   if (m.margin_wickets != null) return `${w} won by ${m.margin_wickets} wicket${m.margin_wickets === 1 ? "" : "s"}`;
   return `${w} won`;
+}
+
+/** Prominent innings score header (Phase 7.7): TEAM, big score (AU/EN), status, and breakdown.
+ *  Display only — official is shown where set (distinct from calculated); unknowns stay "—". */
+function InningsScoreHeader({ teamName, innings, totals, format }: {
+  teamName: (id: string | null) => string | null; innings: Innings;
+  totals: InningsTotals | null; format: "au" | "en";
+}) {
+  const isOfficial = totals?.official_total != null;
+  const runs = totals ? (totals.official_total ?? totals.derived_total) : null;
+  const wkts = totals ? (isOfficial ? totals.official_wickets : totals.derived_wickets) : null;
+  const status = scoreStatusLabel(wkts, innings.status);
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
+      <span className="text-sm font-semibold uppercase tracking-wide">{teamName(innings.batting_team_id) ?? "Batting team"}</span>
+      <span className="text-3xl font-bold tabular-nums text-brand">{formatScore(runs, wkts, { format, declared: innings.status === "declared" })}</span>
+      {status && <span className="text-sm text-muted-foreground">{status}</span>}
+      <span className="ml-auto text-xs text-muted-foreground">
+        Batting {showNum(totals?.batting_runs ?? null)} · Extras {showNum(totals?.extras_total ?? null)} · Total {showNum(runs)} {isOfficial ? "(official)" : runs != null ? "(calculated)" : ""}
+      </span>
+    </div>
+  );
 }
 
 const CLASSIFICATIONS = ["unclassified", "home_away", "final", "grand_final", "other"];
@@ -496,6 +520,26 @@ function InningsSection({
   nameOf: (id: string | null) => string | null; teamName: (id: string | null) => string | null;
   addName: (p: Person) => void; reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
 }) {
+  const fmt = useScoreFormat();
+  const [scores, setScores] = useState<Record<string, InningsTotals>>({});
+  const [scoreKey, setScoreKey] = useState(0);
+  useEffect(() => {
+    let live = true;
+    Promise.all(innings.map((i) =>
+      api.getInningsTotals(workspaceId, matchId, i.id).then((t) => [i.id, t] as const).catch(() => null)))
+      .then((rs) => { if (live) setScores(Object.fromEntries(rs.filter(Boolean) as [string, InningsTotals][])); });
+    return () => { live = false; };
+  }, [workspaceId, matchId, innings, scoreKey]);
+
+  // the tab/header score for an innings: official where set, else calculated (distinction kept)
+  const tabScore = (id: string, status: string | null): string => {
+    const t = scores[id];
+    if (!t) return "—";
+    const runs = t.official_total ?? t.derived_total;
+    const wkts = t.official_total !== null ? t.official_wickets : t.derived_wickets;
+    return formatScore(runs, wkts, { format: fmt, declared: status === "declared" });
+  };
+
   const addInnings = async () => {
     const n = innings.length + 1;
     // Do NOT assume the home team bats first: create the innings with an UNKNOWN batting side;
@@ -517,9 +561,9 @@ function InningsSection({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {innings.map((i) => (
           <button key={i.id} onClick={() => setActiveInnings(i.id)}
-            className={`rounded-[var(--radius-app)] border px-3 py-1 text-sm ${i.id === activeInnings ? "border-brand bg-brand/10 text-brand" : "border-border hover:bg-muted"}`}>
-            Innings {i.inns_number}
-            <span className="ml-1 text-xs text-muted-foreground">{teamName(i.batting_team_id) ?? "—"}</span>
+            className={`flex flex-col items-start rounded-[var(--radius-app)] border px-3 py-1 text-sm ${i.id === activeInnings ? "border-brand bg-brand/10 text-brand" : "border-border hover:bg-muted"}`}>
+            <span>Innings {i.inns_number} <span className="text-xs text-muted-foreground">{teamName(i.batting_team_id) ?? "—"}</span></span>
+            <span className="font-semibold tabular-nums">{tabScore(i.id, i.status)}</span>
           </button>
         ))}
         {canManage && (
@@ -532,20 +576,23 @@ function InningsSection({
           canManage={canManage} nameOf={nameOf} teamName={teamName} addName={addName}
           sides={{ home: match.teams.find((t) => t.is_home)?.team_id ?? null,
                    away: match.teams.find((t) => !t.is_home)?.team_id ?? null }}
-          reloadInnings={reloadInnings} onDirty={onDirty} flash={flash} />
+          reloadInnings={reloadInnings} onDirty={onDirty} flash={flash}
+          onScoreChanged={() => setScoreKey((k) => k + 1)} />
       )}
     </SectionCard>
   );
 }
 
 function InningsEditor({
-  workspaceId, matchId, innings, canManage, nameOf, teamName, addName, sides, reloadInnings, onDirty, flash,
+  workspaceId, matchId, innings, canManage, nameOf, teamName, addName, sides, reloadInnings, onDirty, flash, onScoreChanged,
 }: {
   workspaceId: string; matchId: string; innings: Innings; canManage: boolean;
   nameOf: (id: string | null) => string | null; teamName: (id: string | null) => string | null;
   addName: (p: Person) => void; sides: { home: string | null; away: string | null };
   reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
+  onScoreChanged?: () => void;
 }) {
+  const fmt = useScoreFormat();
   const [totals, setTotals] = useState<InningsTotals | null>(null);
   const [backendWarnings, setBackendWarnings] = useState<string[]>([]);
   const [clientWarnings, setClientWarnings] = useState<{ code: string; message: string }[]>([]);
@@ -567,10 +614,11 @@ function InningsEditor({
         extras: { byes: innings.byes, legbyes: innings.legbyes, wides: innings.wides, noballs: innings.noballs, penalty: innings.penalty },
         officialTotal: innings.official_total, officialWickets: innings.official_wickets,
       }));
+      onScoreChanged?.();  // let the innings tabs refresh their scores
     } catch {
       /* totals are advisory; ignore transient errors */
     }
-  }, [w, matchId, innings]);
+  }, [w, matchId, innings, onScoreChanged]);
 
   useEffect(() => { void recompute(); }, [recompute]);
 
@@ -622,6 +670,7 @@ function InningsEditor({
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-app)] border border-border p-3">
+      <InningsScoreHeader teamName={teamName} innings={innings} totals={totals} format={fmt} />
       {/* aligned responsive grid: labels on one row, controls of equal height on the next */}
       <div className="grid items-start gap-3 sm:grid-cols-3">
         <Field label="Batting team" hint="Not assumed from home/away — choose who batted.">

@@ -17,7 +17,8 @@ from sqlalchemy.engine import Connection
 from onestats.db.workspace import set_workspace
 from onestats.domain import audit
 
-_SELECT = "id, name, short_name, type, status, created_at"
+_SELECT = "id, name, short_name, type, status, score_format, created_at"
+SCORE_FORMATS = ("au", "en")
 
 
 def short_name_taken(conn: Connection, short_name: str, exclude_id: UUID | None = None) -> bool:
@@ -68,20 +69,24 @@ def update_workspace(
     name: str | None = None,
     short_name: str | None = None,
     status: str | None = None,
+    score_format: str | None = None,
 ) -> dict[str, Any]:
     before = get_workspace(conn, workspace_id)
     if before is None:
         raise ValueError("workspace_not_found")
     if short_name and short_name_taken(conn, short_name, exclude_id=workspace_id):
         raise ValueError("duplicate_identifier")
+    if score_format is not None and score_format not in SCORE_FORMATS:
+        raise ValueError("invalid_score_format")
     set_workspace(conn, workspace_id)
     conn.execute(
         text(
             "UPDATE workspace SET name = coalesce(:n, name), "
-            "short_name = coalesce(:s, short_name), status = coalesce(:st, status) "
+            "short_name = coalesce(:s, short_name), status = coalesce(:st, status), "
+            "score_format = coalesce(:sf, score_format) "
             "WHERE id = :id"
         ),
-        {"n": name, "s": short_name, "st": status, "id": workspace_id},
+        {"n": name, "s": short_name, "st": status, "sf": score_format, "id": workspace_id},
     )
     after = get_workspace(conn, workspace_id)
     audit.write_audit(

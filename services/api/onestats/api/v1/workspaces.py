@@ -43,6 +43,7 @@ class WorkspaceUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     short_name: str | None = Field(default=None, max_length=60)
     status: str | None = None
+    score_format: str | None = Field(default=None, pattern="^(au|en)$")
 
 
 class MemberAdd(BaseModel):
@@ -93,7 +94,8 @@ def update_workspace(
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
             return workspaces.update_workspace(
-                conn, workspace_id, ctx.user["id"], body.name, body.short_name, body.status
+                conn, workspace_id, ctx.user["id"], body.name, body.short_name, body.status,
+                score_format=body.score_format,
             )
         except ValueError as exc:
             raise _value_error(exc) from exc
