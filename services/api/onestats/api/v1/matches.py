@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import matches, results
+from onestats.domain import matches, results, seasons
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
@@ -122,7 +122,16 @@ def create_match(workspace_id: UUID, body: MatchCreate, settings: SettingsDep, c
             mid = matches.create_match(conn, workspace_id, str(ctx.user["id"]), **body.model_dump())
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_season(conn, workspace_id, str(ctx.user["id"]), mid)  # Phase 7.4
         return _ids(matches.detail(conn, mid))
+
+
+def _auto_season(conn: Any, workspace_id: UUID, actor: str, match_id: UUID) -> None:
+    """Auto-assign the season from the competition's rule (non-blocking; preserves manual seasons)."""
+    try:
+        seasons.auto_assign_season(conn, workspace_id, actor, match_id)
+    except ValueError:
+        pass
 
 
 @router.get("")
@@ -148,6 +157,7 @@ def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ma
         # Phase 7.3: the result calculated from the scorecard, and any recorded-vs-calculated conflict
         d["computed_result"] = _ids(results.compute_result(conn, match_id))
         d["result_warnings"] = results.result_warnings(conn, match_id)
+        d["season_warnings"] = seasons.season_warnings(conn, match_id)  # Phase 7.4
         return _ids(d)
 
 
@@ -155,10 +165,12 @@ def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ma
 def update_match(workspace_id: UUID, match_id: UUID, body: MatchUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(matches.update_match(conn, workspace_id, str(ctx.user["id"]), match_id,
-                                             **body.model_dump(exclude_none=True)))
+            matches.update_match(conn, workspace_id, str(ctx.user["id"]), match_id,
+                                 **body.model_dump(exclude_none=True))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_season(conn, workspace_id, str(ctx.user["id"]), match_id)  # re-assign if date/comp changed
+        return _ids(matches.get_match(conn, match_id))  # refreshed (reflects any new season)
 
 
 @router.post("/{match_id}/classification")

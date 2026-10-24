@@ -208,6 +208,7 @@ function CreateCompetitionModal({
 }) {
   const [name, setName] = useState("");
   const [assoc, setAssoc] = useState("");
+  const [seasonModel, setSeasonModel] = useState("unknown");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -215,7 +216,7 @@ function CreateCompetitionModal({
     setBusy(true);
     setErr(null);
     try {
-      await api.createCompetition(workspaceId, { name, association_id: assoc || null });
+      await api.createCompetition(workspaceId, { name, association_id: assoc || null, season_model: seasonModel });
       onCreated(name.trim());
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Failed to create competition");
@@ -254,10 +255,23 @@ function CreateCompetitionModal({
             ))}
           </Select>
         </Field>
+        <Field label="Season rule" hint="How a match's season is determined from its date. Unknown leaves it for manual entry.">
+          <Select value={seasonModel} onChange={(e) => setSeasonModel(e.target.value)}>
+            {SEASON_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </Select>
+        </Field>
       </div>
     </Modal>
   );
 }
+
+export const SEASON_MODELS = [
+  { value: "unknown", label: "Unknown — set the season manually" },
+  { value: "au_summer", label: "Australian summer (e.g. 2019/20)" },
+  { value: "calendar", label: "Calendar year (e.g. 2020)" },
+  { value: "uk_summer", label: "UK / Northern summer (e.g. 2021)" },
+  { value: "custom", label: "Custom — use the competition's season dates" },
+];
 
 function CompetitionDetailModal({
   workspaceId,
@@ -356,6 +370,20 @@ function CompetitionDetailModal({
               <Unknown value={orgName(comp.association_id) ?? (comp.association_id ? "—" : "Independent")} />
             </Detail>
             <Detail label="Status">{comp.status}</Detail>
+            <Detail label="Season rule">
+              {canManage ? (
+                <Select value={comp.season_model ?? "unknown"} disabled={busy}
+                  onChange={async (e) => {
+                    setBusy(true);
+                    try { await api.updateCompetition(workspaceId, competitionId, { season_model: e.target.value }); await load(); onChanged("Season rule updated — matches assign automatically on save."); }
+                    finally { setBusy(false); }
+                  }}>
+                  {SEASON_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </Select>
+              ) : (
+                <Unknown value={SEASON_MODELS.find((m) => m.value === (comp.season_model ?? "unknown"))?.label ?? comp.season_model} />
+              )}
+            </Detail>
           </section>
 
           {comp.name_history.length > 1 && (

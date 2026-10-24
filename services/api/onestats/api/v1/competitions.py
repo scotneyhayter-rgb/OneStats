@@ -55,11 +55,15 @@ def _str_uuids(d: dict[str, Any]) -> dict[str, Any]:
 # ----------------------------------------------------------------- models
 
 
+_SEASON_MODEL_RE = "^(au_summer|calendar|uk_summer|custom|unknown)$"
+
+
 class CompetitionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     short_name: str | None = Field(default=None, max_length=100)
     association_id: UUID | None = None
     notes: str | None = None
+    season_model: str = Field(default="unknown", pattern=_SEASON_MODEL_RE)
     source_system: str | None = None
     source_ref: str | None = None
 
@@ -72,6 +76,7 @@ class CompetitionUpdate(BaseModel):
     clear_association: bool = False
     notes: str | None = None
     name_change_note: str | None = None
+    season_model: str | None = Field(default=None, pattern=_SEASON_MODEL_RE)
 
 
 class DivisionCreate(BaseModel):
@@ -128,7 +133,8 @@ def create_competition(workspace_id: UUID, body: CompetitionCreate, settings: Se
             cid = competitions.create_competition(
                 conn, workspace_id, str(ctx.user["id"]),
                 name=body.name, short_name=body.short_name, association_id=body.association_id,
-                notes=body.notes, source_system=body.source_system, source_ref=body.source_ref,
+                notes=body.notes, season_model=body.season_model,
+                source_system=body.source_system, source_ref=body.source_ref,
             )
         except ValueError as exc:
             raise _value_error(exc) from exc
@@ -214,7 +220,7 @@ def update_competition(workspace_id: UUID, competition_id: UUID, body: Competiti
                 conn, workspace_id, str(ctx.user["id"]), competition_id,
                 name=body.name, short_name=body.short_name, status=body.status,
                 association_id=body.association_id, clear_association=body.clear_association,
-                notes=body.notes, name_change_note=body.name_change_note,
+                notes=body.notes, name_change_note=body.name_change_note, season_model=body.season_model,
             )
         except ValueError as exc:
             raise _value_error(exc) from exc

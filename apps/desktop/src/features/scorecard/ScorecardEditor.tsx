@@ -268,8 +268,9 @@ function MatchDetailsSection({
             {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         </Field>
-        <Field label="Season">
-          <Select value={match.season_id ?? ""} disabled={!canManage || !seasons.length} onChange={(e) => onPatch({ season_id: e.target.value || null })}>
+        <Field label="Season" hint={(match.season_warnings?.length ?? 0) > 0 ? "Season unresolved — set the competition's season rule (Competitions) or choose a season here." : undefined}>
+          <Select value={match.season_id ?? ""} disabled={!canManage || !seasons.length} onChange={(e) => onPatch({ season_id: e.target.value || null })}
+            className={(match.season_warnings?.length ?? 0) > 0 ? "border-warning/60" : undefined}>
             <option value="">— none —</option>
             {seasons.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </Select>

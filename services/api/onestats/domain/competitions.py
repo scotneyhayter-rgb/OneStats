@@ -29,9 +29,10 @@ from sqlalchemy.engine import Connection
 from onestats.domain import audit
 
 _COMP_COLS = (
-    "id, workspace_id, name, short_name, association_id, status, notes, "
+    "id, workspace_id, name, short_name, association_id, status, notes, season_model, "
     "source_system, source_ref, created_at"
 )
+SEASON_MODELS = ("au_summer", "calendar", "uk_summer", "custom", "unknown")
 
 # Documented, source-independent finals/home-and-away vocabulary. A round label alone never
 # proves a finals classification, so these are generic concepts an administrator opts into; raw
@@ -81,8 +82,11 @@ def list_competitions(
 def create_competition(
     conn: Connection, workspace_id: UUID, actor: str,
     *, name: str, short_name: str | None = None, association_id: UUID | None = None,
-    notes: str | None = None, source_system: str | None = None, source_ref: str | None = None,
+    notes: str | None = None, season_model: str = "unknown",
+    source_system: str | None = None, source_ref: str | None = None,
 ) -> UUID:
+    if season_model not in SEASON_MODELS:
+        raise ValueError("invalid_season_model")
     name = (name or "").strip()
     if not name:
         raise ValueError("missing_name")
@@ -93,11 +97,11 @@ def create_competition(
     comp_id = conn.execute(
         text(
             "INSERT INTO competition"
-            "(workspace_id, name, short_name, association_id, notes, source_system, source_ref) "
-            "VALUES (:w, :n, :sn, :assoc, :notes, :ss, :sr) RETURNING id"
+            "(workspace_id, name, short_name, association_id, notes, season_model, source_system, source_ref) "
+            "VALUES (:w, :n, :sn, :assoc, :notes, :sm, :ss, :sr) RETURNING id"
         ),
         {"w": workspace_id, "n": name, "sn": short_name, "assoc": association_id,
-         "notes": notes, "ss": source_system, "sr": source_ref},
+         "notes": notes, "sm": season_model, "ss": source_system, "sr": source_ref},
     ).scalar_one()
     conn.execute(
         text(
@@ -122,11 +126,13 @@ def update_competition(
     conn: Connection, workspace_id: UUID, actor: str, competition_id: UUID,
     *, name: str | None = None, short_name: str | None = None, status: str | None = None,
     association_id: UUID | None = None, clear_association: bool = False, notes: str | None = None,
-    name_change_note: str | None = None,
+    name_change_note: str | None = None, season_model: str | None = None,
 ) -> dict[str, Any]:
     before = get_competition(conn, competition_id)
     if before is None:
         raise ValueError("competition_not_found")
+    if season_model is not None and season_model not in SEASON_MODELS:
+        raise ValueError("invalid_season_model")
     new_name = name.strip() if name is not None else None
     if name is not None and not new_name:
         raise ValueError("missing_name")
@@ -141,9 +147,10 @@ def update_competition(
         text(
             f"UPDATE competition SET name = coalesce(:n, name), "
             f"short_name = coalesce(:sn, short_name), status = coalesce(:st, status), "
-            f"notes = coalesce(:notes, notes), {assoc_sql} WHERE id = :id"
+            f"notes = coalesce(:notes, notes), season_model = coalesce(:smodel, season_model), "
+            f"{assoc_sql} WHERE id = :id"
         ),
-        {"n": new_name, "sn": short_name, "st": status, "notes": notes,
+        {"n": new_name, "sn": short_name, "st": status, "notes": notes, "smodel": season_model,
          "assoc": None if clear_association else association_id, "id": competition_id},
     )
     if new_name and new_name != before["name"]:

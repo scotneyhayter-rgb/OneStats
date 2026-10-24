@@ -854,12 +854,16 @@ def _promote_scorecards(
 
     # Phase 7.3: calculate match results from the imported scorecard where the CricketStatz result
     # was unknown (recorded results are preserved). Non-blocking and idempotent.
-    from onestats.domain import results  # local import avoids a module cycle
+    from onestats.domain import results, seasons  # local import avoids a module cycle
     match_ids = {conn.execute(text("SELECT match_id FROM innings WHERE id = :i"), {"i": i}).scalar_one()
                  for i in touched_innings}
     for mid in match_ids:
         try:
             results.auto_apply_result(conn, wid, actor, mid)
+        except ValueError:
+            pass
+        try:
+            seasons.auto_assign_season(conn, wid, actor, mid)  # Phase 7.4 (unresolved if the model is unknown)
         except ValueError:
             pass
 

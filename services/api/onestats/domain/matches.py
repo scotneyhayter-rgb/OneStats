@@ -31,7 +31,7 @@ STATUSES = ("draft", "final", "abandoned")
 TOSS_DECISIONS = ("bat", "field", "no_toss", "not_recorded", "unknown")
 
 _COLS = (
-    "id, workspace_id, competition_id, grade_id, season_id, venue_id, match_date, date_precision, "
+    "id, workspace_id, competition_id, grade_id, season_id, season_source, venue_id, match_date, date_precision, "
     "round, matchtype, format, status, classification, finals_stage, classification_verified, "
     "classification_ref_id, result_type, result_raw, result_source, result_override_reason, "
     "won_by_team_id, margin_runs, margin_wickets, "
@@ -141,6 +141,9 @@ def update_match(
     if "status" in fields and fields["status"] not in STATUSES:
         raise ValueError("invalid_status")
     data = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    # a season set explicitly here is a manual choice — mark it so auto-assignment never overwrites it
+    if "season_id" in data:
+        data["season_source"] = "manual"
     if data:
         sets = ", ".join(f"{k} = :{k}" for k in data)
         conn.execute(text(f"UPDATE match SET {sets}, updated_at = now() WHERE id = :id"), {**data, "id": match_id})

@@ -185,6 +185,7 @@ export interface Competition {
   association_id: string | null;
   status: string;
   notes: string | null;
+  season_model?: string;
 }
 export interface Division {
   id: string;
@@ -393,6 +394,7 @@ export interface MatchDetail extends Match {
   teams: MatchTeam[];
   computed_result?: ComputedResult;   // Phase 7.3: result derived from the scorecard
   result_warnings?: string[];
+  season_warnings?: string[];         // Phase 7.4
 }
 export interface Innings {
   id: string;
