@@ -16,7 +16,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import innings as innings_domain
-from onestats.domain import results
+from onestats.domain import matches, results
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches/{match_id}/innings", tags=["innings"])
 
@@ -98,6 +98,7 @@ def _auto_result(conn: Any, workspace_id: UUID, actor: str, match_id: UUID) -> N
     — only a calculated/unknown result is updated; recorded/manual results are preserved."""
     try:
         results.auto_apply_result(conn, workspace_id, actor, match_id)
+        matches.mark_revised_if_approved(conn, match_id)  # approved scorecard edited -> flag revision
     except ValueError:
         pass
 

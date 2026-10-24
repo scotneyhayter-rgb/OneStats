@@ -12,10 +12,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
+from onestats.domain import matches
 from onestats.domain import partnerships as pshp
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/innings/{innings_id}", tags=["partnerships"])
@@ -122,11 +124,15 @@ class PartnershipUpdate(_Contrib):
 def _auto_derive(conn: Any, workspace_id: UUID, actor: str, innings_id: UUID) -> None:
     """Re-derive this innings' CALCULATED partnerships automatically (Phase 7.2) whenever its fall
     of wickets change — no manual button. Idempotent; manual/verified partnerships are preserved;
-    a derivation that cannot proceed is non-blocking (the FOW change still saves)."""
+    a derivation that cannot proceed is non-blocking (the FOW change still saves). Also flags an
+    approved scorecard as revised (Stage 7.1) so official stats keep the last approved version."""
     try:
         pshp.derive_from_fow(conn, workspace_id, actor, innings_id)
     except ValueError:
         pass
+    mid = conn.execute(text("SELECT match_id FROM innings WHERE id = :i"), {"i": innings_id}).scalar_one_or_none()
+    if mid is not None:
+        matches.mark_revised_if_approved(conn, mid)
 
 
 @router.post("/fall-of-wicket", status_code=status.HTTP_201_CREATED)

@@ -18,6 +18,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import bowling as bowling_domain
+from onestats.domain import results
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/innings/{innings_id}/bowling", tags=["bowling"]
@@ -88,6 +89,7 @@ def create_entry(workspace_id: UUID, innings_id: UUID, body: BowlingCreate, sett
                 conn, workspace_id, str(ctx.user["id"]), innings_id=innings_id, **body.model_dump())
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)  # flag revision etc.
         return _ids(bowling_domain.get_entry(conn, eid))
 
 
@@ -101,10 +103,12 @@ def list_entries(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ct
 def update_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, body: BowlingUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(bowling_domain.update_entry(conn, workspace_id, str(ctx.user["id"]), entry_id,
-                                                    **body.model_dump(exclude_none=True)))
+            out = _ids(bowling_domain.update_entry(conn, workspace_id, str(ctx.user["id"]), entry_id,
+                                                   **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
+        return out
 
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -114,6 +118,7 @@ def delete_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, settings:
             bowling_domain.delete_entry(conn, workspace_id, str(ctx.user["id"]), entry_id)
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
 
 
 @router.get("/card")

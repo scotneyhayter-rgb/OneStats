@@ -378,6 +378,10 @@ export interface Match {
   result_raw: string | null;
   result_source?: string | null;
   result_override_reason?: string | null;
+  approval_status?: string;            // Phase 7.1: draft | awaiting_approval | approved | rejected
+  approval_reason?: string | null;
+  approved_at?: string | null;
+  revised_since_approval?: boolean;
   won_by_team_id: string | null;
   margin_runs: number | null;
   margin_wickets: number | null;
@@ -400,11 +404,13 @@ export interface ComputedResult {
   basis?: string;
   reason?: string;
 }
+export interface ValidationItem { scope: string; area: string; code: string }
 export interface MatchDetail extends Match {
   teams: MatchTeam[];
   computed_result?: ComputedResult;   // Phase 7.3: result derived from the scorecard
   result_warnings?: string[];
   season_warnings?: string[];         // Phase 7.4
+  validation?: ValidationItem[];      // Phase 7.1: aggregated advisory warnings
 }
 export interface Innings {
   id: string;
@@ -747,6 +753,9 @@ export const api = {
     request<Match>(`/api/v1/workspaces/${w}/matches/${id}/classification`, { method: "POST", body }),
   setMatchResult: (w: string, id: string, body: Record<string, unknown>) =>
     request<Match>(`/api/v1/workspaces/${w}/matches/${id}/result`, { method: "POST", body }),
+  // --- Phase 7.1: scorecard approval workflow (separate from match status) ---
+  matchApproval: (w: string, id: string, action: "submit" | "approve" | "reject" | "reopen", reason?: string) =>
+    request<Match>(`/api/v1/workspaces/${w}/matches/${id}/${action}`, { method: "POST", body: { reason: reason ?? null } }),
   setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
   setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>

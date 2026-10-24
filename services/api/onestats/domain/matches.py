@@ -36,8 +36,11 @@ _COLS = (
     "classification_ref_id, result_type, result_raw, result_source, result_override_reason, "
     "won_by_team_id, margin_runs, margin_wickets, "
     "toss_winner_team_id, toss_decision, "
-    "include_in_statistics, notes, source_system, source_ref, created_at, updated_at"
+    "include_in_statistics, approval_status, approval_reason, approved_by, approved_at, "
+    "revised_since_approval, notes, source_system, source_ref, created_at, updated_at"
 )
+
+APPROVAL_STATUSES = ("draft", "awaiting_approval", "approved", "rejected")
 
 
 def get_match(conn: Connection, match_id: UUID) -> dict[str, Any] | None:
@@ -208,6 +211,52 @@ def set_result(
     audit.write_audit(conn, workspace_id, actor, "match.result", entity="match", entity_id=str(match_id),
                       before=before, after=after)
     return after
+
+
+def set_approval(
+    conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *,
+    status: str, reason: str | None = None,
+) -> dict[str, Any]:
+    """Set the scorecard approval status (draft/awaiting_approval/approved/rejected) — independent of
+    the match's cricket status. Records who approved and when (only while 'approved'); audited. Only
+    an 'approved' scorecard is authoritative for official statistics (Stage 7.8 enforces that)."""
+    before = get_match(conn, match_id)
+    if before is None:
+        raise ValueError("match_not_found")
+    if status not in APPROVAL_STATUSES:
+        raise ValueError("invalid_approval_status")
+    approved = status == "approved"
+    # approving clears the revision flag (this version becomes the authoritative one)
+    conn.execute(
+        text("UPDATE match SET approval_status = :s, approval_reason = :r, "
+             "approved_by = :by, approved_at = :at, "
+             "revised_since_approval = (revised_since_approval AND NOT :approved), updated_at = now() "
+             "WHERE id = :id"),
+        {"s": status, "r": reason, "by": actor if approved else None,
+         "at": None, "approved": approved, "id": match_id},
+    )
+    if approved:
+        conn.execute(text("UPDATE match SET approved_at = now() WHERE id = :id"), {"id": match_id})
+    after = get_match(conn, match_id)
+    audit.write_audit(conn, workspace_id, actor, "match.approval", entity="match", entity_id=str(match_id),
+                      before=before, after=after)
+    return after
+
+
+def mark_revised_if_approved(conn: Connection, match_id: UUID) -> None:
+    """Flag that an APPROVED scorecard has changed since approval, so official statistics keep using
+    the last approved version until the revision is re-approved. No-op unless currently approved."""
+    conn.execute(
+        text("UPDATE match SET revised_since_approval = true, updated_at = now() "
+             "WHERE id = :id AND approval_status = 'approved'"),
+        {"id": match_id},
+    )
+
+
+def official_for_stats(match: dict[str, Any]) -> bool:
+    """Whether a match's data may contribute to OFFICIAL statistics: it must be approved and flagged
+    for statistical inclusion. Used by the recalculation framework (Stage 7.8)."""
+    return match.get("approval_status") == "approved" and bool(match.get("include_in_statistics"))
 
 
 def set_toss(

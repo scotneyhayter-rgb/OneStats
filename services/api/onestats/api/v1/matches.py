@@ -17,11 +17,12 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import match_formats, matches, results, seasons
+from onestats.domain import match_formats, matches, results, seasons, validation
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
 MatchCtx = Annotated[RequestContext, Depends(require_permission("match.manage"))]
+ApproveCtx = Annotated[RequestContext, Depends(require_permission("scorecard.approve"))]
 
 _VALUE_ERR_STATUS = {
     "match_not_found": status.HTTP_404_NOT_FOUND,
@@ -162,6 +163,7 @@ def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ma
         d["computed_result"] = _ids(results.compute_result(conn, match_id))
         d["result_warnings"] = results.result_warnings(conn, match_id)
         d["season_warnings"] = seasons.season_warnings(conn, match_id)  # Phase 7.4
+        d["validation"] = validation.match_validation(conn, match_id)   # Phase 7.1
         return _ids(d)
 
 
@@ -199,6 +201,43 @@ def set_result(workspace_id: UUID, match_id: UUID, body: ResultSet, settings: Se
                 result_source=body.result_source, result_override_reason=body.result_override_reason))
         except ValueError as exc:
             raise _value_error(exc) from exc
+
+
+class ApprovalReason(BaseModel):
+    reason: str | None = None
+
+
+def _approve_to(conn: Any, workspace_id: UUID, actor: str, match_id: UUID, *, status_: str, reason: str | None):
+    try:
+        return _ids(matches.set_approval(conn, workspace_id, actor, match_id, status=status_, reason=reason))
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+
+
+# Scorecard approval workflow (Phase 7.1) — separate from the cricket match status. Submitting and
+# reopening are editor actions (match.manage); approving and rejecting require scorecard.approve.
+@router.post("/{match_id}/submit")
+def submit_for_approval(workspace_id: UUID, match_id: UUID, body: ApprovalReason, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="awaiting_approval", reason=body.reason)
+
+
+@router.post("/{match_id}/reopen")
+def reopen_scorecard(workspace_id: UUID, match_id: UUID, body: ApprovalReason, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="draft", reason=body.reason)
+
+
+@router.post("/{match_id}/approve")
+def approve_scorecard(workspace_id: UUID, match_id: UUID, body: ApprovalReason, settings: SettingsDep, ctx: ApproveCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="approved", reason=body.reason)
+
+
+@router.post("/{match_id}/reject")
+def reject_scorecard(workspace_id: UUID, match_id: UUID, body: ApprovalReason, settings: SettingsDep, ctx: ApproveCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="rejected", reason=body.reason)
 
 
 @router.post("/{match_id}/teams", status_code=status.HTTP_201_CREATED)

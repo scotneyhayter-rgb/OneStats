@@ -8,8 +8,8 @@
  */
 
 import {
-  ChevronLeft, ClipboardList, Coins, Info, Layers, ListOrdered, Maximize2, Minimize2, Save, Target,
-  TrendingDown, Trophy, Users,
+  AlertTriangle, ChevronLeft, ClipboardCheck, ClipboardList, Coins, Info, Layers, ListOrdered,
+  Maximize2, Minimize2, Save, Target, TrendingDown, Trophy, Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
@@ -71,6 +71,54 @@ function InningsScoreHeader({ teamName, innings, totals, format }: {
         Batting {showNum(totals?.batting_runs ?? null)} · Extras {showNum(totals?.extras_total ?? null)} · Total {showNum(runs)} {isOfficial ? "(official)" : runs != null ? "(calculated)" : ""}
       </span>
     </div>
+  );
+}
+
+/** Scorecard approval workflow bar (Phase 7.1): status, transitions (separate from match status),
+ *  and the aggregated validation warnings. Approved scorecards are authoritative for official stats. */
+function ApprovalBar({ match, canManage, onAction }: {
+  match: MatchDetail; canManage: boolean;
+  onAction: (action: "submit" | "approve" | "reject" | "reopen", reason?: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const st = match.approval_status ?? "draft";
+  const warnings = match.validation ?? [];
+  const humanise = (c: string) => c.replace(/_/g, " ").replace(/:.*/, "").replace(/^\w/, (x) => x.toUpperCase());
+  return (
+    <SectionCard icon={ClipboardCheck} title="Scorecard Approval"
+      description="Separate from the match status. Only an approved scorecard contributes to official statistics.">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Status:</span>
+          <Badge variant={st === "approved" ? "success" : st === "rejected" ? "warning" : st === "awaiting_approval" ? "outline" : "muted"}>{titleCase(st)}</Badge>
+          {match.revised_since_approval && <span className="text-xs text-warning">Edited since approval — re-approve to update official statistics (the last approved version is kept meanwhile).</span>}
+          {st === "rejected" && match.approval_reason && <span className="text-xs text-muted-foreground">Reason: {match.approval_reason}</span>}
+          {st === "approved" && match.approved_at && <span className="text-xs text-muted-foreground">Approved {new Date(match.approved_at).toLocaleString()}</span>}
+        </div>
+        {canManage && (
+          <div className="flex flex-wrap items-end gap-2">
+            {(st === "awaiting_approval" || st === "rejected") && (
+              <label className="flex flex-col gap-1 text-xs">Reason (for rejection)
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="optional" className="w-64" />
+              </label>
+            )}
+            {st === "draft" && <Button size="sm" onClick={() => onAction("submit")}>Submit for approval</Button>}
+            {st === "rejected" && <Button size="sm" onClick={() => onAction("submit")}>Resubmit</Button>}
+            {st === "awaiting_approval" && <Button size="sm" onClick={() => onAction("approve")}>Approve</Button>}
+            {st === "awaiting_approval" && <Button size="sm" variant="outline" onClick={() => onAction("reject", reason || undefined)}>Reject</Button>}
+            {(st === "approved" || st === "rejected" || st === "awaiting_approval") && <Button size="sm" variant="ghost" onClick={() => onAction("reopen")}>Reopen to draft</Button>}
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="rounded-[var(--radius-app)] border border-warning/40 bg-warning/5 p-3 text-xs">
+            <p className="mb-1 flex items-center gap-1 font-medium text-warning"><AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Validation — {warnings.length} item(s) for review (advisory; incomplete historical records remain valid)</p>
+            <ul className="flex flex-col gap-0.5">
+              {warnings.map((w, i) => <li key={i}><span className="font-medium">{w.scope} · {w.area}:</span> {humanise(w.code)}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -190,6 +238,10 @@ export function ScorecardEditor({
         <Badge variant={match.status === "final" ? "success" : match.status === "abandoned" ? "warning" : "muted"}>
           {match.status}
         </Badge>
+        <Badge variant={match.approval_status === "approved" ? "success" : match.approval_status === "rejected" ? "warning" : match.approval_status === "awaiting_approval" ? "outline" : "muted"}>
+          {titleCase(match.approval_status ?? "draft")}
+        </Badge>
+        {match.revised_since_approval && <Badge variant="warning">revised since approval</Badge>}
         {match.classification !== "unclassified" && <Badge variant="brand">{titleCase(match.classification)}</Badge>}
         <div className="flex-1" />
         {msg && <span className="text-sm text-success">{msg}</span>}
@@ -209,6 +261,12 @@ export function ScorecardEditor({
 
       <div className={focus ? "hidden" : "contents"}>
         <Legend />
+
+        <ApprovalBar match={match} canManage={canManage}
+          onAction={async (action, reason) => {
+            try { await api.matchApproval(workspaceId, matchId, action, reason); await load(); flash("Approval updated."); }
+            catch (e) { setErr(e instanceof ApiError ? e.message : "Could not update approval."); }
+          }} />
 
         <MatchDetailsSection
           match={match} teams={teams} venues={venues} comps={comps} compDetail={compDetail}

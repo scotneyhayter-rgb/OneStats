@@ -126,12 +126,14 @@ def auto_apply_result(conn: Connection, workspace_id: UUID, actor: str, match_id
 
 
 def recalc_for_innings(conn: Connection, workspace_id: UUID, actor: str, innings_id: UUID) -> None:
-    """Recalculate the parent match's result after an innings' scorecard changes. Non-blocking: a
-    match that cannot be resolved or computed is simply left unchanged (the edit still saves)."""
+    """Called when an innings' scorecard changes: recompute the match result and, if the scorecard
+    was approved, flag it as revised (so official statistics keep using the last approved version
+    until re-approved). Non-blocking — a match that cannot be resolved is left unchanged."""
     try:
         mid = conn.execute(text("SELECT match_id FROM innings WHERE id = :i"), {"i": innings_id}).scalar_one_or_none()
         if mid is not None:
             auto_apply_result(conn, workspace_id, actor, mid)
+            matches.mark_revised_if_approved(conn, mid)
     except ValueError:
         pass
 
