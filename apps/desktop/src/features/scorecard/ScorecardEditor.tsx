@@ -32,6 +32,9 @@ import {
   deserializeDraft, draftKey, inningsAdvisories, INNINGS_STATUSES, serializeDraft, showNum,
 } from "./scorecard-logic";
 
+/** "no_toss" -> "No Toss", "in_progress" -> "In Progress" — consistent, readable option labels. */
+const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
 const CLASSIFICATIONS = ["unclassified", "home_away", "final", "grand_final", "other"];
 const FINALS_STAGES = ["qualifying_final", "elimination_final", "semi_final", "preliminary_final", "grand_final", "custom"];
 const RESULT_TYPES = ["home_win", "away_win", "tie", "draw", "no_result", "abandoned", "washout", "forfeit", "unknown"];
@@ -425,7 +428,7 @@ function TossAndOfficialsSection({
             <Field label="Decision">
               <Select value={tossDecision} disabled={!canManage} onChange={(e) => setTossDecision(e.target.value)}>
                 <option value="">— unknown —</option>
-                {TOSS_DECISIONS.map((d) => <option key={d} value={d}>{d.replace(/_/g, " ")}</option>)}
+                {TOSS_DECISIONS.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
               </Select>
             </Field>
           </div>
@@ -605,7 +608,7 @@ function InningsEditor({
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Status">
           <Select value={innings.status} disabled={!canManage} onChange={(e) => void patchInnings({ status: e.target.value })} className="w-40">
-            {INNINGS_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+            {INNINGS_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </Select>
         </Field>
         <Field label="Batting team" hint="Not assumed from home/away — choose who batted.">

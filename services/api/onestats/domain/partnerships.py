@@ -44,13 +44,17 @@ _FOW_COLS = (
 _FOW_SET = ("wicket_number", "team_score", "dismissed_person_id", "not_out_person_id",
             "batting_entry_id", "overs_text", "legal_balls", "notes", "evidence")
 
+PARTNERSHIP_ORIGINS = ("calculated", "manual", "verified", "unknown")
+_PART_CONTRIB = ("runs_b1", "runs_b2", "extras", "balls_b1", "balls_b2", "balls_total",
+                 "fours_b1", "sixes_b1", "fours_b2", "sixes_b2")
 _PART_COLS = (
     "id, workspace_id, innings_id, wicket_number, runs, balls, player1_person_id, "
-    "player2_person_id, unbroken, end_reason, notes, evidence, source_system, source_ref, "
-    "created_at, updated_at"
+    "player2_person_id, unbroken, end_reason, origin, "
+    + ", ".join(_PART_CONTRIB) + ", confidence, "
+    "notes, evidence, source_system, source_ref, created_at, updated_at"
 )
 _PART_SET = ("wicket_number", "runs", "balls", "player1_person_id", "player2_person_id",
-             "unbroken", "end_reason", "notes", "evidence")
+             "unbroken", "end_reason", "origin", *_PART_CONTRIB, "confidence", "notes", "evidence")
 
 
 def _innings_exists(conn: Connection, innings_id: UUID) -> bool:
@@ -162,8 +166,9 @@ def create_partnership(
     conn: Connection, workspace_id: UUID, actor: str, *, innings_id: UUID,
     wicket_number: int | None = None, runs: int | None = None, balls: int | None = None,
     player1_person_id: UUID | None = None, player2_person_id: UUID | None = None,
-    unbroken: bool | None = None, end_reason: str | None = None, notes: str | None = None,
-    evidence: str | None = None, source_system: str | None = None, source_ref: str | None = None,
+    unbroken: bool | None = None, end_reason: str | None = None, origin: str = "manual",
+    confidence: str | None = None, notes: str | None = None, evidence: str | None = None,
+    source_system: str | None = None, source_ref: str | None = None, **contrib: Any,
 ) -> UUID:
     if not _innings_exists(conn, innings_id):
         raise ValueError("innings_not_found")
@@ -171,18 +176,25 @@ def create_partnership(
         raise ValueError("invalid_wicket_number")
     if end_reason is not None and end_reason not in END_REASONS:
         raise ValueError("invalid_end_reason")
+    if origin not in PARTNERSHIP_ORIGINS:
+        raise ValueError("invalid_origin")
     if (player1_person_id is not None and player2_person_id is not None
             and player1_person_id == player2_person_id):
         raise ValueError("players_must_differ")
+    cfields = {k: contrib.get(k) for k in _PART_CONTRIB}
+    cols = ", ".join(_PART_CONTRIB)
+    vals = ", ".join(f":{k}" for k in _PART_CONTRIB)
     pid = conn.execute(
         text(
             "INSERT INTO partnership(workspace_id, innings_id, wicket_number, runs, balls, "
-            " player1_person_id, player2_person_id, unbroken, end_reason, notes, evidence, "
-            " source_system, source_ref) "
-            "VALUES (:w, :i, :n, :r, :b, :p1, :p2, :ub, :er, :notes, :ev, :ss, :sr) RETURNING id"
+            " player1_person_id, player2_person_id, unbroken, end_reason, origin, confidence, "
+            f" {cols}, notes, evidence, source_system, source_ref) "
+            f"VALUES (:w, :i, :n, :r, :b, :p1, :p2, :ub, :er, :origin, :conf, {vals}, "
+            " :notes, :ev, :ss, :sr) RETURNING id"
         ),
         {"w": workspace_id, "i": innings_id, "n": wicket_number, "r": runs, "b": balls,
          "p1": player1_person_id, "p2": player2_person_id, "ub": unbroken, "er": end_reason,
+         "origin": origin, "conf": confidence, **cfields,
          "notes": notes, "ev": evidence, "ss": source_system, "sr": source_ref},
     ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "partnership.create", entity="partnership",
@@ -199,6 +211,8 @@ def update_partnership(conn: Connection, workspace_id: UUID, actor: str, pid: UU
         raise ValueError("invalid_wicket_number")
     if fields.get("end_reason") is not None and fields["end_reason"] not in END_REASONS:
         raise ValueError("invalid_end_reason")
+    if fields.get("origin") is not None and fields["origin"] not in PARTNERSHIP_ORIGINS:
+        raise ValueError("invalid_origin")
     data = {k: v for k, v in fields.items() if k in _PART_SET and v is not None}
     p1 = data.get("player1_person_id", before["player1_person_id"])
     p2 = data.get("player2_person_id", before["player2_person_id"])
@@ -221,6 +235,78 @@ def delete_partnership(conn: Connection, workspace_id: UUID, actor: str, pid: UU
     conn.execute(text("DELETE FROM partnership WHERE id = :id"), {"id": pid})
     audit.write_audit(conn, workspace_id, actor, "partnership.delete", entity="partnership",
                       entity_id=str(pid), before=before)
+
+
+# ----- automatic partnerships from fall of wickets --------------------------------------------
+
+def _fow_partnership_runs(conn: Connection, innings_id: UUID) -> tuple[list[dict[str, Any]], int]:
+    """The reliable per-wicket partnership runs from FOW: runs added between consecutive falls
+    (= score at wicket N minus score at wicket N-1), which INCLUDES extras (the team score does).
+    Only wickets with a known number AND score contribute; player1 is the dismissed batter at that
+    fall (a genuine participant — never invented); the partner is left unknown."""
+    fows = sorted(
+        [f for f in list_fow(conn, innings_id) if f["wicket_number"] is not None and f["team_score"] is not None],
+        key=lambda f: f["wicket_number"],
+    )
+    out: list[dict[str, Any]] = []
+    prev = 0
+    for f in fows:
+        runs = f["team_score"] - prev
+        if runs < 0:  # inconsistent FOW (score decreased) — skip; flagged by validation
+            prev = f["team_score"]
+            continue
+        out.append({"wicket_number": f["wicket_number"], "runs": runs,
+                    "player1_person_id": f["dismissed_person_id"], "last_score": f["team_score"]})
+        prev = f["team_score"]
+    return out, prev
+
+
+def derive_from_fow(conn: Connection, workspace_id: UUID, actor: str, innings_id: UUID) -> list[dict[str, Any]]:
+    """Regenerate the CALCULATED partnerships from Fall of Wickets. Manual/verified partnerships are
+    preserved untouched; only ``origin='calculated'`` rows are replaced (so recompute never
+    duplicates). Partnership runs include extras. An unbroken final stand is added when the innings
+    official total is known and exceeds the last recorded fall. Batter identities are only set where
+    FOW supports them (the dismissed batter); partners are left unknown rather than guessed."""
+    if not _innings_exists(conn, innings_id):
+        raise ValueError("innings_not_found")
+    derived, last_score = _fow_partnership_runs(conn, innings_id)
+    conn.execute(text("DELETE FROM partnership WHERE innings_id = :i AND origin = 'calculated'"), {"i": innings_id})
+    for d in derived:
+        create_partnership(conn, workspace_id, actor, innings_id=innings_id, wicket_number=d["wicket_number"],
+                           runs=d["runs"], player1_person_id=d["player1_person_id"], end_reason="wicket",
+                           unbroken=False, origin="calculated")
+    # unbroken final stand, only when the innings total is known and higher than the last fall
+    inn = conn.execute(text("SELECT official_total FROM innings WHERE id = :i"), {"i": innings_id}).mappings().first()
+    if derived and inn and inn["official_total"] is not None and inn["official_total"] > last_score:
+        create_partnership(conn, workspace_id, actor, innings_id=innings_id,
+                           wicket_number=derived[-1]["wicket_number"] + 1,
+                           runs=inn["official_total"] - last_score, unbroken=True, origin="calculated")
+    audit.write_audit(conn, workspace_id, actor, "partnership.derive_from_fow", entity="innings",
+                      entity_id=str(innings_id), after={"calculated": len(derived)})
+    return list_partnerships(conn, innings_id)
+
+
+def partnership_stats(row: dict[str, Any], balls_per_over: int | None = None) -> dict[str, Any]:
+    """Derived (never stored) partnership figures, only where the inputs are known: run rate (from
+    balls_total + balls_per_over), each batter's strike rate (runs_b/balls_b), and contribution %
+    (runs_b / total runs). Unknowns stay None."""
+    def sr(runs: Any, balls: Any) -> float | None:
+        return round(runs * 100 / balls, 1) if runs is not None and balls else None
+
+    def pct(part: Any, total: Any) -> float | None:
+        return round(part * 100 / total, 1) if part is not None and total else None
+
+    rr = None
+    if row.get("balls_total") and balls_per_over and row.get("runs") is not None:
+        overs = row["balls_total"] / balls_per_over
+        rr = round(row["runs"] / overs, 2) if overs else None
+    return {
+        "run_rate": rr,
+        "strike_rate_b1": sr(row.get("runs_b1"), row.get("balls_b1")),
+        "strike_rate_b2": sr(row.get("runs_b2"), row.get("balls_b2")),
+        "contribution_pct_b1": pct(row.get("runs_b1"), row.get("runs")),
+        "contribution_pct_b2": pct(row.get("runs_b2"), row.get("runs")),
+    }
 
 
 # ----- reconciliation (non-blocking) ----------------------------------------------------------
@@ -267,6 +353,15 @@ def validation_warnings(conn: Connection, innings_id: UUID) -> list[str]:
             warnings.append("multiple_partnerships_same_wicket")
         if n is not None:
             seen.add(n)
+
+    # a manually recorded partnership whose runs conflict with the FOW-derived figure for that
+    # wicket — flagged for review (never auto-overwritten).
+    fow_runs = {d["wicket_number"]: d["runs"] for d in _fow_partnership_runs(conn, innings_id)[0]}
+    for p in parts:
+        if (p["origin"] in ("manual", "verified") and p["wicket_number"] in fow_runs
+                and p["runs"] is not None and p["runs"] != fow_runs[p["wicket_number"]]):
+            warnings.append("partnership_conflicts_fow")
+            break
 
     # partnership runs vs the innings batting+extras total — informational, only when known.
     part_runs = _sum_known([p["runs"] for p in parts])

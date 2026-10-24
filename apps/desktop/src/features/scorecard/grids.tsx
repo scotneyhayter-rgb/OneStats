@@ -5,7 +5,7 @@
  * (arrows / Enter / Tab) within the numeric cells via the tested nextCell helper.
  */
 
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -478,10 +478,24 @@ export function PartnershipsGrid(ctx: GridCtx) {
     }
   };
   const remove = async (id: string) => { await api.deletePartnership(workspaceId, inningsId, id); await refresh(); onChanged(); };
+  const derive = async () => {
+    try {
+      await api.derivePartnerships(workspaceId, inningsId); // regenerate calculated rows from FOW
+      await refresh();
+      onChanged();
+    } catch (e) {
+      onDirty(e instanceof ApiError ? e.message : "Could not generate partnerships from FOW");
+    }
+  };
+  const originBadge = (o: string) =>
+    o === "calculated" ? <Badge variant="brand">Auto</Badge>
+      : o === "verified" ? <Badge variant="success">Verified</Badge>
+        : o === "manual" ? <Badge variant="muted">Manual</Badge>
+          : <Badge variant="outline">?</Badge>;
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-sm">
+      <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-muted-foreground">
             <th className="px-1 py-1">Wkt</th>
@@ -489,6 +503,8 @@ export function PartnershipsGrid(ctx: GridCtx) {
             <th className="px-1 py-1">Batter 1</th>
             <th className="px-1 py-1">Batter 2</th>
             <th className="px-1 py-1">Ended</th>
+            <th className="px-1 py-1 text-center">Unbroken</th>
+            <th className="px-1 py-1">Source</th>
             {canManage && <th className="w-8" />}
           </tr>
         </thead>
@@ -514,6 +530,13 @@ export function PartnershipsGrid(ctx: GridCtx) {
                   {PARTNERSHIP_END_REASONS.map((x) => <option key={x} value={x}>{x.replace(/_/g, " ")}</option>)}
                 </Select>
               </td>
+              <td className="px-1 py-1 text-center">
+                <input type="checkbox" aria-label={`Partnership ${i + 1} unbroken`} disabled={!canManage}
+                  checked={r.unbroken === true}
+                  onChange={(e) => void commit(r.id, { unbroken: e.target.checked })}
+                  className="h-4 w-4 focus-visible:outline-2 focus-visible:outline-[var(--ring)]" />
+              </td>
+              <td className="px-1 py-1">{originBadge(r.origin)}</td>
               {canManage && (
                 <td className="px-1 py-1">
                   <button aria-label={`Remove partnership ${i + 1}`} onClick={() => void remove(r.id)}
@@ -525,17 +548,23 @@ export function PartnershipsGrid(ctx: GridCtx) {
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={6} className="px-1 py-3 text-sm text-muted-foreground">No partnerships recorded. Retirements and unbroken stands are supported.</td></tr>
+            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No partnerships recorded. Add one manually, or generate from Fall of Wickets.</td></tr>
           )}
         </tbody>
       </table>
       {canManage && (
-        <Button variant="outline" size="sm" className="mt-2" onClick={() => void addRow()}>
-          <Plus className="h-4 w-4" aria-hidden /> Add partnership
-        </Button>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void addRow()}>
+            <Plus className="h-4 w-4" aria-hidden /> Add partnership
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void derive()}>
+            <RefreshCw className="h-4 w-4" aria-hidden /> Auto-generate from Fall of Wickets
+          </Button>
+        </div>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        <Badge variant="muted">note</Badge> A retirement can leave two stands for one wicket — that is allowed.
+        <Badge variant="brand">Auto</Badge> partnerships are recalculated from Fall of Wickets (runs include extras);
+        <Badge variant="muted">Manual</Badge> entries are preserved. A retirement can leave two stands for one wicket.
       </p>
     </div>
   );

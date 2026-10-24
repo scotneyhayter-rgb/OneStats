@@ -450,6 +450,7 @@ export interface Partnership {
   player2_person_id: string | null;
   unbroken: boolean | null;
   end_reason: string | null;
+  origin: string; // calculated | manual | verified | unknown
   notes: string | null;
   evidence: string | null;
 }
@@ -759,4 +760,6 @@ export const api = {
     request<void>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships/${id}`, { method: "DELETE" }),
   validatePartnerships: (w: string, iid: string) =>
     request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships-validate`),
+  derivePartnerships: (w: string, iid: string) =>
+    request<Partnership[]>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships/derive`, { method: "POST" }),
 };

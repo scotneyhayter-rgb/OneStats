@@ -72,7 +72,24 @@ class FowUpdate(BaseModel):
     evidence: str | None = None
 
 
-class PartnershipCreate(BaseModel):
+_ORIGIN = "^(calculated|manual|verified|unknown)$"
+
+
+class _Contrib(BaseModel):
+    runs_b1: int | None = Field(default=None, ge=0)
+    runs_b2: int | None = Field(default=None, ge=0)
+    extras: int | None = Field(default=None, ge=0)
+    balls_b1: int | None = Field(default=None, ge=0)
+    balls_b2: int | None = Field(default=None, ge=0)
+    balls_total: int | None = Field(default=None, ge=0)
+    fours_b1: int | None = Field(default=None, ge=0)
+    sixes_b1: int | None = Field(default=None, ge=0)
+    fours_b2: int | None = Field(default=None, ge=0)
+    sixes_b2: int | None = Field(default=None, ge=0)
+    confidence: str | None = None
+
+
+class PartnershipCreate(_Contrib):
     wicket_number: int | None = Field(default=None, ge=1)
     runs: int | None = Field(default=None, ge=0)
     balls: int | None = Field(default=None, ge=0)
@@ -80,13 +97,14 @@ class PartnershipCreate(BaseModel):
     player2_person_id: UUID | None = None
     unbroken: bool | None = None
     end_reason: str | None = None
+    origin: str = Field(default="manual", pattern=_ORIGIN)
     notes: str | None = None
     evidence: str | None = None
     source_system: str | None = None
     source_ref: str | None = None
 
 
-class PartnershipUpdate(BaseModel):
+class PartnershipUpdate(_Contrib):
     wicket_number: int | None = Field(default=None, ge=1)
     runs: int | None = Field(default=None, ge=0)
     balls: int | None = Field(default=None, ge=0)
@@ -94,6 +112,7 @@ class PartnershipUpdate(BaseModel):
     player2_person_id: UUID | None = None
     unbroken: bool | None = None
     end_reason: str | None = None
+    origin: str | None = Field(default=None, pattern=_ORIGIN)
     notes: str | None = None
     evidence: str | None = None
 
@@ -168,6 +187,16 @@ def delete_partnership(workspace_id: UUID, innings_id: UUID, partnership_id: UUI
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
             pshp.delete_partnership(conn, workspace_id, str(ctx.user["id"]), partnership_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/partnerships/derive")
+def derive_partnerships(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> list[dict[str, Any]]:
+    """Regenerate calculated partnerships from Fall of Wickets (manual/verified rows preserved)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return [_ids(p) for p in pshp.derive_from_fow(conn, workspace_id, str(ctx.user["id"]), innings_id)]
         except ValueError as exc:
             raise _value_error(exc) from exc
 

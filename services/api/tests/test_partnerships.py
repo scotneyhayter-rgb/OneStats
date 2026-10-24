@@ -237,3 +237,48 @@ def test_invalid_inputs(conn):
     with pytest.raises(ValueError, match="players_must_differ"):
         pshp.create_partnership(conn, wid, ACTOR, innings_id=iid, wicket_number=1,
                                 player1_person_id=same, player2_person_id=same)
+
+
+def test_derive_partnerships_from_fow_standard(conn):
+    wid = _ws(conn, "PART DERIVE")
+    iid = _innings(conn, wid)
+    outs = [_person(conn, wid, n) for n in ("A", "B", "C", "D")]
+    # FOW at 35 / 78 / 112 / 150  ->  partnerships 35, 43, 34, 38 (differences, incl. extras)
+    for n, (score, who) in enumerate(zip((35, 78, 112, 150), outs), start=1):
+        pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=n, team_score=score, dismissed_person_id=who)
+    result = pshp.derive_from_fow(conn, wid, ACTOR, iid)
+    calc = [p for p in result if p["origin"] == "calculated"]
+    assert [p["runs"] for p in calc] == [35, 43, 34, 38]
+    assert [p["wicket_number"] for p in calc] == [1, 2, 3, 4]
+    assert calc[0]["player1_person_id"] == outs[0]  # dismissed batter is a participant (not invented)
+    assert calc[0]["player2_person_id"] is None       # partner not guessed
+    # recompute does not duplicate
+    again = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert len(again) == 4
+
+
+def test_derive_preserves_manual_and_flags_conflict(conn):
+    wid = _ws(conn, "PART DERIVE2")
+    iid = _innings(conn, wid)
+    a, b = _person(conn, wid, "A"), _person(conn, wid, "B")
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=35, dismissed_person_id=a)
+    # a MANUAL partnership for wicket 1 with a conflicting figure
+    manual = pshp.create_partnership(conn, wid, ACTOR, innings_id=iid, wicket_number=1, runs=99,
+                                     player1_person_id=a, player2_person_id=b, origin="manual")
+    pshp.derive_from_fow(conn, wid, ACTOR, iid)
+    # the manual row still exists (not overwritten) alongside the calculated one
+    assert pshp.get_partnership(conn, manual) is not None
+    assert pshp.get_partnership(conn, manual)["origin"] == "manual"
+    assert any(p["origin"] == "calculated" and p["runs"] == 35 for p in pshp.list_partnerships(conn, iid))
+    # conflict between manual (99) and FOW-derived (35) is flagged for review
+    assert "partnership_conflicts_fow" in pshp.validation_warnings(conn, iid)
+
+
+def test_derive_unbroken_final_stand(conn):
+    wid = _ws(conn, "PART DERIVE3")
+    iid = _innings(conn, wid)
+    a = _person(conn, wid, "A")
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=40, dismissed_person_id=a)
+    inn.set_official_total(conn, wid, ACTOR, iid, total=95, wickets=1, reason="scorebook")
+    result = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert result[-1]["unbroken"] is True and result[-1]["runs"] == 55  # 95 - 40
