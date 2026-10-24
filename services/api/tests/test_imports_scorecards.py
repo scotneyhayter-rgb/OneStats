@@ -110,7 +110,7 @@ def test_scorecard_promotes_into_existing_models(conn):
                             "WHERE source_ref = '700:1'")).mappings().one()
     assert bat["runs"] == 38 and bat["balls_faced"] == 41 and bat["fours"] == 5
     assert bat["person_id"] == p1 and bat["bowler_person_id"] == p2      # resolved via source identity
-    assert bat["dismissal_type"] is None                                # UNRESOLVED — never guessed
+    assert bat["dismissal_type"] == "bowled"                            # Howout 2 -> bowled (verified legend)
     assert bat["dismissal_source_code"] == "2"                          # raw Howout preserved
 
     bowl = conn.execute(text("SELECT person_id, wickets, runs_conceded, maidens, wides "
@@ -176,6 +176,36 @@ def test_rollback_removes_scorecards(conn):
     assert out["removed"]["innings"] == 1 and out["removed"]["match"] == 1
     assert conn.execute(text("SELECT count(*) FROM batting_entry")).scalar_one() == 0
     assert conn.execute(text("SELECT count(*) FROM innings")).scalar_one() == 0
+
+
+def test_howout_legend_mapping():
+    """The verified legend maps exactly the approved/mandated codes; everything else stays None."""
+    m = imports.map_howout
+    assert m(1) == "not_out" and m(2) == "bowled" and m(3) == "caught"
+    assert m(6) == "lbw" and m(7) == "run_out" and m(8) == "stumped"
+    assert m(0) == "dnb" and m(21) == "absent"                       # dnb/absent are non-wickets
+    assert m(20) == "retired_not_out" and m(22) == "retired_out"     # retired distinction
+    for c in (4, 5, 9, 10, 11, 12, 23, 24, 99, None, "x"):           # unresolved — never guessed
+        assert m(c) is None
+
+
+def test_remap_howout_fills_unresolved_without_overwriting(conn):
+    """remap_howout_dismissals sets the type in place for verified codes that are still unresolved,
+    never overwrites a type already set, never touches unmapped codes, and creates no rows."""
+    wid = _ws(conn, "SC REMAP")
+    _seed_players(conn, wid)
+    _promote(conn, wid)
+    before = conn.execute(text("SELECT count(*) FROM batting_entry")).scalar_one()
+    # simulate a pre-legend import: clear the mapped type on the code-2 row
+    conn.execute(text("UPDATE batting_entry SET dismissal_type = NULL WHERE source_ref = '700:1'"))
+    res = imports.remap_howout_dismissals(conn, wid, ACTOR)
+    assert res["by_type"].get("bowled") == 1
+    assert conn.execute(text("SELECT dismissal_type FROM batting_entry WHERE source_ref = '700:1'")).scalar_one() == "bowled"
+    assert "99" in res["still_unresolved"]  # the unknown code stays unresolved
+    assert conn.execute(text("SELECT dismissal_type FROM batting_entry WHERE source_ref = '700:2'")).scalar_one() is None
+    assert conn.execute(text("SELECT count(*) FROM batting_entry")).scalar_one() == before  # no rows created
+    # idempotent: a second remap changes nothing (does not overwrite the now-set type)
+    assert imports.remap_howout_dismissals(conn, wid, ACTOR)["updated"] == 0
 
 
 def test_unresolved_howout_report(conn):

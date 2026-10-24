@@ -46,6 +46,37 @@ from onestats.domain import (
 SOURCE_SYSTEM = "cricket_statz"
 _IMPORT_COMP_REF = "cricket_statz:import"
 
+# CricketStatz ``Howout`` dismissal-code legend -> OneStats dismissal_type. Source: the official
+# CricketStatz API documentation (cricketstatz.com/api-for-uploading-matches), corroborated by the
+# structural evidence in the export (bowler/fielder presence per code) and prior OneStats fixtures.
+# See docs/45-cricketstatz-howout-legend.md. ONLY verified codes are mapped; the raw code is always
+# preserved in ``dismissal_source_code``, and any code NOT in this table stays UNRESOLVED (NULL) for
+# administrator review — nothing is guessed. ``did not bat`` is a non-wicket, never a dismissal.
+CS_HOWOUT: dict[int, str] = {
+    0: "dnb",               # did not bat — NON-wicket (never a dismissal)
+    1: "not_out",           # NON-wicket
+    2: "bowled",
+    3: "caught",            # caught by a fielder
+    6: "lbw",
+    7: "run_out",           # credits no bowler
+    8: "stumped",
+    20: "retired_not_out",  # retired (hurt/ill) — NON-wicket; distinct from retired out
+    21: "absent",           # NON-wicket
+    22: "retired_out",      # retired out — a genuine dismissal (counts as a wicket)
+    # Documented but NOT yet approved -> left UNRESOLVED (NULL): 4 c&b, 5 ct behind, 9 hit wkt,
+    # 10 obstructed, 12 hit twice, 23 timed out. Code 11 (handled ball) has no exact OneStats type;
+    # code 24 is undocumented. All of these keep their raw code and await confirmation.
+}
+
+
+def map_howout(code: Any) -> str | None:
+    """OneStats dismissal_type for a CricketStatz Howout code, or None when the code is not in the
+    verified legend (left unresolved — never guessed). Non-integer/blank codes are unresolved too."""
+    try:
+        return CS_HOWOUT.get(int(code))
+    except (TypeError, ValueError):
+        return None
+
 # Confirmed by cross-reference (16a.14 / 16a.9).
 MATCHTYPE_LABELS = {1: "1 innings per side", 2: "2 innings per side", 3: "T20"}
 # Only 0/1/2 are evidence-confirmed; 3/4/8/9 must stay unresolved (never guessed).
@@ -303,6 +334,7 @@ def _stage_scorecards(
                 batter = _ref0(b.get("BatsmanID"))
                 if batter is not None:  # skip empty padding slots (BatsmanID 0)
                     howout = b.get("Howout")
+                    mapped = map_howout(howout)
                     _insert_record(
                         conn, wid, batch_id, "batting_entry", f"{iref}:{b.get('Batpos')}", b, {
                             "innings_source_ref": iref, "batter_source_ref": batter,
@@ -311,9 +343,11 @@ def _stage_scorecards(
                             "sixes": b.get("sixes"), "minutes": b.get("mins") or None,
                             "bowler_source_ref": _ref0(b.get("Bowler")),
                             "fielder_source_ref": _ref0(b.get("Fielder")),
-                            "howout_code": howout, "dismissal_type": None,  # UNRESOLVED — never guessed
+                            "howout_code": howout, "dismissal_type": mapped,
                         },
-                        issues=[f"howout_unresolved: code {howout} not mapped (preserved for review)"],
+                        # only genuinely-unmapped codes are flagged for review; the raw code is kept
+                        issues=None if mapped is not None else [
+                            f"howout_unresolved: code {howout} not in the verified legend (preserved for review)"],
                     )
                     n_bat += 1
                 # fall of wicket (parallel array on the batting rows): the Nth wicket
@@ -736,7 +770,9 @@ def _promote_scorecards(
             person_id=_person_by_source(conn, norm.get("batter_source_ref")),
             batting_position=norm.get("batting_position"), runs=norm.get("runs"),
             balls_faced=norm.get("balls_faced"), fours=norm.get("fours"), sixes=norm.get("sixes"),
-            minutes=norm.get("minutes"), dismissal_type=None,  # UNRESOLVED — mapped later from code
+            minutes=norm.get("minutes"),
+            # verified CricketStatz legend; an unmapped code stays NULL (unresolved), raw code kept
+            dismissal_type=map_howout(norm.get("howout_code")),
             dismissal_source_code=_s(norm.get("howout_code")),
             bowler_person_id=_person_by_source(conn, norm.get("bowler_source_ref")),
             fielder_person_id=_person_by_source(conn, norm.get("fielder_source_ref")),
@@ -789,6 +825,34 @@ def _promote_scorecards(
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=fid)
         created["fall_of_wicket"] += 1
+
+
+def remap_howout_dismissals(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, Any]:
+    """Apply the verified CricketStatz Howout legend to ALREADY-IMPORTED batting rows, in place.
+
+    Reads the preserved ``dismissal_source_code`` and sets ``dismissal_type`` where the code is in
+    the verified legend and the type is still unresolved (NULL). Never overwrites a type already set
+    (human/verified data is preserved), never creates rows (UPDATE only — no duplicates), and leaves
+    codes outside the legend unresolved. Every change is audited via ``batting.update_entry``."""
+    rows = conn.execute(
+        text("SELECT id, dismissal_source_code FROM batting_entry "
+             "WHERE source_system = :ss AND dismissal_type IS NULL AND dismissal_source_code IS NOT NULL"),
+        {"ss": SOURCE_SYSTEM},
+    ).mappings().all()
+    updated = 0
+    by_type: dict[str, int] = {}
+    still_unresolved: dict[str, int] = {}
+    for r in rows:
+        mapped = map_howout(r["dismissal_source_code"])
+        if mapped is None:
+            still_unresolved[r["dismissal_source_code"]] = still_unresolved.get(r["dismissal_source_code"], 0) + 1
+            continue
+        batting.update_entry(conn, workspace_id, actor, r["id"], dismissal_type=mapped)
+        updated += 1
+        by_type[mapped] = by_type.get(mapped, 0) + 1
+    audit.write_audit(conn, workspace_id, actor, "import.remap_howout", entity="workspace",
+                      entity_id=str(workspace_id), after={"updated": updated, "by_type": by_type})
+    return {"updated": updated, "by_type": by_type, "still_unresolved": still_unresolved}
 
 
 def rollback_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID) -> dict[str, Any]:
