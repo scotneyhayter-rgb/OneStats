@@ -151,7 +151,7 @@ export function ScorecardEditor({
         <Badge variant={match.status === "final" ? "success" : match.status === "abandoned" ? "warning" : "muted"}>
           {match.status}
         </Badge>
-        {match.classification !== "unclassified" && <Badge variant="brand">{match.classification.replace(/_/g, " ")}</Badge>}
+        {match.classification !== "unclassified" && <Badge variant="brand">{titleCase(match.classification)}</Badge>}
         <div className="flex-1" />
         {msg && <span className="text-sm text-success">{msg}</span>}
         {err && <span className="text-sm text-danger">{err}</span>}
@@ -334,14 +334,14 @@ function ClassificationControl({ match, canManage }: { match: MatchDetail; canMa
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Type">
           <Select value={cls} disabled={!canManage} onChange={(e) => setCls(e.target.value)} className="w-40">
-            {CLASSIFICATIONS.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+            {CLASSIFICATIONS.map((c) => <option key={c} value={c}>{titleCase(c)}</option>)}
           </Select>
         </Field>
         {isFinal && (
           <Field label="Finals stage">
             <Select value={stage} disabled={!canManage} onChange={(e) => setStage(e.target.value)} className="w-44">
               <option value="">— unspecified —</option>
-              {FINALS_STAGES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+              {FINALS_STAGES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
             </Select>
           </Field>
         )}
