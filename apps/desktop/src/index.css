@@ -32,6 +32,8 @@
   --danger: #dc2626;
   --success: #16a34a;
   --warning: #d97706;
+  /* OneStats cricket-ball red — for limited decorative accents only (not primary actions). */
+  --ball-red: #c81e1e;
   --radius: 0.625rem;
 }
 
@@ -58,6 +60,7 @@
   --danger: #f87171;
   --success: #4ade80;
   --warning: #fbbf24;
+  --ball-red: #ef4444;
 }
 
 /* Expose tokens as Tailwind color utilities (bg-background, text-foreground, ...). */
@@ -81,6 +84,7 @@
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-ball-red: var(--ball-red);
   --radius-app: var(--radius);
 }
 

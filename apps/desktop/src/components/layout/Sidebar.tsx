@@ -1,16 +1,21 @@
-import { Building2, LogOut } from "lucide-react";
+import { Building2, Info, LogOut } from "lucide-react";
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { MANAGEMENT_SECTIONS, NAV_SECTIONS, type NavSection } from "../../app/navigation";
+import onestatsIcon from "../../assets/onestats-icon.png";
+import onestatsLogo from "../../assets/onestats-logo.png";
 import { useAuth } from "../../lib/auth";
 import { useLayout } from "../../lib/layout";
 import { APP_VERSION, PHASE } from "../../lib/version";
 import { cn } from "../../lib/utils";
+import { Modal } from "../ui/dialog";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Sidebar() {
   const { user, logout } = useAuth();
   const { sidebarCollapsed } = useLayout();
   const collapsed = sidebarCollapsed;
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const navItem = (s: { path: string; label: string; icon: NavSection["icon"] }) => {
     const Icon = s.icon;
@@ -46,12 +51,13 @@ export function Sidebar() {
       )}
     >
       <div className={cn("flex items-center gap-2 py-5", collapsed ? "justify-center px-0" : "px-5")}>
-        <div
-          aria-hidden
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-app)] bg-brand font-bold text-brand-foreground"
-        >
-          1
-        </div>
+        {/* Official OneStats circular icon (supplied artwork, unmodified). It has a white
+            background, so it sits on a white plate to read clearly on the dark sidebar. */}
+        <img
+          src={onestatsIcon}
+          alt="OneStats"
+          className="h-8 w-8 shrink-0 rounded-[var(--radius-app)] bg-white object-contain p-0.5"
+        />
         {!collapsed && (
           <div className="leading-tight">
             <div className="text-sm font-semibold">OneStats</div>
@@ -98,12 +104,35 @@ export function Sidebar() {
         </div>
       )}
 
-      {!collapsed && (
-        <div className="px-5 py-3 text-[11px] text-sidebar-muted">
-          <div>v{APP_VERSION}</div>
-          <div>{PHASE}</div>
+      <div className={cn("py-3", collapsed ? "flex justify-center px-0" : "px-5")}>
+        <button
+          onClick={() => setAboutOpen(true)}
+          title="About OneStats"
+          aria-label="About OneStats"
+          className={cn(
+            "flex items-center gap-2 rounded-[var(--radius-app)] text-[11px] text-sidebar-muted hover:text-sidebar-foreground",
+            collapsed ? "justify-center p-2 hover:bg-sidebar-active" : "",
+          )}
+        >
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {!collapsed && <span>About · v{APP_VERSION} · {PHASE}</span>}
+        </button>
+      </div>
+
+      <Modal open={aboutOpen} title="About OneStats" onClose={() => setAboutOpen(false)}>
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-full rounded-[var(--radius-app)] border border-border bg-white p-4">
+            <img src={onestatsLogo} alt="OneStats — Cricket Statistics Made Simple" className="mx-auto h-auto w-full max-w-[360px]" />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Discover the history · Understand the numbers · Celebrate the achievements.
+          </p>
+          <div className="text-xs text-muted-foreground">
+            <div>Version {APP_VERSION}</div>
+            <div>{PHASE}</div>
+          </div>
         </div>
-      )}
+      </Modal>
     </nav>
   );
 }

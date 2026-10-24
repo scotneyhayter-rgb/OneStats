@@ -1,5 +1,6 @@
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import onestatsLogo from "../../assets/onestats-logo.png";
 import { ApiError, api, setToken } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { Button } from "../../components/ui/button";
@@ -12,14 +13,10 @@ function AuthShell({ title, subtitle, icon, children }: {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-background p-4 text-foreground">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-app)] bg-brand text-lg font-bold text-brand-foreground">
-            1
-          </div>
-          <div>
-            <div className="text-lg font-semibold">OneStats</div>
-            <div className="text-xs text-muted-foreground">Cricket Statistics Made Simple</div>
-          </div>
+        {/* Official OneStats logo (supplied artwork, unmodified). It has a white background, so it
+            sits on a white plate to read consistently in both light and dark themes. */}
+        <div className="mb-6 flex justify-center rounded-[var(--radius-app)] border border-border bg-white p-4 shadow-sm">
+          <img src={onestatsLogo} alt="OneStats — Cricket Statistics Made Simple" className="h-auto w-full max-w-[280px]" />
         </div>
         <Card>
           <CardContent className="py-6">
