@@ -16,6 +16,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import innings as innings_domain
+from onestats.domain import results
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches/{match_id}/innings", tags=["innings"])
 
@@ -88,7 +89,17 @@ def create_innings(workspace_id: UUID, match_id: UUID, body: InningsCreate, sett
                 conn, workspace_id, str(ctx.user["id"]), match_id=match_id, **body.model_dump())
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_result(conn, workspace_id, str(ctx.user["id"]), match_id)
         return _ids(innings_domain.get_innings(conn, iid))
+
+
+def _auto_result(conn: Any, workspace_id: UUID, actor: str, match_id: UUID) -> None:
+    """Recalculate the match result automatically after an innings changes (Phase 7.3). Non-blocking
+    — only a calculated/unknown result is updated; recorded/manual results are preserved."""
+    try:
+        results.auto_apply_result(conn, workspace_id, actor, match_id)
+    except ValueError:
+        pass
 
 
 @router.get("")
@@ -101,21 +112,25 @@ def list_innings(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx:
 def update_innings(workspace_id: UUID, match_id: UUID, innings_id: UUID, body: InningsUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(innings_domain.update_innings(conn, workspace_id, str(ctx.user["id"]), innings_id,
-                                                      **body.model_dump(exclude_none=True)))
+            updated = _ids(innings_domain.update_innings(conn, workspace_id, str(ctx.user["id"]), innings_id,
+                                                          **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_result(conn, workspace_id, str(ctx.user["id"]), match_id)
+        return updated
 
 
 @router.post("/{innings_id}/official-total")
 def set_official_total(workspace_id: UUID, match_id: UUID, innings_id: UUID, body: OfficialOverride, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(innings_domain.set_official_total(
+            out = _ids(innings_domain.set_official_total(
                 conn, workspace_id, str(ctx.user["id"]), innings_id, total=body.total, wickets=body.wickets,
                 reason=body.reason, evidence=body.evidence))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        _auto_result(conn, workspace_id, str(ctx.user["id"]), match_id)
+        return out
 
 
 @router.get("/{innings_id}/totals")

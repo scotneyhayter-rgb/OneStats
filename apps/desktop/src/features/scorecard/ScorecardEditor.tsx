@@ -35,6 +35,21 @@ import {
 /** "no_toss" -> "No Toss", "in_progress" -> "In Progress" — consistent, readable option labels. */
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+/** Human-readable match result, e.g. "Rhymney/Moyston won by 42 runs" (Phase 7.3). Display only. */
+function formatResult(m: MatchDetail, teamName: (id: string | null) => string | null): string {
+  const t = m.result_type;
+  if (!t || t === "unknown") return "Result not yet determined";
+  const labels: Record<string, string> = {
+    tie: "Match tied", draw: "Match drawn", no_result: "No result",
+    abandoned: "Match abandoned", washout: "Washed out", forfeit: "Match forfeited",
+  };
+  if (labels[t]) return labels[t];
+  const w = teamName(m.won_by_team_id) ?? "Winner";
+  if (m.margin_runs != null) return `${w} won by ${m.margin_runs} run${m.margin_runs === 1 ? "" : "s"}`;
+  if (m.margin_wickets != null) return `${w} won by ${m.margin_wickets} wicket${m.margin_wickets === 1 ? "" : "s"}`;
+  return `${w} won`;
+}
+
 const CLASSIFICATIONS = ["unclassified", "home_away", "final", "grand_final", "other"];
 const FINALS_STAGES = ["qualifying_final", "elimination_final", "semi_final", "preliminary_final", "grand_final", "custom"];
 const RESULT_TYPES = ["home_win", "away_win", "tie", "draw", "no_result", "abandoned", "washout", "forfeit", "unknown"];
@@ -749,6 +764,20 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
   return (
     <SectionCard icon={Trophy} title="Match Result and Notes"
       description="Result, winner and margin (tie and draw are distinct); notes and match status.">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
+        <Trophy className="h-5 w-5 shrink-0 text-brand" aria-hidden />
+        <span className="text-base font-semibold">{formatResult(match, teamName)}</span>
+        {match.result_source && match.result_source !== "unknown" && (
+          <Badge variant={match.result_source === "manual" ? "muted" : match.result_source === "recorded" ? "outline" : "success"}>
+            {match.result_source === "calculated" ? "Auto-calculated" : titleCase(match.result_source)}
+          </Badge>
+        )}
+      </div>
+      {(match.result_warnings?.length ?? 0) > 0 && (
+        <div className="mb-3 rounded-[var(--radius-app)] border border-warning/40 bg-warning/5 p-2 text-xs text-warning">
+          {match.result_warnings!.map((w, i) => <div key={i}>⚠ {w}</div>)}
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Result">
           <Select value={resultType} disabled={!canManage} onChange={(e) => setResultType(e.target.value)}>
@@ -769,7 +798,8 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
           result_type: resultType, won_by_team_id: winner || null,
           margin_runs: /^\d+$/.test(runs.trim()) ? Number(runs) : null,
           margin_wickets: /^\d+$/.test(wkts.trim()) ? Number(wkts) : null,
-        })}>Save result</Button>
+          result_source: "manual",  // a manual edit overrides and is preserved from auto-calculation
+        })}>Save result (manual override)</Button>
       )}
       <div className="mt-4">
         <Field label="Notes" hint="Autosaved locally as you type; committed to the record on blur.">

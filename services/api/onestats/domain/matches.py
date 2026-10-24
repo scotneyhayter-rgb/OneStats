@@ -33,7 +33,8 @@ TOSS_DECISIONS = ("bat", "field", "no_toss", "not_recorded", "unknown")
 _COLS = (
     "id, workspace_id, competition_id, grade_id, season_id, venue_id, match_date, date_precision, "
     "round, matchtype, format, status, classification, finals_stage, classification_verified, "
-    "classification_ref_id, result_type, result_raw, won_by_team_id, margin_runs, margin_wickets, "
+    "classification_ref_id, result_type, result_raw, result_source, result_override_reason, "
+    "won_by_team_id, margin_runs, margin_wickets, "
     "toss_winner_team_id, toss_decision, "
     "include_in_statistics, notes, source_system, source_ref, created_at, updated_at"
 )
@@ -173,16 +174,21 @@ def set_classification(
     return after
 
 
+RESULT_SOURCES = ("calculated", "recorded", "manual", "unknown")
+
+
 def set_result(
     conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *, result_type: str,
     won_by_team_id: UUID | None = None, margin_runs: int | None = None, margin_wickets: int | None = None,
-    result_raw: str | None = None,
+    result_raw: str | None = None, result_source: str = "recorded", result_override_reason: str | None = None,
 ) -> dict[str, Any]:
     before = get_match(conn, match_id)
     if before is None:
         raise ValueError("match_not_found")
     if result_type not in RESULT_TYPES:
         raise ValueError("invalid_result_type")
+    if result_source not in RESULT_SOURCES:
+        raise ValueError("invalid_result_source")
     if won_by_team_id is not None and conn.execute(
         text("SELECT 1 FROM match_team WHERE match_id = :m AND team_id = :t"),
         {"m": match_id, "t": won_by_team_id},
@@ -190,9 +196,10 @@ def set_result(
         raise ValueError("winner_not_in_match")
     conn.execute(
         text("UPDATE match SET result_type = :rt, won_by_team_id = :w, margin_runs = :mr, "
-             "margin_wickets = :mw, result_raw = coalesce(:raw, result_raw), updated_at = now() WHERE id = :id"),
+             "margin_wickets = :mw, result_raw = coalesce(:raw, result_raw), result_source = :rs, "
+             "result_override_reason = :reason, updated_at = now() WHERE id = :id"),
         {"rt": result_type, "w": won_by_team_id, "mr": margin_runs, "mw": margin_wickets,
-         "raw": result_raw, "id": match_id},
+         "raw": result_raw, "rs": result_source, "reason": result_override_reason, "id": match_id},
     )
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.result", entity="match", entity_id=str(match_id),

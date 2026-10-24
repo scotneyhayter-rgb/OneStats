@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import matches
+from onestats.domain import matches, results
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
@@ -95,6 +95,9 @@ class ResultSet(BaseModel):
     margin_runs: int | None = Field(default=None, ge=0)
     margin_wickets: int | None = Field(default=None, ge=0, le=10)
     result_raw: str | None = None
+    # a result entered/edited in the UI is a 'manual' override by default (preserved from auto-calc)
+    result_source: str = Field(default="manual", pattern="^(calculated|recorded|manual|unknown)$")
+    result_override_reason: str | None = None
 
 
 class TeamSet(BaseModel):
@@ -142,6 +145,9 @@ def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ma
         if d is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "match_not_found")
         d["teams"] = [_ids(t) for t in d["teams"]]
+        # Phase 7.3: the result calculated from the scorecard, and any recorded-vs-calculated conflict
+        d["computed_result"] = _ids(results.compute_result(conn, match_id))
+        d["result_warnings"] = results.result_warnings(conn, match_id)
         return _ids(d)
 
 
@@ -173,7 +179,8 @@ def set_result(workspace_id: UUID, match_id: UUID, body: ResultSet, settings: Se
             return _ids(matches.set_result(
                 conn, workspace_id, str(ctx.user["id"]), match_id, result_type=body.result_type,
                 won_by_team_id=body.won_by_team_id, margin_runs=body.margin_runs,
-                margin_wickets=body.margin_wickets, result_raw=body.result_raw))
+                margin_wickets=body.margin_wickets, result_raw=body.result_raw,
+                result_source=body.result_source, result_override_reason=body.result_override_reason))
         except ValueError as exc:
             raise _value_error(exc) from exc
 

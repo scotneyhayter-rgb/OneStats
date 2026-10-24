@@ -365,6 +365,8 @@ export interface Match {
   classification_verified: boolean;
   result_type: string | null;
   result_raw: string | null;
+  result_source?: string | null;
+  result_override_reason?: string | null;
   won_by_team_id: string | null;
   margin_runs: number | null;
   margin_wickets: number | null;
@@ -378,8 +380,19 @@ export interface Match {
   home_team_id?: string | null;
   away_team_id?: string | null;
 }
+export interface ComputedResult {
+  status: string;  // sufficient | insufficient | requires_review
+  result_type?: string | null;
+  won_by_team_id?: string | null;
+  margin_runs?: number | null;
+  margin_wickets?: number | null;
+  basis?: string;
+  reason?: string;
+}
 export interface MatchDetail extends Match {
   teams: MatchTeam[];
+  computed_result?: ComputedResult;   // Phase 7.3: result derived from the scorecard
+  result_warnings?: string[];
 }
 export interface Innings {
   id: string;

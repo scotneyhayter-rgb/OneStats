@@ -18,6 +18,7 @@ from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import batting as batting_domain
 from onestats.domain import partnerships as pshp
+from onestats.domain import results
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/innings/{innings_id}/batting", tags=["batting"]
@@ -90,6 +91,7 @@ def create_entry(workspace_id: UUID, innings_id: UUID, body: BattingCreate, sett
                 conn, workspace_id, str(ctx.user["id"]), innings_id=innings_id, **body.model_dump())
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
         return _ids(batting_domain.get_entry(conn, eid))
 
 
@@ -103,10 +105,12 @@ def list_entries(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ct
 def update_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, body: BattingUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return _ids(batting_domain.update_entry(conn, workspace_id, str(ctx.user["id"]), entry_id,
-                                                    **body.model_dump(exclude_none=True)))
+            updated = _ids(batting_domain.update_entry(conn, workspace_id, str(ctx.user["id"]), entry_id,
+                                                        **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
+        return updated
 
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -116,6 +120,7 @@ def delete_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, settings:
             batting_domain.delete_entry(conn, workspace_id, str(ctx.user["id"]), entry_id)
         except ValueError as exc:
             raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
 
 
 class BattingReorder(BaseModel):
@@ -135,6 +140,7 @@ def reorder(workspace_id: UUID, innings_id: UUID, body: BattingReorder, settings
             pshp.derive_from_fow(conn, workspace_id, str(ctx.user["id"]), innings_id)
         except ValueError:
             pass
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
         return rows
 
 

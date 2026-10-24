@@ -5,8 +5,7 @@
  * (Auto/Manual/Verified), both batter names and the runs. Verifies the UI, not just backend funcs.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { Partnership } from "../../lib/api";
 
 const H = vi.hoisted(() => ({

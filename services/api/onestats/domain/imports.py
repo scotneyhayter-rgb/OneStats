@@ -661,8 +661,11 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         rtype = norm.get("result_label") if norm.get("result_status") == "known" else "unknown"
         won_by = home_id if rtype == "home_win" else away_id if rtype == "away_win" else None
         result = norm.get("result")
+        # a known CricketStatz result is preserved as 'recorded'; an unknown one is left 'unknown'
+        # so Stage 7.3 can calculate it from the imported scorecard where the evidence supports it.
         matches.set_result(conn, workspace_id, actor, mid, result_type=rtype or "unknown",
-                           won_by_team_id=won_by, result_raw=None if result is None else str(result))
+                           won_by_team_id=won_by, result_raw=None if result is None else str(result),
+                           result_source="recorded" if norm.get("result_status") == "known" else "unknown")
         # classification is intentionally NOT set here — the round is a hint only (user rule).
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
         created["match"] += 1
@@ -848,6 +851,17 @@ def _promote_scorecards(
         except ValueError:
             pass  # an innings that cannot be derived is left without partnerships, never blocked
     created["partnership"] = created.get("partnership", 0) + derived_total
+
+    # Phase 7.3: calculate match results from the imported scorecard where the CricketStatz result
+    # was unknown (recorded results are preserved). Non-blocking and idempotent.
+    from onestats.domain import results  # local import avoids a module cycle
+    match_ids = {conn.execute(text("SELECT match_id FROM innings WHERE id = :i"), {"i": i}).scalar_one()
+                 for i in touched_innings}
+    for mid in match_ids:
+        try:
+            results.auto_apply_result(conn, wid, actor, mid)
+        except ValueError:
+            pass
 
 
 def controlled_import(
