@@ -74,9 +74,28 @@ def main() -> int:
         "players": [p for p in (data.get("players") or []) if p.get("PlayerID") in pids],
         "officials": [o for o in (data.get("officials") or []) if o.get("PlayerID") in pids],
     }
-    struct_payload = {k: data.get(k) for k in ("clubs", "teams", "venues", "divisions")}
-    struct_payload["matches"] = matches
+
+    # Scope structural records to ONLY what the selected matches reference — nothing superfluous.
+    team_ids = {m.get("HomeTeam") for m in matches} | {m.get("AwayTeam") for m in matches}
+    for w in scard["innings"]:
+        for inn in w.get("cricket_Innings") or []:
+            team_ids |= {inn.get("battingteam"), inn.get("bowlingteam")}
+    team_ids -= {0, None}
+    grade_ids = {m.get("Grade") for m in matches} - {0, None}
+    ground_ids = {m.get("Ground") for m in matches} - {0, None}
+    teams = [t for t in (data.get("teams") or []) if t.get("TeamID") in team_ids]
+    club_ids = {t.get("ClubID") for t in teams} - {0, None}
+    struct_payload = {
+        "clubs": [c for c in (data.get("clubs") or []) if c.get("ClubID") in club_ids],
+        "teams": teams,
+        "venues": [v for v in (data.get("venues") or []) if v.get("GroundID") in ground_ids],
+        "divisions": [d for d in (data.get("divisions") or []) if d.get("GradeID") in grade_ids],
+        "matches": matches,
+    }
     struct_payload.update(scard)
+    print(f"slice scope: {len(struct_payload['clubs'])} clubs, {len(teams)} teams, "
+          f"{len(struct_payload['venues'])} venues, {len(struct_payload['divisions'])} grades, "
+          f"{len(matches)} matches, {len(people_payload['players'])} players")
 
     eng = create_engine(s.database_url, future=True)
     with eng.connect() as c:
