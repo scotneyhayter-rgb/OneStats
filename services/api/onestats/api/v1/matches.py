@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import matches, results, seasons
+from onestats.domain import match_formats, matches, results, seasons
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
@@ -119,7 +119,11 @@ class TossSet(BaseModel):
 def create_match(workspace_id: UUID, body: MatchCreate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            mid = matches.create_match(conn, workspace_id, str(ctx.user["id"]), **body.model_dump())
+            data = body.model_dump()
+            # default the format from the workspace's nominated default when none is given (Phase 7.5)
+            if not data.get("format"):
+                data["format"] = match_formats.default_format_label(conn, workspace_id)
+            mid = matches.create_match(conn, workspace_id, str(ctx.user["id"]), **data)
         except ValueError as exc:
             raise _value_error(exc) from exc
         _auto_season(conn, workspace_id, str(ctx.user["id"]), mid)  # Phase 7.4

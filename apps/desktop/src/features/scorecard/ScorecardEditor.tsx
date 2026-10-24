@@ -20,7 +20,7 @@ import { Select } from "../../components/ui/select";
 import { ErrorState, LoadingState } from "../../components/states/States";
 import {
   api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail, type MatchTeam,
-  type Person, type Team, type Venue, type Grade, type Season, type CompetitionDetail,
+  type Person, type Team, type Venue, type Grade, type Season, type CompetitionDetail, type MatchFormat,
 } from "../../lib/api";
 import { useLayout } from "../../lib/layout";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -276,6 +276,11 @@ function MatchDetailsSection({
   const away = match.teams.find((t) => !t.is_home)?.team_id ?? "";
   const grades: Grade[] = compDetail?.grades ?? [];
   const seasons: Season[] = compDetail?.seasons ?? [];
+  const workspaceId = useWorkspaceId() ?? "";
+  const [formats, setFormats] = useState<MatchFormat[]>([]);
+  useEffect(() => {
+    if (workspaceId) api.listMatchFormats(workspaceId, { enabled_only: true }).then(setFormats).catch(() => {});
+  }, [workspaceId]);
   return (
     <SectionCard icon={ClipboardList} title="Match Details"
       description="Competition, grade, season, venue, date and the explicit classification.">
@@ -308,10 +313,15 @@ function MatchDetailsSection({
         <Field label="Date" hint="Leave blank if unknown — never guessed.">
           <Input type="date" value={match.match_date ?? ""} disabled={!canManage} onChange={(e) => onPatch({ match_date: e.target.value || null })} />
         </Field>
-        <Field label="Format">
-          <Input value={match.format ?? ""} placeholder="e.g. two-day, limited overs" disabled={!canManage}
-            onBlur={(e) => { if ((e.target.value || null) !== match.format) onPatch({ format: e.target.value || null }); }}
-            onChange={() => { /* committed on blur */ }} defaultValue={match.format ?? ""} />
+        <Field label="Format" hint="Playing format only — separate from the statistical classification. Configure the list in Settings.">
+          <Select value={match.format ?? ""} disabled={!canManage}
+            onChange={(e) => { if ((e.target.value || null) !== match.format) onPatch({ format: e.target.value || null }); }}>
+            <option value="">— none —</option>
+            {/* preserve a historical/imported/disabled value that isn't in the enabled list */}
+            {match.format && !formats.some((f) => f.label === match.format) &&
+              <option value={match.format}>{match.format} (current)</option>}
+            {formats.map((f) => <option key={f.id} value={f.label}>{f.label}{f.is_default ? " (default)" : ""}</option>)}
+          </Select>
         </Field>
         <Field label="Round" hint="A label only — never used to classify the match.">
           <Input defaultValue={match.round ?? ""} placeholder="e.g. Round 5, GF" disabled={!canManage}

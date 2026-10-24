@@ -179,6 +179,15 @@ export interface Team {
   status: string;
   merged_into_id: string | null;
 }
+export interface MatchFormat {
+  id: string;
+  code: string;
+  label: string;
+  enabled: boolean;
+  is_default: boolean;
+  is_custom: boolean;
+  sort_order: number;
+}
 export interface Competition {
   id: string;
   name: string;
@@ -513,6 +522,13 @@ export const api = {
     request<Workspace>("/api/v1/workspaces", { method: "POST", body: { name, short_name, type } }),
   updateWorkspace: (w: string, body: Record<string, unknown>) =>
     request<Workspace>(`/api/v1/workspaces/${w}`, { method: "PATCH", body }),
+  // --- Phase 7.5: workspace-configurable match formats ---
+  listMatchFormats: (w: string, opts: { enabled_only?: boolean } = {}) =>
+    request<MatchFormat[]>(`/api/v1/workspaces/${w}/match-formats${qs(opts)}`),
+  createMatchFormat: (w: string, label: string) =>
+    request<MatchFormat>(`/api/v1/workspaces/${w}/match-formats`, { method: "POST", body: { label } }),
+  updateMatchFormat: (w: string, id: string, body: { enabled?: boolean; is_default?: boolean }) =>
+    request<MatchFormat>(`/api/v1/workspaces/${w}/match-formats/${id}`, { method: "PATCH", body }),
 
   // onboarding
   startDraft: (template?: string) =>
