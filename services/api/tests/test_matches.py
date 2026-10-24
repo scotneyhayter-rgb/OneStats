@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, text
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import competitions, finals_series, matches, permissions, playing_conditions
+from onestats.domain import innings as inn
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(
@@ -153,6 +154,72 @@ def test_teams_and_result(conn):
     # a winner must be a side of the match
     with pytest.raises(ValueError, match="winner_not_in_match"):
         matches.set_result(conn, wid, ACTOR, mid, result_type="away_win", won_by_team_id=uuid.uuid4())
+
+
+def test_toss_recorded_explicitly_and_never_inferred(conn):
+    wid = _ws(conn, "MATCH TOSS")
+    cid = _comp(conn, wid)
+    org = _org(conn, wid, "Club")
+    home = _team(conn, wid, org, "Home XI")
+    away = _team(conn, wid, org, "Away XI")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    # an innings where HOME bats first does NOT set the toss (never inferred from batting order)
+    inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    m = matches.get_match(conn, mid)
+    assert m["toss_winner_team_id"] is None and m["toss_decision"] is None  # unknown, not inferred
+    # record it explicitly: away won the toss and chose to field
+    matches.set_toss(conn, wid, ACTOR, mid, toss_winner_team_id=away, toss_decision="field")
+    m = matches.get_match(conn, mid)
+    assert m["toss_winner_team_id"] == away and m["toss_decision"] == "field"
+    # 'no_toss' / 'not_recorded' are representable and distinct from a blank
+    matches.set_toss(conn, wid, ACTOR, mid, toss_winner_team_id=None, toss_decision="no_toss")
+    assert matches.get_match(conn, mid)["toss_decision"] == "no_toss"
+    # a toss winner must be a side of the match; a bad decision is rejected
+    with pytest.raises(ValueError, match="toss_winner_not_in_match"):
+        matches.set_toss(conn, wid, ACTOR, mid, toss_winner_team_id=uuid.uuid4(), toss_decision="bat")
+    with pytest.raises(ValueError, match="invalid_toss_decision"):
+        matches.set_toss(conn, wid, ACTOR, mid, toss_decision="heads")
+
+
+def test_match_officials_acting_captain_and_second_keeper(conn):
+    wid = _ws(conn, "MATCH OFFICIALS")
+    cid = _comp(conn, wid)
+    org = _org(conn, wid, "Club")
+    home = _team(conn, wid, org, "Home XI")
+    cap = _person(conn, wid, "Captain")
+    acting = _person(conn, wid, "Acting Captain")
+    keeper = _person(conn, wid, "Keeper")
+    keeper2 = _person(conn, wid, "Replacement Keeper")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True,
+                     captain_person_id=cap, acting_captain_person_id=acting,
+                     wicketkeeper_person_id=keeper, wicketkeeper2_person_id=keeper2)
+    row = next(t for t in matches.list_match_teams(conn, mid) if t["is_home"])
+    assert row["captain_person_id"] == cap and row["acting_captain_person_id"] == acting
+    assert row["wicketkeeper_person_id"] == keeper and row["wicketkeeper2_person_id"] == keeper2
+    # officials are match-specific and can be cleared explicitly (unknown, not a confirmed fact)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    row = next(t for t in matches.list_match_teams(conn, mid) if t["is_home"])
+    assert row["acting_captain_person_id"] is None and row["wicketkeeper2_person_id"] is None
+
+
+def test_innings_batting_team_is_explicit_not_assumed(conn):
+    # the AWAY side may bat first (e.g. after winning the toss and choosing to bat) — supported
+    wid = _ws(conn, "MATCH BATFIRST")
+    cid = _comp(conn, wid)
+    org = _org(conn, wid, "Club")
+    home = _team(conn, wid, org, "Home XI")
+    away = _team(conn, wid, org, "Away XI")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=away, bowling_team_id=home)
+    assert inn.get_innings(conn, i1)["batting_team_id"] == away
+    # a follow-on style second innings with the SAME side batting again is allowed
+    i2 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=2, batting_team_id=away, bowling_team_id=home)
+    assert inn.get_innings(conn, i2)["batting_team_id"] == away
 
 
 def test_one_home_one_away(conn):

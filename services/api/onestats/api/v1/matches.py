@@ -31,6 +31,8 @@ _VALUE_ERR_STATUS = {
     "venue_not_found": status.HTTP_404_NOT_FOUND,
     "team_not_found": status.HTTP_404_NOT_FOUND,
     "winner_not_in_match": status.HTTP_409_CONFLICT,
+    "toss_winner_not_in_match": status.HTTP_409_CONFLICT,
+    "invalid_toss_decision": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -99,8 +101,15 @@ class TeamSet(BaseModel):
     team_id: UUID
     is_home: bool
     captain_person_id: UUID | None = None
+    acting_captain_person_id: UUID | None = None
     wicketkeeper_person_id: UUID | None = None
+    wicketkeeper2_person_id: UUID | None = None
     bonus_points: float | None = None
+
+
+class TossSet(BaseModel):
+    toss_winner_team_id: UUID | None = None
+    toss_decision: str | None = Field(default=None, pattern="^(bat|field|no_toss|not_recorded|unknown)$")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -175,8 +184,20 @@ def set_team(workspace_id: UUID, match_id: UUID, body: TeamSet, settings: Settin
         try:
             return _ids(matches.set_team(
                 conn, workspace_id, str(ctx.user["id"]), match_id, team_id=body.team_id, is_home=body.is_home,
-                captain_person_id=body.captain_person_id, wicketkeeper_person_id=body.wicketkeeper_person_id,
+                captain_person_id=body.captain_person_id, acting_captain_person_id=body.acting_captain_person_id,
+                wicketkeeper_person_id=body.wicketkeeper_person_id, wicketkeeper2_person_id=body.wicketkeeper2_person_id,
                 bonus_points=body.bonus_points))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.post("/{match_id}/toss")
+def set_toss(workspace_id: UUID, match_id: UUID, body: TossSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _ids(matches.set_toss(
+                conn, workspace_id, str(ctx.user["id"]), match_id,
+                toss_winner_team_id=body.toss_winner_team_id, toss_decision=body.toss_decision))
         except ValueError as exc:
             raise _value_error(exc) from exc
 

@@ -327,7 +327,9 @@ export interface MatchTeam {
   team_id: string;
   is_home: boolean;
   captain_person_id: string | null;
+  acting_captain_person_id: string | null;
   wicketkeeper_person_id: string | null;
+  wicketkeeper2_person_id: string | null;
   bonus_points: number | null;
 }
 export interface Match {
@@ -350,6 +352,8 @@ export interface Match {
   won_by_team_id: string | null;
   margin_runs: number | null;
   margin_wickets: number | null;
+  toss_winner_team_id: string | null;
+  toss_decision: string | null;
   include_in_statistics: boolean;
   notes: string | null;
   source_system: string | null;
@@ -687,6 +691,8 @@ export const api = {
     request<Match>(`/api/v1/workspaces/${w}/matches/${id}/result`, { method: "POST", body }),
   setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
+  setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Match>(`/api/v1/workspaces/${w}/matches/${id}/toss`, { method: "POST", body }),
   getMatchConditions: (w: string, id: string) =>
     request<ResolvedConditions>(`/api/v1/workspaces/${w}/matches/${id}/conditions`),
 

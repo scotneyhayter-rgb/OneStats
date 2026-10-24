@@ -12,16 +12,18 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { ConfirmDialog } from "../../components/ui/dialog";
 import { Input, Textarea } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { ErrorState, LoadingState } from "../../components/states/States";
 import {
-  api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail,
+  api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail, type MatchTeam,
   type Person, type Team, type Venue, type Grade, type Season, type CompetitionDetail,
 } from "../../lib/api";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Field } from "../manage/_shared";
 import { BattingGrid, BowlingGrid, FowGrid, PartnershipsGrid } from "./grids";
+import { PlayerSelect } from "./PlayerSelect";
 import {
   deserializeDraft, draftKey, inningsAdvisories, INNINGS_STATUSES, serializeDraft, showNum,
 } from "./scorecard-logic";
@@ -138,6 +140,13 @@ export function ScorecardEditor({
           try { await api.setMatchTeam(workspaceId, matchId, { team_id, is_home }); await load(); }
           catch (e) { setErr(e instanceof ApiError ? e.message : "Could not set team"); }
         }}
+      />
+
+      <TossAndOfficialsSection
+        workspaceId={workspaceId} matchId={matchId} match={match} canManage={canManage}
+        teamName={teamName} nameOf={nameOf} addName={addName}
+        reload={async () => { setMatch(await api.getMatch(workspaceId, matchId)); }}
+        onError={(m) => setErr(m)} flash={flash}
       />
 
       <InningsSection
@@ -303,6 +312,105 @@ function useWorkspaceId(): string | null {
   return current?.id ?? null;
 }
 
+const TOSS_DECISIONS = ["bat", "field", "no_toss", "not_recorded", "unknown"];
+
+function TossAndOfficialsSection({
+  workspaceId, matchId, match, canManage, teamName, nameOf, addName, reload, onError, flash,
+}: {
+  workspaceId: string; matchId: string; match: MatchDetail; canManage: boolean;
+  teamName: (id: string | null) => string | null; nameOf: (id: string | null) => string | null;
+  addName: (p: Person) => void; reload: () => Promise<void>; onError: (m: string) => void; flash: (m: string) => void;
+}) {
+  const sides = match.teams; // one home, one away (where recorded)
+  const [tossWinner, setTossWinner] = useState(match.toss_winner_team_id ?? "");
+  const [tossDecision, setTossDecision] = useState(match.toss_decision ?? "");
+
+  const saveToss = async () => {
+    try {
+      await api.setMatchToss(workspaceId, matchId, {
+        toss_winner_team_id: tossWinner || null, toss_decision: tossDecision || null,
+      });
+      await reload();
+      flash("Toss recorded.");
+    } catch (e) {
+      onError(e instanceof ApiError ? e.message : "Could not save toss");
+    }
+  };
+
+  const saveOfficial = async (mt: MatchTeam, patch: Partial<MatchTeam>) => {
+    // set_team replaces the whole side row, so send the complete current officials each time.
+    try {
+      await api.setMatchTeam(workspaceId, matchId, {
+        team_id: mt.team_id, is_home: mt.is_home,
+        captain_person_id: patch.captain_person_id !== undefined ? patch.captain_person_id : mt.captain_person_id,
+        acting_captain_person_id: patch.acting_captain_person_id !== undefined ? patch.acting_captain_person_id : mt.acting_captain_person_id,
+        wicketkeeper_person_id: patch.wicketkeeper_person_id !== undefined ? patch.wicketkeeper_person_id : mt.wicketkeeper_person_id,
+        wicketkeeper2_person_id: patch.wicketkeeper2_person_id !== undefined ? patch.wicketkeeper2_person_id : mt.wicketkeeper2_person_id,
+      });
+      await reload();
+    } catch (e) {
+      onError(e instanceof ApiError ? e.message : "Could not save officials");
+    }
+  };
+
+  return (
+    <Section title="Toss, captains & wicketkeepers">
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Field label="Toss won by" hint="Never inferred from who batted first.">
+          <Select value={tossWinner} disabled={!canManage} onChange={(e) => setTossWinner(e.target.value)}>
+            <option value="">— unknown —</option>
+            {sides.map((s) => <option key={s.team_id} value={s.team_id}>{teamName(s.team_id) ?? (s.is_home ? "Home" : "Away")}</option>)}
+          </Select>
+        </Field>
+        <Field label="Decision">
+          <Select value={tossDecision} disabled={!canManage} onChange={(e) => setTossDecision(e.target.value)}>
+            <option value="">— unknown —</option>
+            {TOSS_DECISIONS.map((d) => <option key={d} value={d}>{d.replace(/_/g, " ")}</option>)}
+          </Select>
+        </Field>
+        {canManage && (
+          <div className="flex items-end">
+            <Button size="sm" variant="outline" onClick={() => void saveToss()}>Save toss</Button>
+          </div>
+        )}
+      </div>
+
+      {sides.length === 0 && <p className="text-sm text-muted-foreground">Set the home and away teams above to record captains and wicketkeepers.</p>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {sides.map((mt) => (
+          <div key={mt.id} className="rounded-[var(--radius-app)] border border-border p-3">
+            <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              {mt.is_home ? "Home" : "Away"} — {teamName(mt.team_id) ?? "—"}
+            </h4>
+            <div className="flex flex-col gap-2">
+              <Field label="Captain">
+                <PlayerSelect workspaceId={workspaceId} value={mt.captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
+                  disabled={!canManage} aria-label="Captain"
+                  onChange={(pid) => void saveOfficial(mt, { captain_person_id: pid })} />
+              </Field>
+              <Field label="Acting / replacement captain">
+                <PlayerSelect workspaceId={workspaceId} value={mt.acting_captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
+                  disabled={!canManage} aria-label="Acting captain"
+                  onChange={(pid) => void saveOfficial(mt, { acting_captain_person_id: pid })} />
+              </Field>
+              <Field label="Wicketkeeper">
+                <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper_person_id} nameOf={nameOf} onPersonLoaded={addName}
+                  disabled={!canManage} aria-label="Wicketkeeper"
+                  onChange={(pid) => void saveOfficial(mt, { wicketkeeper_person_id: pid })} />
+              </Field>
+              <Field label="Second / replacement keeper">
+                <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper2_person_id} nameOf={nameOf} onPersonLoaded={addName}
+                  disabled={!canManage} aria-label="Second wicketkeeper"
+                  onChange={(pid) => void saveOfficial(mt, { wicketkeeper2_person_id: pid })} />
+              </Field>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 function InningsSection({
   workspaceId, matchId, match, innings, canManage, activeInnings, setActiveInnings,
   nameOf, teamName, addName, reloadInnings, onDirty, flash,
@@ -314,14 +422,11 @@ function InningsSection({
 }) {
   const addInnings = async () => {
     const n = innings.length + 1;
-    const bat = match.teams.find((t) => t.is_home)?.team_id;
-    const bowl = match.teams.find((t) => !t.is_home)?.team_id;
-    // alternate batting side by innings number where both sides are known
-    const batting = n % 2 === 1 ? bat : bowl;
-    const bowling = n % 2 === 1 ? bowl : bat;
+    // Do NOT assume the home team bats first: create the innings with an UNKNOWN batting side;
+    // the user chooses it in the innings header (supporting follow-ons and unknown order).
     try {
       const created = await api.createInnings(workspaceId, matchId, {
-        inns_number: n, batting_team_id: batting ?? null, bowling_team_id: bowling ?? null,
+        inns_number: n, batting_team_id: null, bowling_team_id: null,
       });
       await reloadInnings();
       setActiveInnings(created.id);
@@ -349,6 +454,8 @@ function InningsSection({
       {active && (
         <InningsEditor key={active.id} workspaceId={workspaceId} matchId={matchId} innings={active}
           canManage={canManage} nameOf={nameOf} teamName={teamName} addName={addName}
+          sides={{ home: match.teams.find((t) => t.is_home)?.team_id ?? null,
+                   away: match.teams.find((t) => !t.is_home)?.team_id ?? null }}
           reloadInnings={reloadInnings} onDirty={onDirty} flash={flash} />
       )}
     </Section>
@@ -356,15 +463,17 @@ function InningsSection({
 }
 
 function InningsEditor({
-  workspaceId, matchId, innings, canManage, nameOf, teamName, addName, reloadInnings, onDirty, flash,
+  workspaceId, matchId, innings, canManage, nameOf, teamName, addName, sides, reloadInnings, onDirty, flash,
 }: {
   workspaceId: string; matchId: string; innings: Innings; canManage: boolean;
   nameOf: (id: string | null) => string | null; teamName: (id: string | null) => string | null;
-  addName: (p: Person) => void; reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
+  addName: (p: Person) => void; sides: { home: string | null; away: string | null };
+  reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
 }) {
   const [totals, setTotals] = useState<InningsTotals | null>(null);
   const [backendWarnings, setBackendWarnings] = useState<string[]>([]);
   const [clientWarnings, setClientWarnings] = useState<{ code: string; message: string }[]>([]);
+  const [pendingBatting, setPendingBatting] = useState<string | null>(null);
   const w = workspaceId;
 
   const recompute = useCallback(async () => {
@@ -416,18 +525,51 @@ function InningsEditor({
   const ctx = { workspaceId: w, inningsId: innings.id, canManage, nameOf, onPersonLoaded: addName,
     onDirty, onChanged: () => void recompute() };
 
+  // Batting side is explicit (never assumed). Choosing it sets bowling to the other recorded side.
+  const applyBatting = (battingId: string | null) => {
+    const other = battingId && battingId === sides.home ? sides.away
+      : battingId && battingId === sides.away ? sides.home : null;
+    void patchInnings({ batting_team_id: battingId, bowling_team_id: other });
+  };
+  const changeBatting = (battingId: string | null) => {
+    if (innings.batting_team_id && battingId && battingId !== innings.batting_team_id) {
+      setPendingBatting(battingId);  // confirm before reassigning an existing innings' batting team
+    } else {
+      applyBatting(battingId);
+    }
+  };
+  const sideOptions = [
+    ...(sides.home ? [{ id: sides.home, label: teamName(sides.home) ?? "Home" }] : []),
+    ...(sides.away ? [{ id: sides.away, label: teamName(sides.away) ?? "Away" }] : []),
+  ];
+
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-app)] border border-border p-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <Field label="Status">
           <Select value={innings.status} disabled={!canManage} onChange={(e) => void patchInnings({ status: e.target.value })} className="w-40">
             {INNINGS_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
           </Select>
         </Field>
-        <div className="text-sm text-muted-foreground">
-          Batting: <span className="text-foreground">{teamName(innings.batting_team_id) ?? "—"}</span>
+        <Field label="Batting team" hint="Not assumed from home/away — choose who batted.">
+          <Select value={innings.batting_team_id ?? ""} disabled={!canManage}
+            onChange={(e) => changeBatting(e.target.value || null)} className="w-44">
+            <option value="">— unknown —</option>
+            {sideOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </Select>
+        </Field>
+        <div className="pb-2 text-sm text-muted-foreground">
+          Bowling: <span className="text-foreground">{teamName(innings.bowling_team_id) ?? "—"}</span>
         </div>
       </div>
+      <ConfirmDialog
+        open={pendingBatting !== null}
+        title="Change batting team?"
+        description={`This innings is currently recorded as ${teamName(innings.batting_team_id) ?? "a team"} batting. Reassign it to ${teamName(pendingBatting) ?? "the selected team"}? Batting and bowling figures already entered stay attached to this innings.`}
+        confirmLabel="Reassign"
+        onCancel={() => setPendingBatting(null)}
+        onConfirm={() => { applyBatting(pendingBatting); setPendingBatting(null); }}
+      />
 
       <ExtrasRow innings={innings} canManage={canManage} onCommit={patchInnings} />
 

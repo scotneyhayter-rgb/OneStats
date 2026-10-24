@@ -28,10 +28,13 @@ RESULT_TYPES = ("home_win", "away_win", "tie", "draw", "no_result", "abandoned",
 DATE_PRECISIONS = ("unknown", "exact", "year", "month", "approx")
 STATUSES = ("draft", "final", "abandoned")
 
+TOSS_DECISIONS = ("bat", "field", "no_toss", "not_recorded", "unknown")
+
 _COLS = (
     "id, workspace_id, competition_id, grade_id, season_id, venue_id, match_date, date_precision, "
     "round, matchtype, format, status, classification, finals_stage, classification_verified, "
     "classification_ref_id, result_type, result_raw, won_by_team_id, margin_runs, margin_wickets, "
+    "toss_winner_team_id, toss_decision, "
     "include_in_statistics, notes, source_system, source_ref, created_at, updated_at"
 )
 
@@ -43,7 +46,8 @@ def get_match(conn: Connection, match_id: UUID) -> dict[str, Any] | None:
 
 def list_match_teams(conn: Connection, match_id: UUID) -> list[dict[str, Any]]:
     rows = conn.execute(
-        text("SELECT id, team_id, is_home, captain_person_id, wicketkeeper_person_id, bonus_points "
+        text("SELECT id, team_id, is_home, captain_person_id, acting_captain_person_id, "
+             "wicketkeeper_person_id, wicketkeeper2_person_id, bonus_points "
              "FROM match_team WHERE match_id = :m ORDER BY is_home DESC"),
         {"m": match_id},
     ).mappings().all()
@@ -196,13 +200,42 @@ def set_result(
     return after
 
 
+def set_toss(
+    conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *,
+    toss_winner_team_id: UUID | None = None, toss_decision: str | None = None,
+) -> dict[str, Any]:
+    """Record the toss. The winner (if given) must be a side of the match; the decision is taken
+    from a controlled vocabulary (``bat``/``field``/``no_toss``/``not_recorded``/``unknown``). The
+    toss is never inferred from the batting order — both values are explicit."""
+    before = get_match(conn, match_id)
+    if before is None:
+        raise ValueError("match_not_found")
+    if toss_decision is not None and toss_decision not in TOSS_DECISIONS:
+        raise ValueError("invalid_toss_decision")
+    if toss_winner_team_id is not None and conn.execute(
+        text("SELECT 1 FROM match_team WHERE match_id = :m AND team_id = :t"),
+        {"m": match_id, "t": toss_winner_team_id},
+    ).first() is None:
+        raise ValueError("toss_winner_not_in_match")
+    conn.execute(
+        text("UPDATE match SET toss_winner_team_id = :w, toss_decision = :d, updated_at = now() WHERE id = :id"),
+        {"w": toss_winner_team_id, "d": toss_decision, "id": match_id},
+    )
+    after = get_match(conn, match_id)
+    audit.write_audit(conn, workspace_id, actor, "match.toss", entity="match", entity_id=str(match_id),
+                      before=before, after=after)
+    return after
+
+
 def set_team(
     conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *, team_id: UUID, is_home: bool,
     captain_person_id: UUID | None = None, wicketkeeper_person_id: UUID | None = None,
+    acting_captain_person_id: UUID | None = None, wicketkeeper2_person_id: UUID | None = None,
     bonus_points: float | None = None,
 ) -> dict[str, Any]:
     """Add or update a side of the match (idempotent on match+team). Enforces one home + one away
-    via the unique side index."""
+    via the unique side index. Captain / acting captain / keeper / second keeper are match-specific
+    and set explicitly (a null value clears that role); historically accurate, never inferred."""
     if get_match(conn, match_id) is None:
         raise ValueError("match_not_found")
     if conn.execute(text("SELECT 1 FROM team WHERE id = :t"), {"t": team_id}).first() is None:
@@ -211,19 +244,22 @@ def set_team(
         text("SELECT id FROM match_team WHERE match_id = :m AND team_id = :t"),
         {"m": match_id, "t": team_id},
     ).scalar_one_or_none()
+    params = {"h": is_home, "cap": captain_person_id, "acap": acting_captain_person_id,
+              "wk": wicketkeeper_person_id, "wk2": wicketkeeper2_person_id, "bp": bonus_points}
     if existing is not None:
         conn.execute(
             text("UPDATE match_team SET is_home = :h, captain_person_id = :cap, "
-                 "wicketkeeper_person_id = :wk, bonus_points = :bp WHERE id = :id"),
-            {"h": is_home, "cap": captain_person_id, "wk": wicketkeeper_person_id, "bp": bonus_points, "id": existing},
+                 "acting_captain_person_id = :acap, wicketkeeper_person_id = :wk, "
+                 "wicketkeeper2_person_id = :wk2, bonus_points = :bp WHERE id = :id"),
+            {**params, "id": existing},
         )
         mt_id = existing
     else:
         mt_id = conn.execute(
             text("INSERT INTO match_team(workspace_id, match_id, team_id, is_home, captain_person_id, "
-                 "wicketkeeper_person_id, bonus_points) VALUES (:w, :m, :t, :h, :cap, :wk, :bp) RETURNING id"),
-            {"w": workspace_id, "m": match_id, "t": team_id, "h": is_home, "cap": captain_person_id,
-             "wk": wicketkeeper_person_id, "bp": bonus_points},
+                 "acting_captain_person_id, wicketkeeper_person_id, wicketkeeper2_person_id, bonus_points) "
+                 "VALUES (:w, :m, :t, :h, :cap, :acap, :wk, :wk2, :bp) RETURNING id"),
+            {"w": workspace_id, "m": match_id, "t": team_id, **params},
         ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "match.set_team", entity="match", entity_id=str(match_id),
                       after={"team_id": str(team_id), "is_home": is_home})
