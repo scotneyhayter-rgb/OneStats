@@ -235,7 +235,7 @@ function MatchDetailsSection({
   const grades: Grade[] = compDetail?.grades ?? [];
   const seasons: Season[] = compDetail?.seasons ?? [];
   return (
-    <SectionCard icon={ClipboardList} title="Match details"
+    <SectionCard icon={ClipboardList} title="Match Details"
       description="Competition, grade, season, venue, date and the explicit classification.">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Competition">
@@ -323,29 +323,40 @@ function ClassificationControl({ match, canManage }: { match: MatchDetail; canMa
   };
   const isFinal = cls === "final" || cls === "grand_final" || cls === "other";
   return (
-    <div className="mt-3 flex flex-wrap items-end gap-2 rounded-[var(--radius-app)] border border-border bg-background px-3 py-2">
-      <Field label="Classification">
-        <Select value={cls} disabled={!canManage} onChange={(e) => setCls(e.target.value)} className="w-40">
-          {CLASSIFICATIONS.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-        </Select>
-      </Field>
-      {isFinal && (
-        <Field label="Finals stage">
-          <Select value={stage} disabled={!canManage} onChange={(e) => setStage(e.target.value)} className="w-44">
-            <option value="">— unspecified —</option>
-            {FINALS_STAGES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+    <div className="mt-4 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Classification</span>
+        <span className="text-xs text-muted-foreground">— explicit; never taken from the round label.</span>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Type">
+          <Select value={cls} disabled={!canManage} onChange={(e) => setCls(e.target.value)} className="w-40">
+            {CLASSIFICATIONS.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
           </Select>
         </Field>
-      )}
-      <label className="flex items-center gap-1 text-sm">
-        <input type="checkbox" checked={verified} disabled={!canManage} onChange={(e) => setVerified(e.target.checked)} />
-        Verified
-      </label>
-      {canManage && (
-        <Button size="sm" variant="outline" onClick={() => void save()} disabled={busy}>
-          {done ? "Saved" : busy ? "Saving…" : "Set classification"}
-        </Button>
-      )}
+        {isFinal && (
+          <Field label="Finals stage">
+            <Select value={stage} disabled={!canManage} onChange={(e) => setStage(e.target.value)} className="w-44">
+              <option value="">— unspecified —</option>
+              {FINALS_STAGES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+            </Select>
+          </Field>
+        )}
+        <label className="flex items-center gap-2 pb-2 text-sm"
+          title="Tick only when this classification is confirmed against a reliable source. Unverified classifications are kept but flagged for review. Never auto-ticked.">
+          <input type="checkbox" checked={verified} disabled={!canManage} onChange={(e) => setVerified(e.target.checked)}
+            className="h-4 w-4 focus-visible:outline-2 focus-visible:outline-[var(--ring)]" />
+          <span>Verified</span>
+        </label>
+        {canManage && (
+          <Button size="sm" variant="outline" onClick={() => void save()} disabled={busy} className="sm:mb-0.5">
+            {done ? "Saved" : busy ? "Saving…" : "Set Classification"}
+          </Button>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        “Verified” marks the classification as confirmed against a source — it is advisory, never set automatically.
+      </p>
     </div>
   );
 }
@@ -398,26 +409,30 @@ function TossAndOfficialsSection({
   };
 
   return (
-    <SectionCard icon={Coins} title="Toss, captains & wicketkeepers"
+    <SectionCard icon={Coins} title="Toss, Captains and Wicketkeepers"
       description="Recorded explicitly — the toss is never inferred from who batted first.">
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Field label="Toss won by" hint="Never inferred from who batted first.">
-          <Select value={tossWinner} disabled={!canManage} onChange={(e) => setTossWinner(e.target.value)}>
-            <option value="">— unknown —</option>
-            {sides.map((s) => <option key={s.team_id} value={s.team_id}>{teamName(s.team_id) ?? (s.is_home ? "Home" : "Away")}</option>)}
-          </Select>
-        </Field>
-        <Field label="Decision">
-          <Select value={tossDecision} disabled={!canManage} onChange={(e) => setTossDecision(e.target.value)}>
-            <option value="">— unknown —</option>
-            {TOSS_DECISIONS.map((d) => <option key={d} value={d}>{d.replace(/_/g, " ")}</option>)}
-          </Select>
-        </Field>
-        {canManage && (
-          <div className="flex items-end">
-            <Button size="sm" onClick={() => void saveToss()}>Save toss</Button>
+      <div className="mb-4 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <Field label="Toss won by" hint="Never inferred from who batted first.">
+              <Select value={tossWinner} disabled={!canManage} onChange={(e) => setTossWinner(e.target.value)}>
+                <option value="">— unknown —</option>
+                {sides.map((s) => <option key={s.team_id} value={s.team_id}>{teamName(s.team_id) ?? (s.is_home ? "Home" : "Away")}</option>)}
+              </Select>
+            </Field>
           </div>
-        )}
+          <div className="flex-1">
+            <Field label="Decision">
+              <Select value={tossDecision} disabled={!canManage} onChange={(e) => setTossDecision(e.target.value)}>
+                <option value="">— unknown —</option>
+                {TOSS_DECISIONS.map((d) => <option key={d} value={d}>{d.replace(/_/g, " ")}</option>)}
+              </Select>
+            </Field>
+          </div>
+          {canManage && (
+            <Button size="sm" onClick={() => void saveToss()} className="shrink-0 sm:mb-0.5">Save Toss</Button>
+          )}
+        </div>
       </div>
 
       {sides.length === 0 && <p className="text-sm text-muted-foreground">Set the home and away teams above to record captains and wicketkeepers.</p>}
@@ -623,7 +638,7 @@ function InningsEditor({
 
       <SubPanel icon={ListOrdered} title="Batting"><BattingGrid {...ctx} /></SubPanel>
       <SubPanel icon={Target} title="Bowling"><BowlingGrid {...ctx} /></SubPanel>
-      <SubPanel icon={TrendingDown} title="Fall of wickets"><FowGrid {...ctx} /></SubPanel>
+      <SubPanel icon={TrendingDown} title="Fall of Wickets"><FowGrid {...ctx} /></SubPanel>
       <SubPanel icon={Users} title="Partnerships"><PartnershipsGrid {...ctx} /></SubPanel>
 
       <ValidationPanel client={clientWarnings} backend={backendWarnings} onRun={() => void runBackendValidation()} />
@@ -723,7 +738,7 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
   const sides = match.teams.map((t) => t.team_id);
   const workspaceId = useWorkspaceId() ?? "";
   return (
-    <SectionCard icon={Trophy} title="Match result & notes"
+    <SectionCard icon={Trophy} title="Match Result and Notes"
       description="Result, winner and margin (tie and draw are distinct); notes and match status.">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Result">
@@ -754,15 +769,23 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
             onBlur={(e) => { if ((e.target.value || null) !== match.notes) onPatch({ notes: e.target.value || null }); }} />
         </Field>
       </div>
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Match status:</span>
-        {MATCH_STATUSES.map((s) => (
-          <button key={s} disabled={!canManage} onClick={() => onPatch({ status: s })}
-            className={`rounded-[var(--radius-app)] border px-2 py-1 text-xs ${match.status === s ? "border-brand bg-brand/10 text-brand" : "border-border hover:bg-muted"}`}>
-            {s}
-          </button>
-        ))}
-        <span className="ml-2 text-xs text-muted-foreground">Draft keeps it editable and out of statistics until finalised.</span>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">Match status</span>
+        <div className="inline-flex overflow-hidden rounded-[var(--radius-app)] border border-border" role="group" aria-label="Match status">
+          {MATCH_STATUSES.map((s) => {
+            const activeState = match.status === s;
+            const tone = s === "final" ? "bg-success/15 text-success" : s === "abandoned" ? "bg-warning/15 text-warning" : "bg-brand/10 text-brand";
+            return (
+              <button key={s} disabled={!canManage} onClick={() => onPatch({ status: s })}
+                aria-pressed={activeState}
+                title={s === "draft" ? "Editable; excluded from statistics until finalised" : s === "final" ? "Finalised; included in statistics" : "Abandoned"}
+                className={`border-r border-border px-3 py-1 text-xs capitalize last:border-r-0 ${activeState ? `font-semibold ${tone}` : "text-muted-foreground hover:bg-muted"}`}>
+                {s}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-xs text-muted-foreground">Draft keeps it editable and out of statistics until finalised.</span>
       </div>
       <DraftNote matchId={match.id} />
     </SectionCard>
