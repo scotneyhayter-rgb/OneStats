@@ -15,6 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Badge } from "../../components/ui/badge";
 import { api, ApiError, type Person, type PersonDuplicateCandidate } from "../../lib/api";
+import { PersonWizard } from "./PersonWizard";
 
 export interface PlayerSelectProps {
   workspaceId: string;
@@ -24,6 +25,10 @@ export interface PlayerSelectProps {
   onPersonLoaded: (p: Person) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Title/verb for the Create Person wizard launched from this field (e.g. "Player", "Umpire"). */
+  roleLabel?: string;
+  /** Role pre-ticked in the wizard for this field (default "player"). */
+  defaultRole?: string;
   "aria-label"?: string;
 }
 
@@ -43,9 +48,12 @@ export function PlayerSelect({
   onPersonLoaded,
   disabled,
   placeholder = "Search player…",
+  roleLabel = "Player",
+  defaultRole = "player",
   ...rest
 }: PlayerSelectProps) {
   const [open, setOpen] = useState(false);
+  const [wizard, setWizard] = useState<string | null>(null); // the name to create, when the wizard is open
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const [busy, setBusy] = useState(false);
@@ -144,26 +152,18 @@ export function PlayerSelect({
     void checkDuplicates(p.id);
   };
 
-  const createNew = async () => {
+  // "Create new …" launches the shared Create Person wizard (prefilled with the search text),
+  // rather than creating a bare record inline — so duplicate-matching and roles are consistent.
+  const launchWizard = () => {
     const name = query.trim();
     if (!name) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const created = (await api.createPerson(workspaceId, { display_name: name })) as { id: string };
-      pick({
-        id: created.id, display_name: name, status: "active", is_junior: false,
-        privacy_protected: false, dob: null, dob_precision: "unknown", notes: null, merged_into_id: null,
-      });
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Could not create player");
-      setBusy(false);
-    }
+    setOpen(false);
+    setWizard(name);
   };
 
   const chooseActive = () => {
     if (active < results.length) pick(results[active]);
-    else if (canCreate) void createNew();
+    else if (canCreate) launchWizard();
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -252,17 +252,28 @@ export function PlayerSelect({
               role="option"
               aria-selected={active === results.length}
               onMouseEnter={() => setActive(results.length)}
-              onClick={() => void createNew()}
+              onClick={launchWizard}
               disabled={busy}
               className={`mt-1 flex w-full shrink-0 items-center gap-2 rounded-[var(--radius-app)] border border-dashed border-border px-2 py-1.5 text-left text-sm text-brand ${active === results.length ? "bg-muted" : "hover:bg-muted"}`}
             >
               <UserPlus className="h-3.5 w-3.5" aria-hidden />
-              Create new player “{query.trim()}”
+              Create New Person “{query.trim()}”
               <Plus className="ml-auto h-3.5 w-3.5" aria-hidden />
             </button>
           )}
         </div>,
         document.body,
+      )}
+
+      {wizard !== null && (
+        <PersonWizard
+          workspaceId={workspaceId}
+          initialName={wizard}
+          roleLabel={roleLabel}
+          defaultRole={defaultRole}
+          onCancel={() => setWizard(null)}
+          onCreated={(p) => { setWizard(null); setQuery(""); pick(p); }}
+        />
       )}
     </div>
   );

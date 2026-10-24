@@ -445,22 +445,22 @@ function TossAndOfficialsSection({
             <div className="flex flex-col gap-2">
               <Field label="Captain">
                 <PlayerSelect workspaceId={workspaceId} value={mt.captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Captain"
+                  disabled={!canManage} aria-label="Captain" roleLabel="Captain"
                   onChange={(pid) => void saveOfficial(mt, { captain_person_id: pid })} />
               </Field>
               <Field label="Acting / replacement captain">
                 <PlayerSelect workspaceId={workspaceId} value={mt.acting_captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Acting captain"
+                  disabled={!canManage} aria-label="Acting captain" roleLabel="Captain"
                   onChange={(pid) => void saveOfficial(mt, { acting_captain_person_id: pid })} />
               </Field>
               <Field label="Wicketkeeper">
                 <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Wicketkeeper"
+                  disabled={!canManage} aria-label="Wicketkeeper" roleLabel="Wicketkeeper"
                   onChange={(pid) => void saveOfficial(mt, { wicketkeeper_person_id: pid })} />
               </Field>
               <Field label="Second / replacement keeper">
                 <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper2_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Second wicketkeeper"
+                  disabled={!canManage} aria-label="Second wicketkeeper" roleLabel="Wicketkeeper"
                   onChange={(pid) => void saveOfficial(mt, { wicketkeeper2_person_id: pid })} />
               </Field>
             </div>
