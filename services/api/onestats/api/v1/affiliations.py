@@ -57,6 +57,7 @@ class AffiliationCreate(BaseModel):
     valid_to: date | None = None
     date_approx: bool = False
     is_representative: bool = False
+    is_temporary: bool = False
     verification_status: str = Field(default="unverified", pattern="^(unverified|verified|disputed|corrected)$")
     evidence: str | None = None
     notes: str | None = None
@@ -90,6 +91,7 @@ def create_affiliation(workspace_id: UUID, body: AffiliationCreate, settings: Se
                 organisation_id=body.organisation_id, role=body.role, team_id=body.team_id,
                 competition_id=body.competition_id, valid_from=body.valid_from, valid_to=body.valid_to,
                 date_approx=body.date_approx, is_representative=body.is_representative,
+                is_temporary=body.is_temporary,
                 verification_status=body.verification_status, evidence=body.evidence, notes=body.notes,
                 source_system=body.source_system, source_ref=body.source_ref,
             )

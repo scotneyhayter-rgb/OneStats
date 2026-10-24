@@ -36,7 +36,7 @@ VERIFICATION_STATUSES = ("unverified", "verified", "disputed", "corrected")
 
 _COLS = (
     "id, workspace_id, person_id, organisation_id, team_id, competition_id, role, "
-    "valid_from, valid_to, date_approx, is_representative, status, verification_status, "
+    "valid_from, valid_to, date_approx, is_representative, is_temporary, status, verification_status, "
     "evidence, notes, source_system, source_ref, created_at"
 )
 
@@ -74,7 +74,7 @@ def create_affiliation(
     conn: Connection, workspace_id: UUID, actor: str, *, person_id: UUID, organisation_id: UUID,
     role: str = "player", team_id: UUID | None = None, competition_id: UUID | None = None,
     valid_from: Any | None = None, valid_to: Any | None = None, date_approx: bool = False,
-    is_representative: bool = False, verification_status: str = "unverified",
+    is_representative: bool = False, is_temporary: bool = False, verification_status: str = "unverified",
     evidence: str | None = None, notes: str | None = None,
     source_system: str | None = None, source_ref: str | None = None,
 ) -> UUID:
@@ -98,14 +98,15 @@ def create_affiliation(
         text(
             "INSERT INTO person_affiliation"
             "(workspace_id, person_id, organisation_id, team_id, competition_id, role, valid_from, "
-            " valid_to, date_approx, is_representative, verification_status, evidence, notes, "
-            " source_system, source_ref) "
-            "VALUES (:w, :p, :o, :t, :c, :role, :vf, :vt, :approx, :rep, :vs, :ev, :notes, :ss, :sr) "
+            " valid_to, date_approx, is_representative, is_temporary, verification_status, evidence, "
+            " notes, source_system, source_ref) "
+            "VALUES (:w, :p, :o, :t, :c, :role, :vf, :vt, :approx, :rep, :tmp, :vs, :ev, :notes, :ss, :sr) "
             "RETURNING id"
         ),
         {"w": workspace_id, "p": person_id, "o": organisation_id, "t": team_id, "c": competition_id,
          "role": role, "vf": valid_from, "vt": valid_to, "approx": date_approx, "rep": is_representative,
-         "vs": verification_status, "ev": evidence, "notes": notes, "ss": source_system, "sr": source_ref},
+         "tmp": is_temporary, "vs": verification_status, "ev": evidence, "notes": notes,
+         "ss": source_system, "sr": source_ref},
     ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "person_affiliation.create", entity="person_affiliation",
                       entity_id=str(aff_id),
