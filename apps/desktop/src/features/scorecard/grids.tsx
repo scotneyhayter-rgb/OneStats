@@ -191,13 +191,13 @@ export function BattingGrid(ctx: GridCtx) {
             {canManage && <th className="w-6" />}
             <th className="w-8 px-1 py-1">#</th>
             <th className="px-1 py-1">Batter</th>
+            <th className="px-1 py-1">How out</th>
+            <th className="px-1 py-1">Fielder</th>
+            <th className="px-1 py-1">Bowler</th>
             <th className="px-1 py-1">R</th>
             <th className="px-1 py-1">B</th>
             <th className="px-1 py-1">4s</th>
             <th className="px-1 py-1">6s</th>
-            <th className="px-1 py-1">How out</th>
-            <th className="px-1 py-1">Bowler</th>
-            <th className="px-1 py-1">Fielder</th>
             {canManage && <th className="w-14 px-1 py-1 text-center">Order</th>}
             {canManage && <th className="w-8" />}
           </tr>
@@ -222,14 +222,6 @@ export function BattingGrid(ctx: GridCtx) {
                   disabled={!canManage} aria-label={`Batter ${i + 1}`}
                   onChange={(pid) => void commit(r.id, { person_id: pid })} />
               </td>
-              <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
-                inputRef={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)} onCommit={(v) => void commit(r.id, { runs: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.balls_faced} ariaLabel={`Balls ${i + 1}`} disabled={!canManage}
-                inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { balls_faced: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.fours} ariaLabel={`Fours ${i + 1}`} disabled={!canManage} width="w-12"
-                inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { fours: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.sixes} ariaLabel={`Sixes ${i + 1}`} disabled={!canManage} width="w-12"
-                inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { sixes: v })} /></td>
               <td className="px-1 py-1">
                 <Select aria-label={`How out ${i + 1}`} disabled={!canManage} value={r.dismissal_type ?? ""}
                   onChange={(e) => void commit(r.id, { dismissal_type: e.target.value || null })} className="h-8 w-36">
@@ -238,15 +230,23 @@ export function BattingGrid(ctx: GridCtx) {
                 </Select>
               </td>
               <td className="min-w-[150px] px-1 py-1">
-                <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`}
-                  onChange={(pid) => void commit(r.id, { bowler_person_id: pid })} />
-              </td>
-              <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.fielder_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
                   disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`}
                   onChange={(pid) => void commit(r.id, { fielder_person_id: pid })} />
               </td>
+              <td className="min-w-[150px] px-1 py-1">
+                <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
+                  disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`}
+                  onChange={(pid) => void commit(r.id, { bowler_person_id: pid })} />
+              </td>
+              <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
+                inputRef={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)} onCommit={(v) => void commit(r.id, { runs: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.balls_faced} ariaLabel={`Balls ${i + 1}`} disabled={!canManage}
+                inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { balls_faced: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.fours} ariaLabel={`Fours ${i + 1}`} disabled={!canManage} width="w-12"
+                inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { fours: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.sixes} ariaLabel={`Sixes ${i + 1}`} disabled={!canManage} width="w-12"
+                inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { sixes: v })} /></td>
               {canManage && (
                 <td className="px-1 py-1">
                   <div className="flex items-center justify-center gap-0.5">
