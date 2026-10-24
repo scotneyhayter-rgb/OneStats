@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 
 const H = vi.hoisted(() => ({
   listPeople: vi.fn(), createPerson: vi.fn(), addPersonRole: vi.fn(), identityCandidates: vi.fn(),
+  listOrganisations: vi.fn(), createAffiliation: vi.fn(),
 }));
 vi.mock("../../lib/api", () => ({ ApiError: class ApiError extends Error {}, api: { ...H } }));
 
@@ -33,7 +34,15 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>, typed: strin
   return screen.findByRole("dialog");
 }
 
-beforeEach(() => Object.values(H).forEach((fn) => fn.mockReset()));
+const CLUBS = [
+  { id: "c1", name: "Northside CC", short_name: null, kind: "club", is_historical: false, status: "active", notes: null, merged_into_id: null, source_system: null, source_ref: null },
+  { id: "c2", name: "Riverside CC", short_name: null, kind: "club", is_historical: false, status: "active", notes: null, merged_into_id: null, source_system: null, source_ref: null },
+];
+beforeEach(() => {
+  Object.values(H).forEach((fn) => fn.mockReset());
+  H.listOrganisations.mockResolvedValue(CLUBS);   // club picker source
+  H.createAffiliation.mockResolvedValue({});
+});
 afterEach(cleanup);
 
 describe("universal Create Person wizard", () => {
@@ -71,6 +80,22 @@ describe("universal Create Person wizard", () => {
     await user.click(within(dialog).getByRole("button", { name: /Use existing: Tony Caccia/i }));
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("ex1"));
     expect(H.createPerson).not.toHaveBeenCalled();  // reused, not duplicated
+  });
+
+  it("records a club affiliation for the chosen club when creating a person", async () => {
+    H.listPeople.mockResolvedValue([]);
+    H.createPerson.mockResolvedValue({ id: "new1" });
+    H.identityCandidates.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<Harness onChange={() => {}} roleLabel="Player" />);
+    const dialog = await openCreate(user, "Tony Cacciola");
+
+    await user.click(await within(dialog).findByRole("button", { name: /Northside CC/i }));  // pick a club
+    await user.click(within(dialog).getByRole("button", { name: /Create Person/i }));
+
+    await waitFor(() => expect(H.createAffiliation).toHaveBeenCalled());
+    const body = H.createAffiliation.mock.calls[0][1] as { person_id: string; organisation_id: string; role: string };
+    expect(body).toMatchObject({ person_id: "new1", organisation_id: "c1", role: "player" });
   });
 
   it("cancelling creates nothing", async () => {

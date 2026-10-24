@@ -12,7 +12,7 @@
  * originating field.
  */
 
-import { AlertTriangle, ArrowRight, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -20,7 +20,7 @@ import { Modal } from "../../components/ui/dialog";
 import { Input, Textarea } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { ErrorState } from "../../components/states/States";
-import { api, ApiError, type Person } from "../../lib/api";
+import { api, ApiError, type Organisation, type Person } from "../../lib/api";
 import { Field } from "../manage/_shared";
 
 // person-level roles (match-specific captain/keeper are recorded on the match, not here)
@@ -47,6 +47,12 @@ export function PersonWizard({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // club affiliations (optional) — writes to the existing person_affiliation model, not a new one
+  const [clubs, setClubs] = useState<Organisation[]>([]);
+  const [clubFilter, setClubFilter] = useState("");
+  const [selectedClubs, setSelectedClubs] = useState<string[]>([]);
+  const [temporary, setTemporary] = useState(false);
+
   // search existing people as the name is typed — surface possible duplicates (never auto-merge)
   useEffect(() => {
     const q = name.trim();
@@ -61,8 +67,34 @@ export function PersonWizard({
     return () => clearTimeout(t);
   }, [name, workspaceId]);
 
+  // load selectable clubs once (organisations of kind "club")
+  useEffect(() => {
+    let live = true;
+    api.listOrganisations(workspaceId, { kind: "club" })
+      .then((o) => { if (live) setClubs(o); })
+      .catch(() => { /* non-fatal: affiliations are optional */ });
+    return () => { live = false; };
+  }, [workspaceId]);
+
   const toggleRole = (r: string) =>
     setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
+
+  const toggleClub = (id: string) =>
+    setSelectedClubs((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  // the role recorded on the affiliation (free text) — the person's primary role
+  const affiliationRole = () => roles[0] ?? defaultRole ?? "player";
+
+  // create the chosen club affiliations against a (new or existing) person — never auto-merges
+  const addAffiliations = async (personId: string) => {
+    for (const organisation_id of selectedClubs) {
+      try {
+        await api.createAffiliation(workspaceId, {
+          person_id: personId, organisation_id, role: affiliationRole(), is_temporary: temporary,
+        });
+      } catch { /* a duplicate/unknown-period affiliation is non-fatal here */ }
+    }
+  };
 
   const useExisting = async (p: Person) => {
     setBusy(true);
@@ -72,6 +104,7 @@ export function PersonWizard({
       for (const r of roles) {
         try { await api.addPersonRole(workspaceId, p.id, r); } catch { /* role may already exist */ }
       }
+      await addAffiliations(p.id);
       onCreated(p);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Could not update the existing person");
@@ -90,6 +123,7 @@ export function PersonWizard({
         dob: dob || null, dob_precision: dob ? dobPrecision : "unknown",
         notes: notes || null,
       })) as { id: string };
+      await addAffiliations(created.id);
       onCreated({
         id: created.id, display_name, status: "active", is_junior: false, privacy_protected: false,
         dob: dob || null, dob_precision: dob ? dobPrecision : "unknown", notes: notes || null, merged_into_id: null,
@@ -148,6 +182,49 @@ export function PersonWizard({
                 {r}
               </button>
             ))}
+          </div>
+        </Field>
+
+        <Field label="Club affiliation(s)" hint="Optional. Links the person to clubs (recorded as affiliations, not match participation). Leave empty if unknown.">
+          <div className="flex flex-col gap-2">
+            {selectedClubs.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedClubs.map((id) => {
+                  const c = clubs.find((x) => x.id === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2.5 py-1 text-xs text-brand">
+                      <Building2 className="h-3 w-3" aria-hidden /> {c?.name ?? "club"}
+                      <button type="button" aria-label={`Remove ${c?.name ?? "club"}`} onClick={() => toggleClub(id)} className="hover:opacity-70">
+                        <X className="h-3 w-3" aria-hidden />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <Input value={clubFilter} onChange={(e) => setClubFilter(e.target.value)} placeholder="Filter clubs…" aria-label="Filter clubs" />
+            <ul className="flex max-h-36 flex-col gap-0.5 overflow-auto rounded-[var(--radius-app)] border border-border p-1">
+              {clubs.length === 0 && <li className="px-2 py-1.5 text-xs text-muted-foreground">No clubs yet.</li>}
+              {clubs
+                .filter((c) => !selectedClubs.includes(c.id) && c.name.toLowerCase().includes(clubFilter.trim().toLowerCase()))
+                .slice(0, 50)
+                .map((c) => (
+                  <li key={c.id}>
+                    <button type="button" onClick={() => toggleClub(c.id)}
+                      className="flex w-full items-center gap-2 rounded-[var(--radius-app)] px-2 py-1.5 text-left text-sm hover:bg-muted">
+                      <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                      <span className="truncate">{c.name}</span>
+                      {c.is_historical && <Badge variant="muted">historical</Badge>}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+            {selectedClubs.length > 0 && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={temporary} onChange={(e) => setTemporary(e.target.checked)} />
+                Temporary affiliation (e.g. a fill-in / loan — does not change permanent registration)
+              </label>
+            )}
           </div>
         </Field>
 
