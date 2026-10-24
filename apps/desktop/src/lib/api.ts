@@ -719,6 +719,8 @@ export const api = {
     request<BattingEntry>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}`, { method: "PATCH", body }),
   deleteBatting: (w: string, iid: string, id: string) =>
     request<void>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}`, { method: "DELETE" }),
+  reorderBatting: (w: string, iid: string, ordered_ids: string[]) =>
+    request<BattingEntry[]>(`/api/v1/workspaces/${w}/innings/${iid}/batting/reorder`, { method: "POST", body: { ordered_ids } }),
   battingCard: (w: string, iid: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/innings/${iid}/batting/card`),
   validateBatting: (w: string, iid: string) =>

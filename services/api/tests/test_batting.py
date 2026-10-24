@@ -225,3 +225,36 @@ def test_invalid_inputs(conn):
     iid = _innings(conn, wid)
     with pytest.raises(ValueError, match="invalid_dismissal_type"):
         bat.create_entry(conn, wid, ACTOR, innings_id=iid, batting_position=1, dismissal_type="skied_it")
+
+
+def test_reorder_preserves_stats_and_renumbers(conn):
+    wid = _ws(conn, "BAT REORDER")
+    iid = _innings(conn, wid)
+    ids = []
+    for pos, name, runs in ((1, "First", 10), (2, "Second", 20), (3, "Third", 30), (4, "Fourth", 40)):
+        ids.append(bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, name),
+                                    batting_position=pos, runs=runs, dismissal_type="bowled"))
+    # move the 4th batter to 1st: new order = [4th, 1st, 2nd, 3rd]
+    new_order = [ids[3], ids[0], ids[1], ids[2]]
+    bat.reorder_entries(conn, wid, ACTOR, iid, new_order)
+    rows = bat.list_entries(conn, iid)
+    assert [r["batting_position"] for r in rows] == [1, 2, 3, 4]           # renumbered 1..n
+    assert [r["id"] for r in rows] == new_order                            # moved whole records
+    # stats stayed attached to each record (Fourth's 40 is now position 1)
+    assert rows[0]["runs"] == 40 and rows[0]["dismissal_type"] == "bowled"
+    assert rows[1]["runs"] == 10
+
+    # remove a batter then renumber the remainder (no gaps, no resurrection)
+    bat.delete_entry(conn, wid, ACTOR, ids[0])  # remove "First" (now at position 2)
+    remaining = [r["id"] for r in bat.list_entries(conn, iid)]
+    bat.reorder_entries(conn, wid, ACTOR, iid, remaining)
+    after = bat.list_entries(conn, iid)
+    assert len(after) == 3 and [r["batting_position"] for r in after] == [1, 2, 3]
+    assert ids[0] not in {r["id"] for r in after}
+
+    # the person profile is NOT deleted when a batting entry is removed
+    assert conn.execute(text("SELECT count(*) FROM person"), ).scalar_one() >= 4
+
+    # reorder must be the exact set (guards accidental loss)
+    with pytest.raises(ValueError, match="reorder_set_mismatch"):
+        bat.reorder_entries(conn, wid, ACTOR, iid, remaining[:2])

@@ -117,6 +117,20 @@ def delete_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, settings:
             raise _value_error(exc) from exc
 
 
+class BattingReorder(BaseModel):
+    ordered_ids: list[UUID]
+
+
+@router.post("/reorder")
+def reorder(workspace_id: UUID, innings_id: UUID, body: BattingReorder, settings: SettingsDep, ctx: MatchCtx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return [_ids(e) for e in batting_domain.reorder_entries(
+                conn, workspace_id, str(ctx.user["id"]), innings_id, body.ordered_ids)]
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
 @router.get("/card")
 def batting_card(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

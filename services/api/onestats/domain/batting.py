@@ -167,6 +167,27 @@ def delete_entry(conn: Connection, workspace_id: UUID, actor: str, entry_id: UUI
                       entity_id=str(entry_id), before=before)
 
 
+def reorder_entries(
+    conn: Connection, workspace_id: UUID, actor: str, innings_id: UUID, ordered_ids: list[UUID],
+) -> list[dict[str, Any]]:
+    """Set batting_position 1..n from ``ordered_ids`` (the complete current set of this innings'
+    entries, in the new order). Only the position changes — each entry keeps its player and all
+    statistics. ``ordered_ids`` must be exactly the innings' entries, so nothing is lost. Positions
+    are cleared first to avoid transient unique-index collisions, then renumbered."""
+    existing = {str(r[0]) for r in conn.execute(
+        text("SELECT id FROM batting_entry WHERE innings_id = :i"), {"i": innings_id})}
+    ids = [str(x) for x in ordered_ids]
+    if len(ids) != len(set(ids)) or set(ids) != existing:
+        raise ValueError("reorder_set_mismatch")
+    conn.execute(text("UPDATE batting_entry SET batting_position = NULL WHERE innings_id = :i"), {"i": innings_id})
+    for idx, eid in enumerate(ids, start=1):
+        conn.execute(text("UPDATE batting_entry SET batting_position = :p, updated_at = now() WHERE id = :id"),
+                     {"p": idx, "id": eid})
+    audit.write_audit(conn, workspace_id, actor, "batting_entry.reorder", entity="innings",
+                      entity_id=str(innings_id), after={"order": ids})
+    return list_entries(conn, innings_id)
+
+
 def _sum_known(values: list[Any]) -> int | None:
     known = [v for v in values if v is not None]
     return sum(known) if known else None

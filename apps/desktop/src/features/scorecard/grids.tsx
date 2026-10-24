@@ -5,10 +5,11 @@
  * (arrows / Enter / Tab) within the numeric cells via the tested nextCell helper.
  */
 
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { ConfirmDialog } from "../../components/ui/dialog";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type BattingEntry, type BowlingEntry, type FallOfWicket, type Partnership, type Person } from "../../lib/api";
 import { PlayerSelect } from "./PlayerSelect";
@@ -116,6 +117,8 @@ export function BattingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
   const { rows, refresh } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty);
   const nav = useFocusGrid(4, rows.length); // runs, balls, 4s, 6s
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<BattingEntry | null>(null);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -135,10 +138,49 @@ export function BattingGrid(ctx: GridCtx) {
       onDirty(e instanceof ApiError ? e.message : "Could not add batter");
     }
   };
-  const remove = async (id: string) => {
-    await api.deleteBatting(workspaceId, inningsId, id);
-    await refresh();
-    onChanged();
+
+  // reorder: send the complete new order of ids; the backend renumbers 1..n (records keep stats)
+  const applyOrder = async (orderedIds: string[]) => {
+    try {
+      await api.reorderBatting(workspaceId, inningsId, orderedIds);
+      await refresh();
+      onChanged();
+    } catch (e) {
+      onDirty(e instanceof ApiError ? e.message : "Could not reorder batters");
+    }
+  };
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= rows.length) return;
+    const ids = rows.map((r) => r.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    void applyOrder(ids);
+  };
+  const dropOn = (to: number) => {
+    if (dragIndex === null || dragIndex === to) { setDragIndex(null); return; }
+    const ids = rows.map((r) => r.id);
+    const [moved] = ids.splice(dragIndex, 1);
+    ids.splice(to, 0, moved);
+    setDragIndex(null);
+    void applyOrder(ids);
+  };
+
+  const hasStats = (r: BattingEntry) =>
+    r.person_id !== null || r.runs !== null || r.balls_faced !== null || r.fours !== null ||
+    r.sixes !== null || r.minutes !== null || r.dismissal_type !== null ||
+    r.bowler_person_id !== null || r.fielder_person_id !== null;
+  const requestRemove = (r: BattingEntry) => (hasStats(r) ? setConfirmRemove(r) : void doRemove(r.id));
+  const doRemove = async (id: string) => {
+    try {
+      await api.deleteBatting(workspaceId, inningsId, id);
+      // renumber the remaining entries so positions stay 1..n (no gaps, no resurrection)
+      const remaining = rows.filter((r) => r.id !== id).map((r) => r.id);
+      if (remaining.length) await api.reorderBatting(workspaceId, inningsId, remaining);
+      await refresh();
+      onChanged();
+    } catch (e) {
+      onDirty(e instanceof ApiError ? e.message : "Could not remove batter");
+    }
   };
 
   return (
@@ -146,7 +188,8 @@ export function BattingGrid(ctx: GridCtx) {
       <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
           <tr className="text-left text-xs uppercase text-muted-foreground">
-            <th className="w-10 px-1 py-1">#</th>
+            {canManage && <th className="w-6" />}
+            <th className="w-8 px-1 py-1">#</th>
             <th className="px-1 py-1">Batter</th>
             <th className="px-1 py-1">R</th>
             <th className="px-1 py-1">B</th>
@@ -155,12 +198,24 @@ export function BattingGrid(ctx: GridCtx) {
             <th className="px-1 py-1">How out</th>
             <th className="px-1 py-1">Bowler</th>
             <th className="px-1 py-1">Fielder</th>
+            {canManage && <th className="w-14 px-1 py-1 text-center">Order</th>}
             {canManage && <th className="w-8" />}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className="border-t border-border">
+            <tr key={r.id} className={`border-t border-border ${dragIndex === i ? "opacity-50" : ""}`}
+              onDragOver={canManage ? (e) => e.preventDefault() : undefined}
+              onDrop={canManage ? () => dropOn(i) : undefined}>
+              {canManage && (
+                <td className="px-1 py-1">
+                  <span draggable onDragStart={() => setDragIndex(i)} onDragEnd={() => setDragIndex(null)}
+                    role="button" aria-label={`Drag batter ${i + 1}`} title="Drag to reorder"
+                    className="flex cursor-grab items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing">
+                    <GripVertical className="h-4 w-4" aria-hidden />
+                  </span>
+                </td>
+              )}
               <td className="px-1 py-1 text-muted-foreground tabular-nums">{r.batting_position ?? "—"}</td>
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
@@ -194,7 +249,21 @@ export function BattingGrid(ctx: GridCtx) {
               </td>
               {canManage && (
                 <td className="px-1 py-1">
-                  <button aria-label={`Remove batter ${i + 1}`} onClick={() => void remove(r.id)}
+                  <div className="flex items-center justify-center gap-0.5">
+                    <button aria-label={`Move batter ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}
+                      className="rounded-[var(--radius-app)] p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30">
+                      <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                    <button aria-label={`Move batter ${i + 1} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}
+                      className="rounded-[var(--radius-app)] p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30">
+                      <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </div>
+                </td>
+              )}
+              {canManage && (
+                <td className="px-1 py-1">
+                  <button aria-label={`Remove batter ${i + 1}`} onClick={() => requestRemove(r)}
                     className="rounded-[var(--radius-app)] p-1 text-muted-foreground hover:bg-muted hover:text-danger">
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   </button>
@@ -203,7 +272,7 @@ export function BattingGrid(ctx: GridCtx) {
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={10} className="px-1 py-3 text-sm text-muted-foreground">No batters recorded. Add rows as the card allows — partial cards are fine.</td></tr>
+            <tr><td colSpan={12} className="px-1 py-3 text-sm text-muted-foreground">No batters recorded. Add rows as the card allows — partial cards are fine.</td></tr>
           )}
         </tbody>
       </table>
@@ -212,6 +281,15 @@ export function BattingGrid(ctx: GridCtx) {
           <Plus className="h-4 w-4" aria-hidden /> Add batter
         </Button>
       )}
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        title="Remove this batter?"
+        description={`This batting entry has recorded figures${confirmRemove && nameOf(confirmRemove.person_id) ? ` for ${nameOf(confirmRemove.person_id)}` : ""}. Removing it deletes the entry and its dismissal (the player's profile is kept; linked fall-of-wicket/partnership references are cleared). The remaining batters renumber.`}
+        confirmLabel="Remove"
+        danger
+        onCancel={() => setConfirmRemove(null)}
+        onConfirm={() => { const id = confirmRemove?.id; setConfirmRemove(null); if (id) void doRemove(id); }}
+      />
     </div>
   );
 }
