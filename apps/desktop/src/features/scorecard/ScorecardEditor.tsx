@@ -417,7 +417,7 @@ function TossAndOfficialsSection({
       <div className="mb-4 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <Field label="Toss won by" hint="Never inferred from who batted first.">
+            <Field label="Toss won by">
               <Select value={tossWinner} disabled={!canManage} onChange={(e) => setTossWinner(e.target.value)}>
                 <option value="">— unknown —</option>
                 {sides.map((s) => <option key={s.team_id} value={s.team_id}>{teamName(s.team_id) ?? (s.is_home ? "Home" : "Away")}</option>)}
@@ -433,7 +433,7 @@ function TossAndOfficialsSection({
             </Field>
           </div>
           {canManage && (
-            <Button size="sm" onClick={() => void saveToss()} className="shrink-0 sm:mb-0.5">Save Toss</Button>
+            <Button size="sm" onClick={() => void saveToss()} className="shrink-0">Save Toss</Button>
           )}
         </div>
       </div>
