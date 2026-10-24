@@ -469,22 +469,17 @@ export function PartnershipsGrid(ctx: GridCtx) {
       onDirty(e instanceof ApiError ? e.message : "Save failed");
     }
   };
-  const addRow = async () => {
-    try {
-      await api.createPartnership(workspaceId, inningsId, { wicket_number: rows.length + 1 });
-      await refresh();
-    } catch (e) {
-      onDirty(e instanceof ApiError ? e.message : "Could not add partnership");
-    }
-  };
   const remove = async (id: string) => { await api.deletePartnership(workspaceId, inningsId, id); await refresh(); onChanged(); };
   const derive = async () => {
     try {
-      await api.derivePartnerships(workspaceId, inningsId); // regenerate calculated rows from FOW
+      const result = await api.derivePartnerships(workspaceId, inningsId); // regenerate calculated rows from FOW
       await refresh();
       onChanged();
+      if (!result.some((p) => p.origin === "calculated")) {
+        onDirty("No partnerships generated — enter Fall of Wickets with team scores first (nothing was invented).");
+      }
     } catch (e) {
-      onDirty(e instanceof ApiError ? e.message : "Could not generate partnerships from FOW");
+      onDirty(e instanceof ApiError ? `Auto-generate failed: ${e.message}` : "Could not generate partnerships from FOW");
     }
   };
   const originBadge = (o: string) =>
@@ -548,23 +543,20 @@ export function PartnershipsGrid(ctx: GridCtx) {
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No partnerships recorded. Add one manually, or generate from Fall of Wickets.</td></tr>
+            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No partnerships yet. Enter Fall of Wickets with team scores, then Auto-generate.</td></tr>
           )}
         </tbody>
       </table>
       {canManage && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void addRow()}>
-            <Plus className="h-4 w-4" aria-hidden /> Add partnership
-          </Button>
           <Button variant="outline" size="sm" onClick={() => void derive()}>
             <RefreshCw className="h-4 w-4" aria-hidden /> Auto-generate from Fall of Wickets
           </Button>
         </div>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        <Badge variant="brand">Auto</Badge> partnerships are recalculated from Fall of Wickets (runs include extras);
-        <Badge variant="muted">Manual</Badge> entries are preserved. A retirement can leave two stands for one wicket.
+        <Badge variant="brand">Auto</Badge> partnerships are calculated from Fall of Wickets (runs include extras);
+        <Badge variant="muted">Manual</Badge>/<Badge variant="success">Verified</Badge> entries are preserved and stay editable.
       </p>
     </div>
   );

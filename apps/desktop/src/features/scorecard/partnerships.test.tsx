@@ -41,17 +41,9 @@ describe("partnerships section", () => {
     expect(await screen.findByText("Auto")).toBeTruthy();            // calculated -> Auto badge
     expect(screen.getByRole("button", { name: /Partnership 1 batter 1/i }).textContent).toContain("Jack Jones");
     expect(screen.getByRole("button", { name: /Partnership 1 batter 2/i }).textContent).toContain("Bill Smith");
-    expect(screen.getByRole("button", { name: /Add partnership/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Auto-generate from Fall of Wickets/i })).toBeTruthy();
-  });
-
-  it("Add partnership creates an entry", async () => {
-    H.listPartnerships.mockResolvedValue([]);
-    H.createPartnership.mockResolvedValue({});
-    const user = userEvent.setup();
-    renderGrid();
-    await user.click(await screen.findByRole("button", { name: /Add partnership/i }));
-    await waitFor(() => expect(H.createPartnership).toHaveBeenCalledWith("w", "i1", { wicket_number: 1 }));
+    // the manual "Add partnership" control was intentionally removed (partnerships are auto-derived)
+    expect(screen.queryByRole("button", { name: /^Add partnership$/i })).toBeNull();
   });
 
   it("Auto-generate calls derive", async () => {

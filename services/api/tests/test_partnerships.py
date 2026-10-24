@@ -282,3 +282,21 @@ def test_derive_unbroken_final_stand(conn):
     inn.set_official_total(conn, wid, ACTOR, iid, total=95, wickets=1, reason="scorebook")
     result = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
     assert result[-1]["unbroken"] is True and result[-1]["runs"] == 55  # 95 - 40
+
+
+def test_derive_identifies_pair_from_batting_order(conn):
+    # batting order Jack(1) Bill(2) Frank(3) Daniel(4); 1st wicket at 26, Bill dismissed
+    wid = _ws(conn, "PART PAIR")
+    iid = _innings(conn, wid)
+    jack = _person(conn, wid, "Jack Jones")
+    bill = _person(conn, wid, "Bill Smith")
+    frank = _person(conn, wid, "Frank Freddo")
+    daniel = _person(conn, wid, "Daniel Craig")
+    for pos, pid in ((1, jack), (2, bill), (3, frank), (4, daniel)):
+        bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=pid, batting_position=pos)
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=26, dismissed_person_id=bill)
+    result = [p for p in pshp.derive_from_fow(conn, wid, ACTOR, iid) if p["origin"] == "calculated"]
+    assert len(result) == 1
+    p = result[0]
+    assert p["runs"] == 26 and p["wicket_number"] == 1 and p["origin"] == "calculated"
+    assert {p["player1_person_id"], p["player2_person_id"]} == {jack, bill}  # BOTH batters identified

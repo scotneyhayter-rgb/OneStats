@@ -270,20 +270,59 @@ def derive_from_fow(conn: Connection, workspace_id: UUID, actor: str, innings_id
     if not _innings_exists(conn, innings_id):
         raise ValueError("innings_not_found")
     derived, last_score = _fow_partnership_runs(conn, innings_id)
+    # batting order (known positions) lets us name BOTH batters of each stand where supported.
+    order = [r[0] for r in conn.execute(
+        text("SELECT person_id FROM batting_entry WHERE innings_id = :i AND batting_position IS NOT NULL "
+             "AND person_id IS NOT NULL ORDER BY batting_position"), {"i": innings_id})]
+    pairs, crease, _nxt = _derive_pairs(derived, order)
+
     conn.execute(text("DELETE FROM partnership WHERE innings_id = :i AND origin = 'calculated'"), {"i": innings_id})
-    for d in derived:
+    for d, (p1, p2) in zip(derived, pairs):
         create_partnership(conn, workspace_id, actor, innings_id=innings_id, wicket_number=d["wicket_number"],
-                           runs=d["runs"], player1_person_id=d["player1_person_id"], end_reason="wicket",
+                           runs=d["runs"], player1_person_id=p1, player2_person_id=p2, end_reason="wicket",
                            unbroken=False, origin="calculated")
     # unbroken final stand, only when the innings total is known and higher than the last fall
     inn = conn.execute(text("SELECT official_total FROM innings WHERE id = :i"), {"i": innings_id}).mappings().first()
     if derived and inn and inn["official_total"] is not None and inn["official_total"] > last_score:
+        fp1, fp2 = (crease[0] if len(crease) > 0 else None), (crease[1] if len(crease) > 1 else None)
         create_partnership(conn, workspace_id, actor, innings_id=innings_id,
                            wicket_number=derived[-1]["wicket_number"] + 1,
-                           runs=inn["official_total"] - last_score, unbroken=True, origin="calculated")
+                           runs=inn["official_total"] - last_score, unbroken=True, origin="calculated",
+                           player1_person_id=fp1, player2_person_id=fp2)
     audit.write_audit(conn, workspace_id, actor, "partnership.derive_from_fow", entity="innings",
                       entity_id=str(innings_id), after={"calculated": len(derived)})
     return list_partnerships(conn, innings_id)
+
+
+def _derive_pairs(derived: list[dict[str, Any]], order: list[Any]) -> tuple[list[tuple[Any, Any]], list[Any], int]:
+    """Work out the two batters of each wicket's stand from the batting order and the dismissed
+    batter at each fall. Nothing is invented: if the order is unknown or the dismissed batter does
+    not fit the simulation, the stand keeps only the known participant (the dismissed batter) and
+    leaves the partner unknown. Returns (pairs, final-crease, next-index)."""
+    pairs: list[tuple[Any, Any]] = []
+    if len(order) >= 2:
+        crease = [order[0], order[1]]
+        nxt = 2
+    else:
+        crease = []
+        nxt = len(order)
+    for d in derived:
+        dismissed = d["player1_person_id"]  # the dismissed batter at this fall (from FOW)
+        if len(crease) == 2 and (dismissed is None or dismissed in crease):
+            pairs.append((crease[0], crease[1]))
+            if dismissed in crease:
+                crease.remove(dismissed)
+            else:
+                crease.pop(0)
+            if nxt < len(order):
+                crease.append(order[nxt])
+                nxt += 1
+            else:
+                crease.append(None)
+                crease = [c for c in crease if c is not None]  # keep the lone survivor
+        else:
+            pairs.append((dismissed, None))  # can't reconcile with the order — keep only what we know
+    return pairs, crease, nxt
 
 
 def partnership_stats(row: dict[str, Any], balls_per_over: int | None = None) -> dict[str, Any]:

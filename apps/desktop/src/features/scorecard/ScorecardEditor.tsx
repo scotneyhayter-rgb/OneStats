@@ -605,22 +605,27 @@ function InningsEditor({
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-app)] border border-border p-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label="Status">
-          <Select value={innings.status} disabled={!canManage} onChange={(e) => void patchInnings({ status: e.target.value })} className="w-40">
-            {INNINGS_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
-          </Select>
-        </Field>
+      {/* aligned responsive grid: labels on one row, controls of equal height on the next */}
+      <div className="grid items-start gap-3 sm:grid-cols-3">
         <Field label="Batting team" hint="Not assumed from home/away — choose who batted.">
           <Select value={innings.batting_team_id ?? ""} disabled={!canManage}
-            onChange={(e) => changeBatting(e.target.value || null)} className="w-44">
+            onChange={(e) => changeBatting(e.target.value || null)}>
             <option value="">— unknown —</option>
             {sideOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </Select>
         </Field>
-        <div className="pb-2 text-sm text-muted-foreground">
-          Bowling: <span className="text-foreground">{teamName(innings.bowling_team_id) ?? "—"}</span>
-        </div>
+        <Field label="Innings status">
+          <Select value={innings.status} disabled={!canManage} onChange={(e) => void patchInnings({ status: e.target.value })}>
+            {INNINGS_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
+          </Select>
+        </Field>
+        <Field label="Bowling team">
+          <div className="flex h-9 items-center rounded-[var(--radius-app)] border border-border bg-muted/40 px-3 text-sm">
+            <span className={teamName(innings.bowling_team_id) ? "text-foreground" : "italic text-muted-foreground"}>
+              {teamName(innings.bowling_team_id) ?? "—"}
+            </span>
+          </div>
+        </Field>
       </div>
       <ConfirmDialog
         open={pendingBatting !== null}
