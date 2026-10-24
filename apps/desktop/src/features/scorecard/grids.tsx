@@ -120,6 +120,7 @@ export function BattingGrid(ctx: GridCtx) {
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
       await api.updateBatting(workspaceId, inningsId, id, body);
+      await refresh(); // re-read so row-bound fields (player, how-out) show the saved value
       onChanged();
     } catch (e) {
       onDirty(e instanceof ApiError ? e.message : "Save failed");
@@ -314,6 +315,7 @@ export function FowGrid(ctx: GridCtx) {
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
       await api.updateFow(workspaceId, inningsId, id, body);
+      await refresh(); // re-read so the dismissed-player field shows the saved value
       onChanged();
     } catch (e) {
       onDirty(e instanceof ApiError ? e.message : "Save failed");
@@ -383,6 +385,7 @@ export function PartnershipsGrid(ctx: GridCtx) {
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
       await api.updatePartnership(workspaceId, inningsId, id, body);
+      await refresh(); // re-read so partnership players and end-reason show the saved value
       onChanged();
     } catch (e) {
       onDirty(e instanceof ApiError ? e.message : "Save failed");
