@@ -366,6 +366,11 @@ def _stage_scorecards(
                 bowler = _ref0(bw.get("bowlerID")) if bw else None
                 if bowler is None:  # skip empty padding slots (bowlerID 0)
                     continue
+                # skip squad members who did not actually bowl (all figures zero/blank) — these are
+                # CricketStatz padding, not a bowling performance. A single nonzero figure keeps it.
+                if not any((bw.get("Overs"), bw.get("Maidens"), bw.get("Wickets"),
+                            bw.get("RunsA"), bw.get("wides"), bw.get("noballs"))):
+                    continue
                 _insert_record(conn, wid, batch_id, "bowling_entry", f"{iref}:{bowler}:{order}", bw, {
                     "innings_source_ref": iref, "bowler_source_ref": bowler, "bowling_order": order,
                     "overs_text": _s(bw.get("Overs")), "maidens": bw.get("Maidens"),
@@ -861,11 +866,12 @@ def controlled_import(
     from onestats.domain import people_import  # local import avoids a module cycle
 
     out: dict[str, Any] = {"people": {}, "staged": {}, "preview": {}, "howout_unresolved": [], "committed": commit}
+    people_batch = None
     if people and (people.get("players") or people.get("officials")):
-        pb = people_import.stage_people(conn, workspace_id, actor, payload=people, filename=filename)["batch_id"]
-        out["people"]["detected"] = people_import.detect(conn, workspace_id, actor, pb)
+        people_batch = people_import.stage_people(conn, workspace_id, actor, payload=people, filename=filename)["batch_id"]
+        out["people"]["detected"] = people_import.detect(conn, workspace_id, actor, people_batch)
         if commit:
-            out["people"]["promoted"] = people_import.promote(conn, workspace_id, actor, pb)
+            out["people"]["promoted"] = people_import.promote(conn, workspace_id, actor, people_batch)
 
     staged = parse_and_stage(conn, workspace_id, actor, payload=data, filename=filename)
     out["staged"] = staged["counts"]
@@ -875,7 +881,51 @@ def controlled_import(
     out["howout_unresolved"] = unresolved_howout_report(data)["unresolved_codes"]
     if commit:
         out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"])
+        # once both people and clubs exist, record each player's MyClub affiliation (for scoping)
+        out["affiliations"] = link_cricketstatz_people_to_clubs(conn, workspace_id, actor, people_batch)
     return out
+
+
+def link_cricketstatz_people_to_clubs(
+    conn: Connection, workspace_id: UUID, actor: str, people_batch_id: UUID | None = None,
+) -> dict[str, Any]:
+    """Create the club affiliation each imported CricketStatz person implies — their ``MyClub`` —
+    where it is not already recorded. This captures the source's player-to-club association so that
+    player selectors can be scoped to a club. Idempotent (skips a person already affiliated to that
+    club), never overwrites, and preserves provenance. Resolves the club only where the organisation
+    was imported; an unresolved MyClub is simply skipped (never invented)."""
+    from onestats.domain import affiliations  # local import avoids a module cycle
+
+    sql = ("SELECT r.normalised, r.matched_canonical_id AS person_id, r.source_ref "
+           "FROM import_staging_record r JOIN import_batch b ON b.id = r.batch_id "
+           "WHERE b.source_system = :ss AND r.entity_type IN ('player','official') "
+           "AND r.matched_canonical_id IS NOT NULL")
+    params: dict[str, Any] = {"ss": SOURCE_SYSTEM}
+    if people_batch_id is not None:
+        sql += " AND r.batch_id = :b"
+        params["b"] = people_batch_id
+    linked = 0
+    seen: set[tuple[str, str]] = set()
+    for r in conn.execute(text(sql), params).mappings().all():
+        norm = r["normalised"] or {}
+        club_ref, pid = norm.get("myclub_source_ref"), r["person_id"]
+        if not club_ref or pid is None:
+            continue
+        org = _find_canonical_by_source(conn, "organisation_source_identity", "organisation_id", club_ref)
+        if org is None:
+            continue
+        key = (str(pid), str(org))
+        if key in seen or conn.execute(
+            text("SELECT 1 FROM person_affiliation WHERE person_id = :p AND organisation_id = :o LIMIT 1"),
+            {"p": pid, "o": org},
+        ).first() is not None:
+            continue
+        seen.add(key)
+        affiliations.create_affiliation(conn, workspace_id, actor, person_id=pid, organisation_id=org,
+                                        role="player", source_system=SOURCE_SYSTEM,
+                                        source_ref=f"{r['source_ref']}:myclub")
+        linked += 1
+    return {"linked": linked}
 
 
 def remap_howout_dismissals(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, Any]:

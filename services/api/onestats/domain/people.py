@@ -60,6 +60,7 @@ def get_person(conn: Connection, person_id: UUID, *, include_protected: bool = F
 def list_people(
     conn: Connection, *, search: str | None = None, role: str | None = None,
     include_merged: bool = False, include_protected: bool = False,
+    organisation_id: UUID | str | None = None, active_only: bool = False,
 ) -> list[dict[str, Any]]:
     sql = f"SELECT {_COLS} FROM person"
     clauses: list[str] = []
@@ -72,6 +73,12 @@ def list_people(
     if role:
         clauses.append("id IN (SELECT person_id FROM person_role WHERE role = :role)")
         params["role"] = role
+    if organisation_id:
+        # scope to people affiliated with a club/organisation (e.g. a match side's club)
+        clauses.append("id IN (SELECT person_id FROM person_affiliation WHERE organisation_id = :org)")
+        params["org"] = organisation_id
+    if active_only:
+        clauses.append("status = 'active'")
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY display_name"

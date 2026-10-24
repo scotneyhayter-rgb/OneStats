@@ -53,6 +53,7 @@ PAYLOAD = {
         {"InningsID": 700, "InnsNumber": 1, "cricket_bowling": [
             {"bowlerID": 20, "Maidens": 1, "Overs": 8.0, "Wickets": 2, "RunsA": 30, "wides": 1, "noballs": 0},
             {"bowlerID": 0, "Maidens": 0, "Overs": 0.0, "Wickets": 0, "RunsA": 0, "wides": 0, "noballs": 0},
+            {"bowlerID": 11, "Maidens": 0, "Overs": 0.0, "Wickets": 0, "RunsA": 0, "wides": 0, "noballs": 0},  # did not bowl -> skipped
         ]},
     ]}],
 }
@@ -137,7 +138,8 @@ def test_padding_rows_not_imported(conn):
     wid = _ws(conn, "SC WS3")
     _seed_players(conn, wid)
     _promote(conn, wid)
-    # only the two real batters and one real bowler exist (BatsmanID/bowlerID 0 skipped)
+    # only the two real batters and one real bowler exist (BatsmanID/bowlerID 0 skipped, and the
+    # zero-figures "bowler" 11 who did not actually bowl is skipped)
     assert conn.execute(text("SELECT count(*) FROM batting_entry")).scalar_one() == 2
     assert conn.execute(text("SELECT count(*) FROM bowling_entry")).scalar_one() == 1
 
@@ -230,25 +232,32 @@ def test_controlled_import_preview_then_commit(conn):
     """The wizard's controlled import: a preview (savepoint rolled back) persists nothing; a commit
     imports people + structural + scorecards and resolves batter references to the imported people."""
     wid = _ws(conn, "SC CTRL")
-    people = {"players": [
+    people_payload = {"players": [
         {"PlayerID": 10, "Firstname": "Batter", "Lastname": "Ten", "DOB": "1700-01-01", "MyClub": 1},
         {"PlayerID": 20, "Firstname": "Bowler", "Lastname": "Twenty", "DOB": "1700-01-01", "MyClub": 1},
     ]}
     # PREVIEW — inside a savepoint that is rolled back (mimics the endpoint)
     sp = conn.begin_nested()
-    prev = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people, commit=False)
+    prev = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people_payload, commit=False)
     sp.rollback()
     assert prev["committed"] is False and prev["preview"]["matches_promotable"] == 1
     assert conn.execute(text("SELECT count(*) FROM match")).scalar_one() == 0  # nothing persisted
 
     # COMMIT
-    res = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people, commit=True)
+    res = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people_payload, commit=True)
     assert res["committed"] is True
     assert res["promoted"]["created"]["match"] == 1 and res["promoted"]["created"]["batting_entry"] == 2
     assert res["people"]["promoted"]["created"]["player"] == 2
     # batter resolved to the imported person; dismissal mapped (Howout 2 -> bowled)
     bat = conn.execute(text("SELECT person_id, dismissal_type FROM batting_entry WHERE source_ref = '700:1'")).mappings().one()
     assert bat["person_id"] is not None and bat["dismissal_type"] == "bowled"
+    # each imported player gains their MyClub (ClubID 1) affiliation — so selectors can scope by club
+    assert res["affiliations"]["linked"] == 2
+    org = conn.execute(text("SELECT id FROM organisation WHERE source_ref = '1'")).scalar_one()
+    affiliated = people.list_people(conn, organisation_id=org)
+    assert {p["display_name"] for p in affiliated} == {"Batter Ten", "Bowler Twenty"}  # org-scoped list
+    # re-running the link creates no duplicate affiliations
+    assert imports.link_cricketstatz_people_to_clubs(conn, wid, ACTOR)["linked"] == 0
 
 
 def test_unresolved_howout_report(conn):

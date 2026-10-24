@@ -107,10 +107,12 @@ def list_people(
     workspace_id: UUID, settings: SettingsDep, ctx: PersonCtx,
     search: str | None = None, role: str | None = None,
     include_merged: bool = False, include_protected: bool = False,
+    organisation_id: UUID | None = None, active_only: bool = False,
 ) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return [_ids(p) for p in people.list_people(
-            conn, search=search, role=role, include_merged=include_merged, include_protected=include_protected)]
+            conn, search=search, role=role, include_merged=include_merged,
+            include_protected=include_protected, organisation_id=organisation_id, active_only=active_only)]
 
 
 @router.get("/{person_id}")
