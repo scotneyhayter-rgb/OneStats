@@ -30,13 +30,14 @@ describe("primary navigation", () => {
 });
 
 describe("club-management navigation (Phase 4, Stage 7)", () => {
-  it("defines the five management screens under /manage", () => {
+  it("defines the management screens under /manage", () => {
     expect(MANAGEMENT_SECTIONS.map((s) => s.label)).toEqual([
       "Organisations",
       "Teams & Venues",
       "Competitions",
       "Playing Conditions",
       "Organisation History",
+      "Import Data",
     ]);
     for (const s of MANAGEMENT_SECTIONS) {
       expect(s.path.startsWith("/manage/")).toBe(true);

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Building2,
+  DatabaseBackup,
   GitBranch,
   LayoutDashboard,
   MessageCircleQuestion,
@@ -104,5 +105,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/history",
     icon: GitBranch,
     blurb: "Timeline, relationships and provenance.",
+  },
+  {
+    key: "import",
+    label: "Import Data",
+    path: "/manage/import",
+    icon: DatabaseBackup,
+    blurb: "Import matches and scorecards from CricketStatz and other sources.",
   },
 ];

@@ -65,6 +65,37 @@ def stage(workspace_id: UUID, body: StageRequest, settings: SettingsDep, ctx: Im
             raise _value_error(exc) from exc
 
 
+class CricketStatzRequest(BaseModel):
+    data: dict[str, Any] = Field(description="Sliced CricketStatz payload: structural + scorecards")
+    people: dict[str, Any] | None = Field(default=None, description="Referenced players/officials")
+    commit: bool = Field(default=False, description="False = preview (nothing persists); True = import")
+    filename: str | None = None
+
+
+@router.post("/cricketstatz")
+def cricketstatz_import(
+    workspace_id: UUID, body: CricketStatzRequest, settings: SettingsDep, ctx: ImportCtx
+) -> dict[str, Any]:
+    """Controlled CricketStatz import for the Import Wizard. A preview runs the full analysis inside
+    a savepoint that is rolled back (nothing persists); a commit releases it. Workspace-isolated and
+    gated by ``import.manage``; idempotent (no duplicate records)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        sp = conn.begin_nested()
+        try:
+            result = imports.controlled_import(
+                conn, workspace_id, str(ctx.user["id"]),
+                data=body.data, people=body.people, commit=body.commit, filename=body.filename,
+            )
+        except ValueError as exc:
+            sp.rollback()
+            raise _value_error(exc) from exc
+        if body.commit:
+            sp.commit()       # release: the outer workspace_transaction commits
+        else:
+            sp.rollback()     # preview only — discard all staging/promotion
+        return result
+
+
 @router.get("")
 def list_batches(workspace_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

@@ -827,6 +827,39 @@ def _promote_scorecards(
         created["fall_of_wicket"] += 1
 
 
+def controlled_import(
+    conn: Connection, workspace_id: UUID, actor: str, *,
+    data: dict[str, Any], people: dict[str, Any] | None = None,
+    commit: bool = False, filename: str | None = None,
+) -> dict[str, Any]:
+    """Run a controlled CricketStatz import (people, then structural + scorecards) in one pass and
+    return a combined summary for the Import Wizard.
+
+    The caller owns the transaction: for a PREVIEW (``commit=False``) nothing must persist, so the
+    endpoint runs this inside a savepoint it rolls back; for a COMMIT it releases/commits. People are
+    detected (and, on commit, promoted so scorecard player references resolve); structural + scorecard
+    rows are staged, validated and previewed (and, on commit, promoted). Idempotent and reusing the
+    existing engine — no duplicate records, workspace isolation and permissions unchanged."""
+    from onestats.domain import people_import  # local import avoids a module cycle
+
+    out: dict[str, Any] = {"people": {}, "staged": {}, "preview": {}, "howout_unresolved": [], "committed": commit}
+    if people and (people.get("players") or people.get("officials")):
+        pb = people_import.stage_people(conn, workspace_id, actor, payload=people, filename=filename)["batch_id"]
+        out["people"]["detected"] = people_import.detect(conn, workspace_id, actor, pb)
+        if commit:
+            out["people"]["promoted"] = people_import.promote(conn, workspace_id, actor, pb)
+
+    staged = parse_and_stage(conn, workspace_id, actor, payload=data, filename=filename)
+    out["staged"] = staged["counts"]
+    out["batch_id"] = str(staged["batch_id"])
+    validate_batch(conn, workspace_id, actor, staged["batch_id"])
+    out["preview"] = preview_batch(conn, staged["batch_id"])
+    out["howout_unresolved"] = unresolved_howout_report(data)["unresolved_codes"]
+    if commit:
+        out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"])
+    return out
+
+
 def remap_howout_dismissals(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, Any]:
     """Apply the verified CricketStatz Howout legend to ALREADY-IMPORTED batting rows, in place.
 

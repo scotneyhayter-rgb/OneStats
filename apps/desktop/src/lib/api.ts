@@ -308,6 +308,22 @@ export interface ImportBatch {
   source_filename: string | null;
   status: string;
   counts: Record<string, number> | null;
+  created_at?: string;
+  promoted_at?: string | null;
+}
+export interface HowoutUnresolved {
+  code: string;
+  count: number;
+  examples: { match_id?: number; innings_id?: number; batsman_id?: number; score?: number }[];
+}
+export interface CricketStatzImportResult {
+  committed: boolean;
+  batch_id?: string;
+  staged: Record<string, number>;
+  preview: { promotable_now: number; unresolved: number; matches_promotable: number; by_entity: Record<string, Record<string, number>> };
+  howout_unresolved: HowoutUnresolved[];
+  people: { detected?: { matched: number; possible_existing: number; new: number }; promoted?: { created: Record<string, number>; linked: Record<string, number> } };
+  promoted?: { created: Record<string, number>; matched: Record<string, number>; status: string };
 }
 export interface ImportRecord {
   id: string;
@@ -675,6 +691,13 @@ export const api = {
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/rollback`, { method: "POST" }),
   reconcilePeopleImport: (w: string, batchId: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people-imports/${batchId}/reconcile`),
+
+  // --- Phase 6 Stage 8: CricketStatz import wizard ---
+  cricketStatzImport: (
+    w: string,
+    body: { data: unknown; people?: unknown; commit: boolean; filename?: string },
+  ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
+  listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
 
   // --- Phase 6: matches ---
   listMatches: (

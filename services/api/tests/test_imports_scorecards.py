@@ -208,6 +208,31 @@ def test_remap_howout_fills_unresolved_without_overwriting(conn):
     assert imports.remap_howout_dismissals(conn, wid, ACTOR)["updated"] == 0
 
 
+def test_controlled_import_preview_then_commit(conn):
+    """The wizard's controlled import: a preview (savepoint rolled back) persists nothing; a commit
+    imports people + structural + scorecards and resolves batter references to the imported people."""
+    wid = _ws(conn, "SC CTRL")
+    people = {"players": [
+        {"PlayerID": 10, "Firstname": "Batter", "Lastname": "Ten", "DOB": "1700-01-01", "MyClub": 1},
+        {"PlayerID": 20, "Firstname": "Bowler", "Lastname": "Twenty", "DOB": "1700-01-01", "MyClub": 1},
+    ]}
+    # PREVIEW — inside a savepoint that is rolled back (mimics the endpoint)
+    sp = conn.begin_nested()
+    prev = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people, commit=False)
+    sp.rollback()
+    assert prev["committed"] is False and prev["preview"]["matches_promotable"] == 1
+    assert conn.execute(text("SELECT count(*) FROM match")).scalar_one() == 0  # nothing persisted
+
+    # COMMIT
+    res = imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=people, commit=True)
+    assert res["committed"] is True
+    assert res["promoted"]["created"]["match"] == 1 and res["promoted"]["created"]["batting_entry"] == 2
+    assert res["people"]["promoted"]["created"]["player"] == 2
+    # batter resolved to the imported person; dismissal mapped (Howout 2 -> bowled)
+    bat = conn.execute(text("SELECT person_id, dismissal_type FROM batting_entry WHERE source_ref = '700:1'")).mappings().one()
+    assert bat["person_id"] is not None and bat["dismissal_type"] == "bowled"
+
+
 def test_unresolved_howout_report(conn):
     report = imports.unresolved_howout_report(PAYLOAD)
     codes = {c["code"]: c["count"] for c in report["unresolved_codes"]}
