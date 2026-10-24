@@ -30,7 +30,18 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain import audit, competitions, matches, organisations, teams, venues
+from onestats.domain import (
+    audit,
+    batting,
+    bowling,
+    competitions,
+    innings,
+    matches,
+    organisations,
+    partnerships,
+    teams,
+    venues,
+)
 
 SOURCE_SYSTEM = "cricket_statz"
 _IMPORT_COMP_REF = "cricket_statz:import"
@@ -139,7 +150,7 @@ def parse_and_stage(
     """Validate the source payload and stage every row verbatim. No canonical write occurs."""
     if not isinstance(payload, dict):
         raise ValueError("invalid_payload")  # noqa: TRY004 — uniform ValueError→422 handling
-    known = ("clubs", "teams", "venues", "divisions", "matches")
+    known = ("clubs", "teams", "venues", "divisions", "matches", "innings", "batting", "bowling")
     if not any(k in payload and payload[k] for k in known):
         raise ValueError("no_importable_collections")
 
@@ -233,6 +244,8 @@ def parse_and_stage(
                        status="staged", resolution="staged_only", issues=issues)
     counts["match"] = len(payload.get("matches") or [])
 
+    _stage_scorecards(conn, workspace_id, batch_id, payload, counts)
+
     conn.execute(
         text("UPDATE import_batch SET counts = CAST(:c AS jsonb) WHERE id = :id"),
         {"c": json.dumps(counts), "id": batch_id},
@@ -244,6 +257,115 @@ def parse_and_stage(
 
 def _s(v: Any) -> str | None:
     return None if v is None else str(v)
+
+
+def _ref0(v: Any) -> str | None:
+    """A CricketStatz person/entity reference, where 0/blank means none/unknown (never a real id)."""
+    return None if v in (None, 0, "0", "") else str(v)
+
+
+def _stage_scorecards(
+    conn: Connection, wid: UUID, batch_id: UUID, payload: dict[str, Any], counts: dict[str, int]
+) -> None:
+    """Stage the nested CricketStatz scorecard body (``innings`` / ``batting`` / ``bowling``) verbatim.
+
+    Dismissals: the raw ``Howout`` code is ALWAYS preserved (``howout_code``) and the mapped
+    ``dismissal_type`` is left NULL — **unresolved** — because no CricketStatz code legend is
+    confirmed; every code is flagged for later administrator mapping (no re-import needed). Valid
+    batting/bowling/extras/fall-of-wicket data is still staged even when the dismissal is unresolved.
+    Empty padding rows (``BatsmanID``/``bowlerID`` = 0) are skipped — they are not real entries.
+    Fall of wickets come from the parallel FOW fields on the batting rows (row N = the Nth wicket:
+    ``FOW`` score, ``FOWBatID`` the batter out) — factual source values, never inferred."""
+    n_inn = n_bat = n_bowl = n_fow = 0
+
+    for wrap in payload.get("innings") or []:
+        mref = _s(wrap.get("MatchID"))
+        for inn in wrap.get("cricket_Innings") or []:
+            iid = inn.get("InningsID")
+            if iid is None:
+                continue
+            _insert_record(conn, wid, batch_id, "innings", _s(iid), inn, {
+                "match_source_ref": mref, "inns_number": inn.get("InnsNumber"),
+                "batting_team_source_ref": _ref0(inn.get("battingteam")),
+                "bowling_team_source_ref": _ref0(inn.get("bowlingteam")),
+                "byes": inn.get("Byes"), "legbyes": inn.get("Legbyes"),
+                "wides": inn.get("Wides"), "noballs": inn.get("Noballs"),
+                "iresult_raw": _s(inn.get("iresult")),
+            }, resolution="new")
+            n_inn += 1
+
+    for wrap in payload.get("batting") or []:
+        for inn in wrap.get("cricket_Innings") or []:
+            iref = _s(inn.get("InningsID"))
+            for b in inn.get("cricket_batting") or []:
+                if not b:
+                    continue
+                batter = _ref0(b.get("BatsmanID"))
+                if batter is not None:  # skip empty padding slots (BatsmanID 0)
+                    howout = b.get("Howout")
+                    _insert_record(
+                        conn, wid, batch_id, "batting_entry", f"{iref}:{b.get('Batpos')}", b, {
+                            "innings_source_ref": iref, "batter_source_ref": batter,
+                            "batting_position": b.get("Batpos"), "runs": b.get("Score"),
+                            "balls_faced": b.get("Balls") or None, "fours": b.get("fours"),
+                            "sixes": b.get("sixes"), "minutes": b.get("mins") or None,
+                            "bowler_source_ref": _ref0(b.get("Bowler")),
+                            "fielder_source_ref": _ref0(b.get("Fielder")),
+                            "howout_code": howout, "dismissal_type": None,  # UNRESOLVED — never guessed
+                        },
+                        issues=[f"howout_unresolved: code {howout} not mapped (preserved for review)"],
+                    )
+                    n_bat += 1
+                # fall of wicket (parallel array on the batting rows): the Nth wicket
+                if _ref0(b.get("FOWBatID")) is not None and b.get("FOW"):
+                    _insert_record(conn, wid, batch_id, "fall_of_wicket", f"{iref}:{b.get('FOWPos')}", b, {
+                        "innings_source_ref": iref, "wicket_number": b.get("FOWPos"),
+                        "team_score": b.get("FOW"), "dismissed_source_ref": _ref0(b.get("FOWBatID")),
+                        "overs_text": _s(b.get("FOWOvers")),
+                    }, resolution="new")
+                    n_fow += 1
+
+    for wrap in payload.get("bowling") or []:
+        for inn in wrap.get("cricket_Innings") or []:
+            iref = _s(inn.get("InningsID"))
+            for order, bw in enumerate(inn.get("cricket_bowling") or [], start=1):
+                bowler = _ref0(bw.get("bowlerID")) if bw else None
+                if bowler is None:  # skip empty padding slots (bowlerID 0)
+                    continue
+                _insert_record(conn, wid, batch_id, "bowling_entry", f"{iref}:{bowler}:{order}", bw, {
+                    "innings_source_ref": iref, "bowler_source_ref": bowler, "bowling_order": order,
+                    "overs_text": _s(bw.get("Overs")), "maidens": bw.get("Maidens"),
+                    "wickets": bw.get("Wickets"), "runs_conceded": bw.get("RunsA"),
+                    "wides": bw.get("wides"), "noballs": bw.get("noballs"),
+                }, resolution="new")
+                n_bowl += 1
+
+    counts.update({"innings": n_inn, "batting_entry": n_bat, "bowling_entry": n_bowl, "fall_of_wicket": n_fow})
+
+
+def unresolved_howout_report(payload: dict[str, Any]) -> dict[str, Any]:
+    """Report every distinct ``Howout`` code in the source batting data with its frequency and a few
+    representative examples (MatchID / InningsID / batting row) — so the codes' meanings can be
+    investigated before any are mapped. Reads the payload only; changes nothing."""
+    freq: dict[str, int] = {}
+    examples: dict[str, list[dict[str, Any]]] = {}
+    for wrap in payload.get("batting") or []:
+        mid = wrap.get("MatchID")
+        for inn in wrap.get("cricket_Innings") or []:
+            iid = inn.get("InningsID")
+            for b in inn.get("cricket_batting") or []:
+                if not b or not _ref0(b.get("BatsmanID")):
+                    continue
+                code = str(b.get("Howout"))
+                freq[code] = freq.get(code, 0) + 1
+                ex = examples.setdefault(code, [])
+                if len(ex) < 3:
+                    ex.append({"match_id": mid, "innings_id": iid, "batsman_id": b.get("BatsmanID"),
+                               "bowler": b.get("Bowler"), "fielder": b.get("Fielder"),
+                               "score": b.get("Score")})
+    codes = sorted(freq, key=lambda c: (-freq[c], c))
+    return {"unresolved_codes": [{"code": c, "count": freq[c], "examples": examples[c]} for c in codes],
+            "total_batting_rows": sum(freq.values())}
 
 
 # --------------------------------------------------------------------------- validate
@@ -312,7 +434,8 @@ def preview_batch(conn: Connection, batch_id: UUID) -> dict[str, Any]:
         summary.setdefault(r["entity_type"], {})[r["status"]] = r["n"]
     promotable = sum(
         v.get("staged", 0) for k, v in summary.items()
-        if k in ("club", "venue", "team", "division", "match")
+        if k in ("club", "venue", "team", "division", "match",
+                 "innings", "batting_entry", "bowling_entry", "fall_of_wicket")
     )
     unresolved = sum(v.get("unresolved", 0) for v in summary.values())
     return {
@@ -369,8 +492,9 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     if batch["status"] in ("cancelled", "promoted"):
         raise ValueError(f"batch_{batch['status']}")
 
-    created = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
-    matched = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
+    _SCORE = ("innings", "batting_entry", "bowling_entry", "fall_of_wicket")
+    created = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **{k: 0 for k in _SCORE}}
+    matched = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **{k: 0 for k in _SCORE}}
 
     def promotable(entity_type: str) -> list[dict[str, Any]]:
         # Only 'staged' rows promote: 'unresolved' (ambiguous grades) and already-'promoted'
@@ -504,6 +628,8 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
         created["match"] += 1
 
+    _promote_scorecards(conn, workspace_id, actor, batch_id, created, matched)
+
     remaining_unresolved = conn.execute(
         text("SELECT count(*) FROM import_staging_record WHERE batch_id = :b AND status IN ('staged','unresolved')"),
         {"b": batch_id},
@@ -537,6 +663,134 @@ def cancel_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUI
     return {"batch_id": str(batch_id), "status": "cancelled"}
 
 
+def _person_by_source(conn: Connection, ref: str | None) -> UUID | None:
+    """OneStats person_id for a CricketStatz PlayerID (via the people import's source identity)."""
+    if ref is None:
+        return None
+    return conn.execute(
+        text("SELECT person_id FROM person_source_identity WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),
+        {"ss": SOURCE_SYSTEM, "sr": ref},
+    ).scalar_one_or_none()
+
+
+def _canonical_by_source(conn: Connection, table: str, ref: str) -> UUID | None:
+    return conn.execute(
+        text(f"SELECT id FROM {table} WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),
+        {"ss": SOURCE_SYSTEM, "sr": ref},
+    ).scalar_one_or_none()
+
+
+def _promote_scorecards(
+    conn: Connection, wid: UUID, actor: str, batch_id: UUID,
+    created: dict[str, int], matched: dict[str, int],
+) -> None:
+    """Promote the staged scorecard body into the existing innings/batting/bowling/FOW models.
+
+    Idempotent on (source_system, source_ref) for every row — re-promotion matches, never
+    duplicates. Player references resolve via the people import's source identities; an unresolved
+    reference stays NULL and is flagged (unknown ≠ wrong), never invented. Dismissal TYPE is left
+    unresolved (NULL) with the raw ``Howout`` preserved in ``dismissal_source_code``; all other
+    figures (runs, balls, boundaries, extras, bowling, fall of wickets) import regardless, so a
+    historically incomplete or unresolved-dismissal card is still imported, never rejected."""
+    def staged(et: str) -> list[dict[str, Any]]:
+        return list_records(conn, batch_id, entity_type=et, status="staged")
+
+    # innings -> innings (needs its match promoted/matched; sides linked where teams resolved)
+    for rec in staged("innings"):
+        norm = rec["normalised"] or {}
+        existing = _canonical_by_source(conn, "innings", rec["source_ref"])
+        if existing is not None:
+            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+            matched["innings"] += 1
+            continue
+        match_id = _canonical_by_source(conn, "match", norm.get("match_source_ref")) if norm.get("match_source_ref") else None
+        if match_id is None:
+            _flag(conn, rec["id"], "match_unresolved: innings left staged")
+            continue
+        bat_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["batting_team_source_ref"]) if norm.get("batting_team_source_ref") else None
+        bowl_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["bowling_team_source_ref"]) if norm.get("bowling_team_source_ref") else None
+        iid = innings.create_innings(
+            conn, wid, actor, match_id=match_id, inns_number=norm.get("inns_number") or 1,
+            batting_team_id=bat_team, bowling_team_id=bowl_team,
+            byes=norm.get("byes"), legbyes=norm.get("legbyes"), wides=norm.get("wides"),
+            noballs=norm.get("noballs"), iresult_raw=norm.get("iresult_raw"),
+            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+        )
+        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=iid)
+        created["innings"] += 1
+
+    # batting entries -> batting_entry (dismissal TYPE unresolved; raw Howout preserved)
+    for rec in staged("batting_entry"):
+        norm = rec["normalised"] or {}
+        existing = _canonical_by_source(conn, "batting_entry", rec["source_ref"])
+        if existing is not None:
+            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+            matched["batting_entry"] += 1
+            continue
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        if inns_id is None:
+            _flag(conn, rec["id"], "innings_unresolved: batting entry left staged")
+            continue
+        eid = batting.create_entry(
+            conn, wid, actor, innings_id=inns_id,
+            person_id=_person_by_source(conn, norm.get("batter_source_ref")),
+            batting_position=norm.get("batting_position"), runs=norm.get("runs"),
+            balls_faced=norm.get("balls_faced"), fours=norm.get("fours"), sixes=norm.get("sixes"),
+            minutes=norm.get("minutes"), dismissal_type=None,  # UNRESOLVED — mapped later from code
+            dismissal_source_code=_s(norm.get("howout_code")),
+            bowler_person_id=_person_by_source(conn, norm.get("bowler_source_ref")),
+            fielder_person_id=_person_by_source(conn, norm.get("fielder_source_ref")),
+            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+        )
+        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=eid)
+        created["batting_entry"] += 1
+
+    # bowling entries -> bowling_entry
+    for rec in staged("bowling_entry"):
+        norm = rec["normalised"] or {}
+        existing = _canonical_by_source(conn, "bowling_entry", rec["source_ref"])
+        if existing is not None:
+            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+            matched["bowling_entry"] += 1
+            continue
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        if inns_id is None:
+            _flag(conn, rec["id"], "innings_unresolved: bowling entry left staged")
+            continue
+        eid = bowling.create_entry(
+            conn, wid, actor, innings_id=inns_id,
+            person_id=_person_by_source(conn, norm.get("bowler_source_ref")),
+            bowling_order=norm.get("bowling_order"), overs_text=norm.get("overs_text"),
+            maidens=norm.get("maidens"), runs_conceded=norm.get("runs_conceded"),
+            wickets=norm.get("wickets"), wides=norm.get("wides"), noballs=norm.get("noballs"),
+            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+        )
+        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=eid)
+        created["bowling_entry"] += 1
+
+    # fall of wickets -> fall_of_wicket (factual; dismissed batter resolved where known)
+    for rec in staged("fall_of_wicket"):
+        norm = rec["normalised"] or {}
+        existing = _canonical_by_source(conn, "fall_of_wicket", rec["source_ref"])
+        if existing is not None:
+            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+            matched["fall_of_wicket"] += 1
+            continue
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        if inns_id is None:
+            _flag(conn, rec["id"], "innings_unresolved: fall of wicket left staged")
+            continue
+        fid = partnerships.create_fow(
+            conn, wid, actor, innings_id=inns_id, wicket_number=norm.get("wicket_number"),
+            team_score=norm.get("team_score"),
+            dismissed_person_id=_person_by_source(conn, norm.get("dismissed_source_ref")),
+            overs_text=norm.get("overs_text"),
+            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+        )
+        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=fid)
+        created["fall_of_wicket"] += 1
+
+
 def rollback_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID) -> dict[str, Any]:
     """Reverse a promotion: delete exactly the canonical rows this batch created (resolution='new'),
     in dependency order, and return the staging records to 'staged'. Matched (pre-existing) rows are
@@ -544,11 +798,13 @@ def rollback_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: U
     batch = get_batch(conn, batch_id)
     if batch is None:
         raise ValueError("batch_not_found")
-    removed = {"match": 0, "team": 0, "division": 0, "venue": 0, "club": 0}
-    # matches first: deleting a match cascades its match_team (and, later, its scorecard body),
-    # and frees the team/venue/grade rows below to be removed without FK conflicts.
-    order = [("match", "match"), ("team", "team"), ("division", "grade"),
-             ("venue", "venue"), ("club", "organisation")]
+    removed = {k: 0 for k in ("fall_of_wicket", "batting_entry", "bowling_entry", "innings",
+                              "match", "team", "division", "venue", "club")}
+    # children before parents: scorecard rows, then matches (match delete would cascade innings,
+    # but explicit deletion keeps the staging records' resolution in step), then teams/venues/grades.
+    order = [("fall_of_wicket", "fall_of_wicket"), ("batting_entry", "batting_entry"),
+             ("bowling_entry", "bowling_entry"), ("innings", "innings"), ("match", "match"),
+             ("team", "team"), ("division", "grade"), ("venue", "venue"), ("club", "organisation")]
     for entity_type, table in order:
         for rec in list_records(conn, batch_id, entity_type=entity_type, status="promoted"):
             if rec["resolution"] != "new" or rec["matched_canonical_id"] is None:

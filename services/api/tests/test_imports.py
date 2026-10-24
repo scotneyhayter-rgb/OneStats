@@ -97,7 +97,8 @@ def _canon_counts(conn):
 def test_stage_preserves_raw_and_flags_unknowns(conn):
     wid = _ws(conn, "IMP WS1")
     res = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD, filename="CS.json")
-    assert res["counts"] == {"club": 2, "venue": 2, "division": 4, "team": 4, "match": 3}
+    assert res["counts"] == {"club": 2, "venue": 2, "division": 4, "team": 4, "match": 3,
+                             "innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
     bid = res["batch_id"]
 
     # Unknown venue "?" -> normalised name None, raw preserved verbatim.
@@ -159,7 +160,8 @@ def test_promote_creates_canonical_including_matches(conn):
     bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, bid)
 
-    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3}
+    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3,
+                              "innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
     assert res["status"] == "partially_promoted"  # two ambiguous grades remain unresolved
     after = _canon_counts(conn)
     assert after["organisation"] - before["organisation"] == 2
@@ -197,8 +199,9 @@ def test_idempotent_reimport_matches_not_duplicates(conn):
     # Re-import the same file as a new batch, then promote.
     b2 = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, b2)
-    assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
-    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3}
+    sc0 = {"innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
+    assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **sc0}
+    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3, **sc0}
     assert _canon_counts(conn) == mid  # no duplicate canonical rows (matches included)
 
 
@@ -230,7 +233,8 @@ def test_rollback_removes_only_batch_created_rows_and_recovers(conn):
     assert _canon_counts(conn)["team"] - before["team"] == 4
 
     out = imports.rollback_batch(conn, wid, ACTOR, bid)
-    assert out["removed"] == {"match": 3, "team": 4, "division": 2, "venue": 2, "club": 2}
+    assert out["removed"] == {"match": 3, "team": 4, "division": 2, "venue": 2, "club": 2,
+                              "innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
     # canonical returns to the pre-promotion baseline (competition container left in place)
     after = _canon_counts(conn)
     assert after["organisation"] == before["organisation"]
