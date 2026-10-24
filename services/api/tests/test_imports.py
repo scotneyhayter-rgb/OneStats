@@ -88,7 +88,7 @@ def _ws(conn, name):
 def _canon_counts(conn):
     def n(tbl):
         return conn.execute(text(f"SELECT count(*) FROM {tbl}")).scalar_one()
-    return {t: n(t) for t in ("organisation", "team", "venue", "grade", "competition")}
+    return {t: n(t) for t in ("organisation", "team", "venue", "grade", "competition", "match")}
 
 
 # ---------------------------------------------------------------- staging
@@ -151,27 +151,41 @@ def test_validate_flags_broken_refs_without_dropping(conn):
 # ---------------------------------------------------------------- promote
 
 
-def test_promote_creates_canonical_and_leaves_matches_staged(conn):
+def test_promote_creates_canonical_including_matches(conn):
+    """Stage 8: matches are now promoted into canonical ``match`` rows (with linked sides, grade,
+    venue and preserved raw result), alongside clubs/teams/venues/grades."""
     wid = _ws(conn, "IMP WS3")
     before = _canon_counts(conn)
     bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, bid)
 
-    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2}
-    assert res["status"] == "partially_promoted"  # matches + ambiguous grades remain
+    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3}
+    assert res["status"] == "partially_promoted"  # two ambiguous grades remain unresolved
     after = _canon_counts(conn)
     assert after["organisation"] - before["organisation"] == 2
     assert after["team"] - before["team"] == 4
     assert after["venue"] - before["venue"] == 2
     assert after["grade"] - before["grade"] == 2  # only B/C Grade promoted
     assert after["competition"] - before["competition"] == 1  # one import container
+    assert after["match"] - before["match"] == 3
 
-    # Matches are never promoted in Stage 6.
+    # every match row promoted; none left staged
     for rec in imports.list_records(conn, bid, entity_type="match"):
-        assert rec["status"] == "staged" and rec["resolution"] == "staged_only"
-    # Ambiguous grades stay unresolved (not promoted).
+        assert rec["status"] == "promoted" and rec["resolution"] == "new"
+    # Ambiguous grades still stay unresolved (not promoted).
     unresolved = imports.list_records(conn, bid, entity_type="division", status="unresolved")
     assert len(unresolved) == 2
+
+    # the away-win match (3000002, Result 2) records the away side as winner; the raw code is kept
+    m = conn.execute(text(
+        "SELECT result_type, result_raw, won_by_team_id, classification, classification_verified, "
+        "match_date, round FROM match WHERE source_ref = '3000002'")).mappings().one()
+    away_team_id = conn.execute(text("SELECT id FROM team WHERE source_ref = '19781'")).scalar_one()
+    assert m["result_type"] == "away_win" and m["result_raw"] == "2" and m["won_by_team_id"] == away_team_id
+    # round is preserved verbatim but NEVER classifies the match
+    assert m["round"] == "GF" and m["classification"] == "unclassified" and m["classification_verified"] is False
+    # the Result-4 match stays unknown (not evidence-verified) — never guessed
+    assert conn.execute(text("SELECT result_type FROM match WHERE source_ref = '3000001'")).scalar_one() == "unknown"
 
 
 def test_idempotent_reimport_matches_not_duplicates(conn):
@@ -183,9 +197,9 @@ def test_idempotent_reimport_matches_not_duplicates(conn):
     # Re-import the same file as a new batch, then promote.
     b2 = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, b2)
-    assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0}
-    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2}
-    assert _canon_counts(conn) == mid  # no duplicate canonical rows
+    assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
+    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3}
+    assert _canon_counts(conn) == mid  # no duplicate canonical rows (matches included)
 
 
 def test_historical_identities_stay_distinct(conn):
@@ -216,13 +230,14 @@ def test_rollback_removes_only_batch_created_rows_and_recovers(conn):
     assert _canon_counts(conn)["team"] - before["team"] == 4
 
     out = imports.rollback_batch(conn, wid, ACTOR, bid)
-    assert out["removed"] == {"team": 4, "division": 2, "venue": 2, "club": 2}
+    assert out["removed"] == {"match": 3, "team": 4, "division": 2, "venue": 2, "club": 2}
     # canonical returns to the pre-promotion baseline (competition container left in place)
     after = _canon_counts(conn)
     assert after["organisation"] == before["organisation"]
     assert after["team"] == before["team"]
     assert after["venue"] == before["venue"]
     assert after["grade"] == before["grade"]
+    assert after["match"] == before["match"]  # imported matches removed too
     # staging records are recovered to 'staged' and can be promoted again
     assert all(r["status"] == "staged" for r in imports.list_records(conn, bid, entity_type="club"))
     res2 = imports.promote_batch(conn, wid, ACTOR, bid)

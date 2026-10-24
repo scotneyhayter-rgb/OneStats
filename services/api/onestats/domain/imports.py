@@ -30,7 +30,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain import audit, competitions, organisations, teams, venues
+from onestats.domain import audit, competitions, matches, organisations, teams, venues
 
 SOURCE_SYSTEM = "cricket_statz"
 _IMPORT_COMP_REF = "cricket_statz:import"
@@ -311,7 +311,8 @@ def preview_batch(conn: Connection, batch_id: UUID) -> dict[str, Any]:
     for r in rows:
         summary.setdefault(r["entity_type"], {})[r["status"]] = r["n"]
     promotable = sum(
-        v.get("staged", 0) for k, v in summary.items() if k in ("club", "venue", "team", "division")
+        v.get("staged", 0) for k, v in summary.items()
+        if k in ("club", "venue", "team", "division", "match")
     )
     unresolved = sum(v.get("unresolved", 0) for v in summary.values())
     return {
@@ -319,7 +320,7 @@ def preview_batch(conn: Connection, batch_id: UUID) -> dict[str, Any]:
         "by_entity": summary,
         "promotable_now": promotable,
         "unresolved": unresolved,
-        "matches_staged_only": summary.get("match", {}).get("staged", 0),
+        "matches_promotable": summary.get("match", {}).get("staged", 0),
     }
 
 
@@ -368,8 +369,8 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     if batch["status"] in ("cancelled", "promoted"):
         raise ValueError(f"batch_{batch['status']}")
 
-    created = {"club": 0, "venue": 0, "team": 0, "division": 0}
-    matched = {"club": 0, "venue": 0, "team": 0, "division": 0}
+    created = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
+    matched = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0}
 
     def promotable(entity_type: str) -> list[dict[str, Any]]:
         # Only 'staged' rows promote: 'unresolved' (ambiguous grades) and already-'promoted'
@@ -448,7 +449,61 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=tid)
         created["team"] += 1
 
-    # matches: structural staging only — never promoted in Stage 6 (Phase 8 owns scorecards).
+    # matches -> match (canonical fixture header). Stage 8: matches are now promoted (the scorecard
+    # body — innings/batting/bowling/FOW/partnerships — is promoted by a later sub-stage). Idempotent
+    # on (source_system, source_ref): re-promotion matches, never duplicates. References (teams,
+    # grade, venue) are linked only where those entities were themselves promoted/matched — an
+    # unresolved reference stays NULL (unknown ≠ wrong) and is flagged, never invented. The round
+    # label NEVER classifies the match: classification stays 'unclassified'/unverified for admin.
+    promotable_matches = promotable("match")
+    if promotable_matches and comp_id is None:
+        comp_id = _get_or_create_import_competition(conn, workspace_id, actor)
+    for rec in promotable_matches:
+        norm = rec["normalised"] or {}
+        existing = conn.execute(
+            text("SELECT id FROM match WHERE source_system = :ss AND source_ref = :sr"),
+            {"ss": SOURCE_SYSTEM, "sr": rec["source_ref"]},
+        ).scalar_one_or_none()
+        if existing is not None:
+            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+            matched["match"] += 1
+            continue
+
+        def _resolve(table: str, fk: str, key: str, _norm: dict[str, Any] = norm) -> UUID | None:
+            ref = _norm.get(key)
+            return _find_canonical_by_source(conn, table, fk, ref) if ref else None
+
+        home_id = _resolve("team_source_identity", "team_id", "home_team_source_ref")
+        away_id = _resolve("team_source_identity", "team_id", "away_team_source_ref")
+        grade_id = _resolve("grade", "id", "grade_source_ref")
+        venue_id = _resolve("venue_source_identity", "venue_id", "venue_source_ref")
+        match_date = norm.get("date_played")
+
+        mid = matches.create_match(
+            conn, workspace_id, actor, competition_id=comp_id, grade_id=grade_id, venue_id=venue_id,
+            match_date=match_date, date_precision="exact" if match_date else "unknown",
+            round=norm.get("round"), matchtype=norm.get("matchtype_label"),
+            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+        )
+        # link the sides that resolved; a missing team leaves that side unset and is flagged
+        if home_id is not None:
+            matches.set_team(conn, workspace_id, actor, mid, team_id=home_id, is_home=True)
+        else:
+            _flag(conn, rec["id"], "home_team_unresolved: match imported without home side")
+        if away_id is not None:
+            matches.set_team(conn, workspace_id, actor, mid, team_id=away_id, is_home=False)
+        else:
+            _flag(conn, rec["id"], "away_team_unresolved: match imported without away side")
+        # preserve the raw CricketStatz result code; set a known winner only where evidence-verified
+        rtype = norm.get("result_label") if norm.get("result_status") == "known" else "unknown"
+        won_by = home_id if rtype == "home_win" else away_id if rtype == "away_win" else None
+        result = norm.get("result")
+        matches.set_result(conn, workspace_id, actor, mid, result_type=rtype or "unknown",
+                           won_by_team_id=won_by, result_raw=None if result is None else str(result))
+        # classification is intentionally NOT set here — the round is a hint only (user rule).
+        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
+        created["match"] += 1
+
     remaining_unresolved = conn.execute(
         text("SELECT count(*) FROM import_staging_record WHERE batch_id = :b AND status IN ('staged','unresolved')"),
         {"b": batch_id},
@@ -489,8 +544,11 @@ def rollback_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: U
     batch = get_batch(conn, batch_id)
     if batch is None:
         raise ValueError("batch_not_found")
-    removed = {"team": 0, "division": 0, "venue": 0, "club": 0}
-    order = [("team", "team"), ("division", "grade"), ("venue", "venue"), ("club", "organisation")]
+    removed = {"match": 0, "team": 0, "division": 0, "venue": 0, "club": 0}
+    # matches first: deleting a match cascades its match_team (and, later, its scorecard body),
+    # and frees the team/venue/grade rows below to be removed without FK conflicts.
+    order = [("match", "match"), ("team", "team"), ("division", "grade"),
+             ("venue", "venue"), ("club", "organisation")]
     for entity_type, table in order:
         for rec in list_records(conn, batch_id, entity_type=entity_type, status="promoted"):
             if rec["resolution"] != "new" or rec["matched_canonical_id"] is None:
