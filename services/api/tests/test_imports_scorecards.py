@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import imports, people
+from onestats.domain import imports, partnerships, people
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")
@@ -176,6 +176,24 @@ def test_rollback_removes_scorecards(conn):
     assert out["removed"]["innings"] == 1 and out["removed"]["match"] == 1
     assert conn.execute(text("SELECT count(*) FROM batting_entry")).scalar_one() == 0
     assert conn.execute(text("SELECT count(*) FROM innings")).scalar_one() == 0
+
+
+def test_import_auto_generates_partnerships_from_fow(conn):
+    """Partnerships are generated automatically from the imported fall of wickets — no manual button.
+    Re-import does not duplicate them (the calculated partnerships are replaced, not re-added)."""
+    wid = _ws(conn, "SC PART")
+    _seed_players(conn, wid)
+    _, res = _promote(conn, wid)
+    assert res["created"]["partnership"] >= 1                 # auto-derived on import
+    inn = conn.execute(text("SELECT id FROM innings WHERE source_ref = '700'")).scalar_one()
+    parts = partnerships.list_partnerships(conn, inn)
+    assert len(parts) >= 1
+    first = next(p for p in parts if p["wicket_number"] == 1)
+    assert first["origin"] == "calculated" and first["runs"] == 40   # FOW at 40 -> 1st-wicket stand
+
+    before = conn.execute(text("SELECT count(*) FROM partnership")).scalar_one()
+    _promote(conn, wid)  # re-import the same data
+    assert conn.execute(text("SELECT count(*) FROM partnership")).scalar_one() == before  # no duplicates
 
 
 def test_howout_legend_mapping():

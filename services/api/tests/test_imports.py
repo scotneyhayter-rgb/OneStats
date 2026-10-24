@@ -161,7 +161,8 @@ def test_promote_creates_canonical_including_matches(conn):
     res = imports.promote_batch(conn, wid, ACTOR, bid)
 
     assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3,
-                              "innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
+                              "innings": 0, "batting_entry": 0, "bowling_entry": 0,
+                              "fall_of_wicket": 0, "partnership": 0}
     assert res["status"] == "partially_promoted"  # two ambiguous grades remain unresolved
     after = _canon_counts(conn)
     assert after["organisation"] - before["organisation"] == 2
@@ -199,7 +200,7 @@ def test_idempotent_reimport_matches_not_duplicates(conn):
     # Re-import the same file as a new batch, then promote.
     b2 = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, b2)
-    sc0 = {"innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
+    sc0 = {"innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0, "partnership": 0}
     assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **sc0}
     assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3, **sc0}
     assert _canon_counts(conn) == mid  # no duplicate canonical rows (matches included)

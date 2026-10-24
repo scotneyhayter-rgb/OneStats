@@ -526,7 +526,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     if batch["status"] in ("cancelled", "promoted"):
         raise ValueError(f"batch_{batch['status']}")
 
-    _SCORE = ("innings", "batting_entry", "bowling_entry", "fall_of_wicket")
+    _SCORE = ("innings", "batting_entry", "bowling_entry", "fall_of_wicket", "partnership")
     created = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **{k: 0 for k in _SCORE}}
     matched = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **{k: 0 for k in _SCORE}}
 
@@ -729,6 +729,8 @@ def _promote_scorecards(
     def staged(et: str) -> list[dict[str, Any]]:
         return list_records(conn, batch_id, entity_type=et, status="staged")
 
+    touched_innings: set[UUID] = set()  # innings to (re)derive partnerships for after FOW import
+
     # innings -> innings (needs its match promoted/matched; sides linked where teams resolved)
     for rec in staged("innings"):
         norm = rec["normalised"] or {}
@@ -736,6 +738,7 @@ def _promote_scorecards(
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["innings"] += 1
+            touched_innings.add(existing)
             continue
         match_id = _canonical_by_source(conn, "match", norm.get("match_source_ref")) if norm.get("match_source_ref") else None
         if match_id is None:
@@ -752,6 +755,7 @@ def _promote_scorecards(
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=iid)
         created["innings"] += 1
+        touched_innings.add(iid)
 
     # batting entries -> batting_entry (dismissal TYPE unresolved; raw Howout preserved)
     for rec in staged("batting_entry"):
@@ -825,6 +829,20 @@ def _promote_scorecards(
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=fid)
         created["fall_of_wicket"] += 1
+
+    # Automatic partnerships: once the batting order and fall of wickets are imported, derive the
+    # CALCULATED partnerships for each touched innings (naming both batters where the order/FOW
+    # supports it). Reuses the existing engine — idempotent (replaces only origin='calculated', so
+    # re-import never duplicates), preserves any manual/verified partnerships, and invents nothing
+    # when an innings has no FOW (the stand is simply left unknown).
+    derived_total = 0
+    for inns_id in touched_innings:
+        try:
+            parts = partnerships.derive_from_fow(conn, wid, actor, inns_id)
+            derived_total += sum(1 for p in parts if p.get("origin") == "calculated")
+        except ValueError:
+            pass  # an innings that cannot be derived is left without partnerships, never blocked
+    created["partnership"] = created.get("partnership", 0) + derived_total
 
 
 def controlled_import(
