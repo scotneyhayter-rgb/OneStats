@@ -14,6 +14,7 @@ import { Competitions } from "./features/manage/Competitions";
 import { PlayingConditions } from "./features/manage/PlayingConditions";
 import { OrgHistory } from "./features/manage/OrgHistory";
 import { useAuth } from "./lib/auth";
+import { LayoutProvider } from "./lib/layout";
 import { WorkspaceProvider } from "./lib/workspace-context";
 
 function NotFound() {
@@ -26,8 +27,9 @@ function NotFound() {
 
 function AuthedApp() {
   return (
-    <WorkspaceProvider>
-      <Routes>
+    <LayoutProvider>
+      <WorkspaceProvider>
+        <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/workspaces" element={<MyWorkspaces />} />
@@ -42,9 +44,10 @@ function AuthedApp() {
         <Route path="/statistics" element={<Statistics />} />
         <Route path="/ask" element={<Ask />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </WorkspaceProvider>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </WorkspaceProvider>
+    </LayoutProvider>
   );
 }
 

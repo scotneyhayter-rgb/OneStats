@@ -7,11 +7,13 @@
  * verified information.
  */
 
-import { ChevronLeft, Info, Save } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  ChevronLeft, ClipboardList, Coins, Info, Layers, ListOrdered, Maximize2, Minimize2, Save, Target,
+  TrendingDown, Trophy, Users,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent } from "../../components/ui/card";
 import { ConfirmDialog } from "../../components/ui/dialog";
 import { Input, Textarea } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
@@ -20,10 +22,12 @@ import {
   api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail, type MatchTeam,
   type Person, type Team, type Venue, type Grade, type Season, type CompetitionDetail,
 } from "../../lib/api";
+import { useLayout } from "../../lib/layout";
 import { useWorkspace } from "../../lib/workspace-context";
 import { Field } from "../manage/_shared";
 import { BattingGrid, BowlingGrid, FowGrid, PartnershipsGrid } from "./grids";
 import { PlayerSelect } from "./PlayerSelect";
+import { SectionCard, SubPanel, SubtleBar, TeamPanel } from "./ui";
 import {
   deserializeDraft, draftKey, inningsAdvisories, INNINGS_STATUSES, serializeDraft, showNum,
 } from "./scorecard-logic";
@@ -95,6 +99,27 @@ export function ScorecardEditor({
     setTimeout(() => setMsg(null), 2500);
   };
 
+  // Focus Mode: a distraction-free entry layout. It collapses the sidebar and hides the secondary
+  // match sections (without unmounting them, so unsaved edits are preserved), leaving the scorecard
+  // expanded. It never saves, navigates or changes match data/status.
+  const { sidebarCollapsed, setSidebarCollapsed } = useLayout();
+  const [focus, setFocus] = useState(false);
+  const prevSidebar = useRef(sidebarCollapsed);
+  const enterFocus = () => { prevSidebar.current = sidebarCollapsed; setSidebarCollapsed(true); setFocus(true); };
+  const exitFocus = useCallback(() => { setFocus(false); setSidebarCollapsed(prevSidebar.current); }, [setSidebarCollapsed]);
+  useEffect(() => {
+    if (!focus) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Escape exits — but only when nothing else needs it (no open modal/dialog).
+      if (e.key === "Escape" && !document.querySelector('[role="dialog"]')) {
+        e.preventDefault();
+        exitFocus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [focus, exitFocus]);
+
   const patchMatch = async (body: Record<string, unknown>) => {
     try {
       await api.updateMatch(workspaceId, matchId, body);
@@ -127,27 +152,40 @@ export function ScorecardEditor({
         <div className="flex-1" />
         {msg && <span className="text-sm text-success">{msg}</span>}
         {err && <span className="text-sm text-danger">{err}</span>}
+        <Button variant="outline" size="sm" onClick={() => (focus ? exitFocus() : enterFocus())}
+          aria-pressed={focus} title={focus ? "Exit Focus Mode (Esc)" : "Focus Mode"}>
+          {focus ? <Minimize2 className="h-4 w-4" aria-hidden /> : <Maximize2 className="h-4 w-4" aria-hidden />}
+          {focus ? "Exit Focus Mode" : "Focus Mode"}
+        </Button>
       </div>
 
-      <Legend />
+      {focus && (
+        <p className="rounded-[var(--radius-app)] bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+          Focus Mode — match details, toss and result are hidden (not changed). Press <kbd className="rounded border border-border bg-card px-1">Esc</kbd> or Exit Focus Mode to restore.
+        </p>
+      )}
 
-      <MatchDetailsSection
-        match={match} teams={teams} venues={venues} comps={comps} compDetail={compDetail}
-        canManage={canManage} teamName={teamName}
-        onComp={async (cid) => { await patchMatch({ competition_id: cid || null }); }}
-        onPatch={patchMatch}
-        onSetTeam={async (team_id, is_home) => {
-          try { await api.setMatchTeam(workspaceId, matchId, { team_id, is_home }); await load(); }
-          catch (e) { setErr(e instanceof ApiError ? e.message : "Could not set team"); }
-        }}
-      />
+      <div className={focus ? "hidden" : "contents"}>
+        <Legend />
 
-      <TossAndOfficialsSection
-        workspaceId={workspaceId} matchId={matchId} match={match} canManage={canManage}
-        teamName={teamName} nameOf={nameOf} addName={addName}
-        reload={async () => { setMatch(await api.getMatch(workspaceId, matchId)); }}
-        onError={(m) => setErr(m)} flash={flash}
-      />
+        <MatchDetailsSection
+          match={match} teams={teams} venues={venues} comps={comps} compDetail={compDetail}
+          canManage={canManage} teamName={teamName}
+          onComp={async (cid) => { await patchMatch({ competition_id: cid || null }); }}
+          onPatch={patchMatch}
+          onSetTeam={async (team_id, is_home) => {
+            try { await api.setMatchTeam(workspaceId, matchId, { team_id, is_home }); await load(); }
+            catch (e) { setErr(e instanceof ApiError ? e.message : "Could not set team"); }
+          }}
+        />
+
+        <TossAndOfficialsSection
+          workspaceId={workspaceId} matchId={matchId} match={match} canManage={canManage}
+          teamName={teamName} nameOf={nameOf} addName={addName}
+          reload={async () => { setMatch(await api.getMatch(workspaceId, matchId)); }}
+          onError={(m) => setErr(m)} flash={flash}
+        />
+      </div>
 
       <InningsSection
         workspaceId={workspaceId} matchId={matchId} match={match} innings={innings}
@@ -157,11 +195,13 @@ export function ScorecardEditor({
         onDirty={(m) => m && setErr(m)} flash={flash}
       />
 
-      <ResultNotesSection match={match} teamName={teamName} canManage={canManage} onPatch={patchMatch}
-        onResult={async (body) => {
-          try { await api.setMatchResult(workspaceId, matchId, body); await load(); flash("Result saved."); }
-          catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save result"); }
-        }} />
+      <div className={focus ? "hidden" : "contents"}>
+        <ResultNotesSection match={match} teamName={teamName} canManage={canManage} onPatch={patchMatch}
+          onResult={async (body) => {
+            try { await api.setMatchResult(workspaceId, matchId, body); await load(); flash("Result saved."); }
+            catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save result"); }
+          }} />
+      </div>
     </div>
   );
 }
@@ -195,7 +235,8 @@ function MatchDetailsSection({
   const grades: Grade[] = compDetail?.grades ?? [];
   const seasons: Season[] = compDetail?.seasons ?? [];
   return (
-    <Section title="Match details">
+    <SectionCard icon={ClipboardList} title="Match details"
+      description="Competition, grade, season, venue, date and the explicit classification.">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Competition">
           <Select value={match.competition_id ?? ""} disabled={!canManage} onChange={(e) => onComp(e.target.value)}>
@@ -237,22 +278,25 @@ function MatchDetailsSection({
 
       <ClassificationControl match={match} canManage={canManage} />
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Field label="Home team">
-          <Select value={home} disabled={!canManage} onChange={(e) => e.target.value && onSetTeam(e.target.value, true)}>
-            <option value="">— select —</option>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-        </Field>
-        <Field label="Away team">
-          <Select value={away} disabled={!canManage} onChange={(e) => e.target.value && onSetTeam(e.target.value, false)}>
-            <option value="">— select —</option>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-        </Field>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <TeamPanel side="home" teamName={teamName(home || null)}>
+          <Field label="Home team">
+            <Select value={home} disabled={!canManage} onChange={(e) => e.target.value && onSetTeam(e.target.value, true)}>
+              <option value="">— select —</option>
+              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </Field>
+        </TeamPanel>
+        <TeamPanel side="away" teamName={teamName(away || null)}>
+          <Field label="Away team">
+            <Select value={away} disabled={!canManage} onChange={(e) => e.target.value && onSetTeam(e.target.value, false)}>
+              <option value="">— select —</option>
+              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </Field>
+        </TeamPanel>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">Home: {teamName(home || null) ?? "—"} · Away: {teamName(away || null) ?? "—"}</p>
-    </Section>
+    </SectionCard>
   );
 }
 
@@ -354,7 +398,8 @@ function TossAndOfficialsSection({
   };
 
   return (
-    <Section title="Toss, captains & wicketkeepers">
+    <SectionCard icon={Coins} title="Toss, captains & wicketkeepers"
+      description="Recorded explicitly — the toss is never inferred from who batted first.">
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <Field label="Toss won by" hint="Never inferred from who batted first.">
           <Select value={tossWinner} disabled={!canManage} onChange={(e) => setTossWinner(e.target.value)}>
@@ -370,7 +415,7 @@ function TossAndOfficialsSection({
         </Field>
         {canManage && (
           <div className="flex items-end">
-            <Button size="sm" variant="outline" onClick={() => void saveToss()}>Save toss</Button>
+            <Button size="sm" onClick={() => void saveToss()}>Save toss</Button>
           </div>
         )}
       </div>
@@ -378,10 +423,7 @@ function TossAndOfficialsSection({
       {sides.length === 0 && <p className="text-sm text-muted-foreground">Set the home and away teams above to record captains and wicketkeepers.</p>}
       <div className="grid gap-4 sm:grid-cols-2">
         {sides.map((mt) => (
-          <div key={mt.id} className="rounded-[var(--radius-app)] border border-border p-3">
-            <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-              {mt.is_home ? "Home" : "Away"} — {teamName(mt.team_id) ?? "—"}
-            </h4>
+          <TeamPanel key={mt.id} side={mt.is_home ? "home" : "away"} teamName={teamName(mt.team_id)}>
             <div className="flex flex-col gap-2">
               <Field label="Captain">
                 <PlayerSelect workspaceId={workspaceId} value={mt.captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
@@ -404,10 +446,10 @@ function TossAndOfficialsSection({
                   onChange={(pid) => void saveOfficial(mt, { wicketkeeper2_person_id: pid })} />
               </Field>
             </div>
-          </div>
+          </TeamPanel>
         ))}
       </div>
-    </Section>
+    </SectionCard>
   );
 }
 
@@ -437,7 +479,7 @@ function InningsSection({
 
   const active = innings.find((i) => i.id === activeInnings) ?? null;
   return (
-    <Section title="Innings">
+    <SectionCard icon={Layers} title="Innings" description="Batting, bowling, extras, fall of wickets and partnerships.">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {innings.map((i) => (
           <button key={i.id} onClick={() => setActiveInnings(i.id)}
@@ -458,7 +500,7 @@ function InningsSection({
                    away: match.teams.find((t) => !t.is_home)?.team_id ?? null }}
           reloadInnings={reloadInnings} onDirty={onDirty} flash={flash} />
       )}
-    </Section>
+    </SectionCard>
   );
 }
 
@@ -579,10 +621,10 @@ function InningsEditor({
           catch (e) { onDirty(e instanceof ApiError ? e.message : "Could not save official total"); }
         }} />
 
-      <SubSection title="Batting"><BattingGrid {...ctx} /></SubSection>
-      <SubSection title="Bowling"><BowlingGrid {...ctx} /></SubSection>
-      <SubSection title="Fall of wickets"><FowGrid {...ctx} /></SubSection>
-      <SubSection title="Partnerships"><PartnershipsGrid {...ctx} /></SubSection>
+      <SubPanel icon={ListOrdered} title="Batting"><BattingGrid {...ctx} /></SubPanel>
+      <SubPanel icon={Target} title="Bowling"><BowlingGrid {...ctx} /></SubPanel>
+      <SubPanel icon={TrendingDown} title="Fall of wickets"><FowGrid {...ctx} /></SubPanel>
+      <SubPanel icon={Users} title="Partnerships"><PartnershipsGrid {...ctx} /></SubPanel>
 
       <ValidationPanel client={clientWarnings} backend={backendWarnings} onRun={() => void runBackendValidation()} />
     </div>
@@ -625,18 +667,18 @@ function TotalsBar({ totals, innings, canManage, onOfficial }: {
   const [wkts, setWkts] = useState("");
   const [reason, setReason] = useState("");
   return (
-    <div className="rounded-[var(--radius-app)] bg-muted/40 px-3 py-2 text-sm">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+    <div className="flex flex-col gap-2">
+      <SubtleBar>
         <span className="text-muted-foreground">Extras: <span className="text-foreground tabular-nums">{showNum(totals?.extras_total ?? null)}</span></span>
         <span className="text-muted-foreground">Batting runs: <span className="text-foreground tabular-nums">{showNum(totals?.batting_runs ?? null)}</span></span>
         <span className="text-muted-foreground">Calculated total: <span className="text-brand tabular-nums">{showNum(totals?.derived_total ?? null)}</span></span>
         <span className="text-muted-foreground">Calculated wkts: <span className="text-brand tabular-nums">{showNum(totals?.derived_wickets ?? null)}</span></span>
         <span className="text-muted-foreground">Official: <span className={`tabular-nums ${innings.official_total !== null ? "text-success" : "italic text-muted-foreground"}`}>
           {innings.official_total !== null ? `${innings.official_total}/${showNum(innings.official_wickets)}` : "—"}</span></span>
-        {canManage && <button className="ml-auto text-xs text-brand hover:underline" onClick={() => setOpen((v) => !v)}>{open ? "Cancel" : "Record official total"}</button>}
-      </div>
+        {canManage && <button className="ml-auto text-xs font-medium text-brand hover:underline" onClick={() => setOpen((v) => !v)}>{open ? "Cancel" : "Record official total"}</button>}
+      </SubtleBar>
       {open && canManage && (
-        <div className="mt-2 flex flex-wrap items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius-app)] border border-border bg-card p-3">
           <label className="flex flex-col gap-1 text-xs">Total<input value={total} onChange={(e) => setTotal(e.target.value)} className="w-20 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
           <label className="flex flex-col gap-1 text-xs">Wickets<input value={wkts} onChange={(e) => setWkts(e.target.value)} className="w-20 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
           <label className="flex flex-col gap-1 text-xs">Reason / evidence<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. RMCC scorebook p.4" className="w-56 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
@@ -681,7 +723,8 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
   const sides = match.teams.map((t) => t.team_id);
   const workspaceId = useWorkspaceId() ?? "";
   return (
-    <Section title="Match result & notes">
+    <SectionCard icon={Trophy} title="Match result & notes"
+      description="Result, winner and margin (tie and draw are distinct); notes and match status.">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Result">
           <Select value={resultType} disabled={!canManage} onChange={(e) => setResultType(e.target.value)}>
@@ -722,7 +765,7 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
         <span className="ml-2 text-xs text-muted-foreground">Draft keeps it editable and out of statistics until finalised.</span>
       </div>
       <DraftNote matchId={match.id} />
-    </Section>
+    </SectionCard>
   );
 }
 
@@ -739,29 +782,6 @@ function DraftNote({ matchId }: { matchId: string }) {
   }, [w, matchId]);
   if (!savedAt) return null;
   return <p className="mt-2 text-xs text-muted-foreground">Local draft notes restored (saved {new Date(savedAt).toLocaleString()}).</p>;
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardContent className="py-4">
-        <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="rounded-[var(--radius-app)] border border-border">
-      <button className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium" onClick={() => setOpen((v) => !v)}>
-        {title}<span className="text-xs text-muted-foreground">{open ? "Hide" : "Show"}</span>
-      </button>
-      {open && <div className="border-t border-border p-3">{children}</div>}
-    </div>
-  );
 }
 
 // expose draft serializer usage so the helper is referenced (notes autosave hook point)
