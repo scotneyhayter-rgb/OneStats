@@ -124,10 +124,23 @@ def list_assets(conn: Connection, workspace_id: UUID, *, kind: str | None = None
 
 
 def update_metadata(conn: Connection, workspace_id: UUID, actor: str, asset_id: UUID, **fields: Any) -> dict[str, Any]:
-    if get_asset(conn, asset_id) is None:
+    current = get_asset(conn, asset_id)
+    if current is None:
         raise ValueError("asset_not_found")
     if "visibility" in fields and fields["visibility"] not in ("private", "workspace", "publishable"):
         raise ValueError("invalid_visibility")
+    # Publication clearance is explicit and guarded: internal access never implies permission to publish.
+    # An asset cannot be made publication-eligible while it is junior-protected or sensitive, or without a
+    # recorded copyright status (deliverables 20.4, 24, 33). Publishing phases still re-check this.
+    def _eff(key: str) -> Any:
+        return fields[key] if key in fields and fields[key] is not None else current.get(key)
+    if _eff("publication_eligible"):
+        if _eff("junior_protected"):
+            raise ValueError("publication_blocked_junior")
+        if _eff("sensitive"):
+            raise ValueError("publication_blocked_sensitive")
+        if not _eff("copyright_status"):
+            raise ValueError("publication_requires_copyright")
     sets, params = [], {"id": asset_id}
     for k in _META_COLS:
         if k in fields and fields[k] is not None:
@@ -139,6 +152,19 @@ def update_metadata(conn: Connection, workspace_id: UUID, actor: str, asset_id: 
         audit.write_audit(conn, workspace_id, actor, "media.metadata_updated", entity="media_asset",
                           entity_id=str(asset_id), after={k: params[k] for k in params if k != "id"})
     return get_asset(conn, asset_id)
+
+
+def publishable_assets(conn: Connection, workspace_id: UUID) -> list[dict[str, Any]]:
+    """Only assets explicitly cleared for publication: publication-eligible, visibility 'publishable',
+    not junior-protected, not sensitive, with a recorded copyright status. This is what a future website/
+    portal (Phase 29) may expose — internal assets are never published by default."""
+    rows = conn.execute(
+        text("SELECT * FROM media_asset WHERE workspace_id = :w AND publication_eligible = true "
+             "AND visibility = 'publishable' AND junior_protected = false AND sensitive = false "
+             "AND copyright_status IS NOT NULL ORDER BY created_at DESC"),
+        {"w": workspace_id},
+    ).mappings().all()
+    return [dict(r) for r in rows]
 
 
 def asset_bytes(settings: Settings, workspace_id: UUID, asset: dict[str, Any]) -> bytes:

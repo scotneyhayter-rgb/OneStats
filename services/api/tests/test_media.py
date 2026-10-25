@@ -144,6 +144,32 @@ def test_stable_id_links_survive(conn, tmp_path):
 
 
 @dbmark
+def test_publication_clearance_is_guarded(conn, tmp_path):
+    wid = _ws(conn, "MEDIA CLEAR")
+    s = _store(tmp_path)
+    # junior-protected cannot be published
+    j = assets.create_internal_asset(conn, s, wid, ACTOR, raw=_png(), content_type="image/png",
+                                     junior_protected=True, copyright_status="public_domain")
+    with pytest.raises(ValueError, match="publication_blocked_junior"):
+        assets.update_metadata(conn, wid, ACTOR, j["id"], publication_eligible=True, visibility="publishable")
+    # sensitive cannot be published
+    se = assets.create_internal_asset(conn, s, wid, ACTOR, raw=_png(), content_type="image/png",
+                                      sensitive=True, copyright_status="public_domain")
+    with pytest.raises(ValueError, match="publication_blocked_sensitive"):
+        assets.update_metadata(conn, wid, ACTOR, se["id"], publication_eligible=True)
+    # no copyright recorded -> cannot be published
+    nc = assets.create_internal_asset(conn, s, wid, ACTOR, raw=_png(), content_type="image/png")
+    with pytest.raises(ValueError, match="publication_requires_copyright"):
+        assets.update_metadata(conn, wid, ACTOR, nc["id"], publication_eligible=True)
+    # a cleared asset is publishable; the protected ones are excluded
+    ok = assets.create_internal_asset(conn, s, wid, ACTOR, raw=_png(), content_type="image/png",
+                                      copyright_status="public_domain")
+    assets.update_metadata(conn, wid, ACTOR, ok["id"], publication_eligible=True, visibility="publishable")
+    pub = {str(a["id"]) for a in assets.publishable_assets(conn, wid)}
+    assert str(ok["id"]) in pub and str(j["id"]) not in pub and str(se["id"]) not in pub
+
+
+@dbmark
 def test_media_workspace_isolation(conn, tmp_path):
     wa = _ws(conn, "MEDIA ISO A")
     assets.create_internal_asset(conn, _store(tmp_path), wa, ACTOR, raw=_png(), content_type="image/png")

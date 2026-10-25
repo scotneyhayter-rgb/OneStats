@@ -31,6 +31,9 @@ _ERRORS = {
     "cannot_migrate_to_external": status.HTTP_400_BAD_REQUEST,
     "source_integrity_failed": status.HTTP_409_CONFLICT,
     "migration_verify_failed": status.HTTP_409_CONFLICT,
+    "publication_blocked_junior": status.HTTP_409_CONFLICT,
+    "publication_blocked_sensitive": status.HTTP_409_CONFLICT,
+    "publication_requires_copyright": status.HTTP_409_CONFLICT,
 }
 
 
@@ -106,6 +109,14 @@ async def upload_asset(workspace_id: UUID, settings: SettingsDep, ctx: Ctx, file
         return _s(assets.create_internal_asset(conn, settings, workspace_id, str(ctx.user["id"]), raw=raw,
                                                content_type=file.content_type or "application/octet-stream",
                                                original_filename=file.filename, kind=kind, title=title))
+
+
+@router.get("/assets/publishable")
+def publishable(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    """Assets explicitly cleared for publication (future website/portal). Internal access alone never
+    makes an asset publishable; junior-protected/sensitive assets are excluded."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in assets.publishable_assets(conn, workspace_id)]
 
 
 @router.post("/assets/external", status_code=status.HTTP_201_CREATED)

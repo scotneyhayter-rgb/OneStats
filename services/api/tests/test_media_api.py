@@ -18,8 +18,9 @@ def client() -> TestClient:
 def test_media_routes_registered(client):
     paths = set(client.app.openapi()["paths"].keys())
     base = "/api/v1/workspaces/{workspace_id}/media"
-    for p in ("/providers", "/assets", "/assets/external", "/assets/{asset_id}", "/assets/{asset_id}/file",
-              "/assets/{asset_id}/thumbnail", "/assets/{asset_id}/link",
+    for p in ("/providers", "/assets", "/assets/publishable", "/assets/external", "/assets/{asset_id}",
+              "/assets/{asset_id}/file", "/assets/{asset_id}/thumbnail", "/assets/{asset_id}/link",
+              "/assets/{asset_id}/migrate", "/assets/{asset_id}/verify",
               "/entities/{entity_type}/{entity_id}/assets"):
         assert f"{base}{p}" in paths, p
 
