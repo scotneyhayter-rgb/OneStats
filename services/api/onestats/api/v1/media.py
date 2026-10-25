@@ -42,7 +42,6 @@ _ERRORS = {
     "source_not_found": status.HTTP_404_NOT_FOUND,
     "source_has_no_file": status.HTTP_409_CONFLICT,
     "source_file_missing": status.HTTP_409_CONFLICT,
-    "source_integrity_failed": status.HTTP_409_CONFLICT,
 }
 
 
