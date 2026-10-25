@@ -1205,6 +1205,14 @@ export const api = {
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<StatReport>(`/api/v1/workspaces/${w}/stats/reports/${report}${qs2 ? `?${qs2}` : ""}`);
   },
+  statsSavedList: (w: string) =>
+    request<{ id: string; name: string; report: string; config: Record<string, unknown> | null; shared: boolean; created_by: string | null }[]>(`/api/v1/workspaces/${w}/stats/saved-reports`),
+  statsSaveReport: (w: string, body: { name: string; report: string; config?: Record<string, unknown>; shared?: boolean }) =>
+    request<{ id: string }>(`/api/v1/workspaces/${w}/stats/saved-reports`, { method: "POST", body }),
+  statsUpdateSaved: (w: string, id: string, body: Record<string, unknown>) =>
+    request<unknown>(`/api/v1/workspaces/${w}/stats/saved-reports/${id}`, { method: "PATCH", body }),
+  statsDeleteSaved: (w: string, id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/workspaces/${w}/stats/saved-reports/${id}`, { method: "DELETE" }),
   statsLadder: (w: string, competitionId: string, season_id?: string) =>
     request<StatLadder>(`/api/v1/workspaces/${w}/stats/ladder?competition_id=${competitionId}${season_id ? `&season_id=${season_id}` : ""}`),
   statsReportPdfUrl: async (w: string, report: string, q: Record<string, string | number | undefined> = {}): Promise<string> => {

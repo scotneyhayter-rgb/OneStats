@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
@@ -22,8 +23,17 @@ from onestats.domain.stats import (
     integrity,
     partnerships,
     reconciliation,
+    saved_reports,
 )
 from onestats.reports import catalogue
+
+_SR_ERRORS = {
+    "name_required": status.HTTP_400_BAD_REQUEST,
+    "report_required": status.HTTP_400_BAD_REQUEST,
+    "name_exists": status.HTTP_409_CONFLICT,
+    "report_not_found": status.HTTP_404_NOT_FOUND,
+    "not_owner": status.HTTP_403_FORBIDDEN,
+}
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
 
@@ -163,6 +173,63 @@ def ladder(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return competition_points.ladder(conn, workspace_id, competition_id=competition_id,
                                          season_id=season_id, grade_id=grade_id)
+
+
+class SavedReportCreate(BaseModel):
+    name: str
+    report: str
+    config: dict[str, Any] | None = None
+    shared: bool = False
+
+
+class SavedReportUpdate(BaseModel):
+    name: str | None = None
+    config: dict[str, Any] | None = None
+    shared: bool | None = None
+
+
+def _sr(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in d.items()}
+
+
+def _sr_err(exc: ValueError) -> HTTPException:
+    return HTTPException(_SR_ERRORS.get(str(exc), status.HTTP_400_BAD_REQUEST), str(exc))
+
+
+@router.get("/saved-reports")
+def list_saved(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
+    """The caller's saved reports plus any shared in the workspace."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_sr(r) for r in saved_reports.list_reports(conn, workspace_id, str(ctx.user["id"]))]
+
+
+@router.post("/saved-reports", status_code=status.HTTP_201_CREATED)
+def create_saved(workspace_id: UUID, body: SavedReportCreate, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _sr(saved_reports.create(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _sr_err(exc) from exc
+
+
+@router.patch("/saved-reports/{report_id}")
+def update_saved(workspace_id: UUID, report_id: UUID, body: SavedReportUpdate, settings: SettingsDep,
+                 ctx: ViewCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _sr(saved_reports.update(conn, workspace_id, str(ctx.user["id"]), report_id,
+                                           **body.model_dump(exclude_none=True)))
+        except ValueError as exc:
+            raise _sr_err(exc) from exc
+
+
+@router.delete("/saved-reports/{report_id}")
+def delete_saved(workspace_id: UUID, report_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return {"deleted": saved_reports.delete(conn, workspace_id, str(ctx.user["id"]), report_id)}
+        except ValueError as exc:
+            raise _sr_err(exc) from exc
 
 
 @router.get("/reports")

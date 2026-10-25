@@ -3,7 +3,7 @@
  * consistent filters and one-click PDF export (the PDF carries the same figures). Right-aligned
  * numeric columns, fixed decimals, sticky header, client-side sorting, qualification-aware.
  */
-import { Download, RefreshCw } from "lucide-react";
+import { Download, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
@@ -48,10 +48,58 @@ export function Statistics() {
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Awaited<ReturnType<typeof api.statsSavedList>>>([]);
+  const [selectedSaved, setSelectedSaved] = useState("");
 
+  const loadSaved = useCallback(() => {
+    if (current) api.statsSavedList(current.id).then(setSaved).catch(() => {});
+  }, [current]);
   useEffect(() => {
     if (current) api.listCompetitions(current.id).then(setCompetitions).catch(() => {});
-  }, [current]);
+    loadSaved();
+  }, [current, loadSaved]);
+
+  const applySaved = (id: string) => {
+    setSelectedSaved(id);
+    const s = saved.find((x) => x.id === id);
+    if (!s) return;
+    const cfg = (s.config ?? {}) as Record<string, string | number>;
+    setReport(s.report);
+    setCompetitionId(String(cfg.competition_id ?? ""));
+    setSplit(String(cfg.split ?? ""));
+    setVenue(String(cfg.venue ?? ""));
+    setMinThreshold(String(cfg.min_runs ?? cfg.min_wickets ?? cfg.min_eligible ?? ""));
+  };
+
+  const saveCurrent = async () => {
+    if (!current) return;
+    const name = window.prompt("Save this report as:");
+    if (!name) return;
+    const config: Record<string, unknown> = { competition_id: competitionId || undefined,
+      split: split || undefined, venue: venue || undefined };
+    if (minThreshold) {
+      if (report === "batting") config.min_runs = Number(minThreshold);
+      else if (report === "bowling") config.min_wickets = Number(minThreshold);
+      else if (report === "captaincy") config.min_eligible = Number(minThreshold);
+    }
+    try {
+      await api.statsSaveReport(current.id, { name, report, config });
+      loadSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not save the report.");
+    }
+  };
+
+  const deleteSaved = async () => {
+    if (!current || !selectedSaved) return;
+    try {
+      await api.statsDeleteSaved(current.id, selectedSaved);
+      setSelectedSaved("");
+      loadSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not delete (only the owner may).");
+    }
+  };
 
   const query = useMemo(() => {
     const q: Record<string, string | number | undefined> = {
@@ -135,6 +183,23 @@ export function Statistics() {
         </div>
 
         <Card><CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-2 text-xs">
+            <label className="flex flex-col gap-1">
+              <span className="text-muted-foreground">Saved report</span>
+              <Select value={selectedSaved} onChange={(e) => applySaved(e.target.value)} className="w-48">
+                <option value="">— open a saved report —</option>
+                {saved.map((s) => <option key={s.id} value={s.id}>{s.name}{s.shared ? " (shared)" : ""}</option>)}
+              </Select>
+            </label>
+            <Button size="sm" variant="outline" onClick={() => void saveCurrent()}>
+              <Save className="h-4 w-4" aria-hidden /> Save
+            </Button>
+            {selectedSaved && (
+              <Button size="sm" variant="outline" onClick={() => void deleteSaved()}>
+                <Trash2 className="h-4 w-4" aria-hidden /> Delete
+              </Button>
+            )}
+          </div>
           <div className="flex flex-wrap items-end gap-2 text-xs">
             <label className="flex flex-col gap-1">
               <span className="text-muted-foreground">Competition</span>
