@@ -222,6 +222,8 @@ export function ResearchCentre() {
           </Card>
         )}
 
+        {tab === "sources" && <AliasPanel workspaceId={workspaceId} />}
+
         {tab === "timeline" && timeline && (
           <Card>
             <CardContent className="flex flex-col gap-3">
@@ -371,6 +373,82 @@ export function ResearchCentre() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function AliasPanel({ workspaceId }: { workspaceId: string }) {
+  const [names, setNames] = useState("");
+  const [entityType, setEntityType] = useState("club");
+  const [term, setTerm] = useState("");
+  const [expanded, setExpanded] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const saveGroup = async () => {
+    const lines = names.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const entityId = crypto.randomUUID();
+      for (const alias of lines) {
+        await api.researchCreateAlias(workspaceId, { entity_type: entityType, alias, entity_id: entityId });
+      }
+      setMsg(`Saved ${lines.length} name variant(s) as one alias group.`);
+      setNames("");
+    } catch {
+      setMsg("Could not save aliases.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const expand = async () => {
+    if (!term.trim()) return;
+    setExpanded((await api.researchExpandAliases(workspaceId, term)).expanded);
+  };
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold">Historical names &amp; aliases</h3>
+        <p className="text-xs text-muted-foreground">
+          Record how a club/competition/place appeared historically — former names, abbreviations,
+          spellings, newspaper transcription errors — so a search finds it under every variant. Original
+          source text is never rewritten.
+        </p>
+        <div className="flex flex-wrap items-end gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Entity type</span>
+            <Select value={entityType} onChange={(e) => setEntityType(e.target.value)} className="w-40">
+              {["club", "competition", "grade", "team", "person", "venue", "place", "other"].map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Name variants (one per line)</span>
+            <textarea value={names} onChange={(e) => setNames(e.target.value)} rows={3}
+              placeholder={"Rhymney CC\nRhymney Cricket Club\nRymney CC"}
+              className="w-72 rounded-[var(--radius-app)] border border-border bg-background p-2" />
+          </label>
+          <Button size="sm" disabled={busy} onClick={() => void saveGroup()}>Save alias group</Button>
+        </div>
+        <div className="flex flex-wrap items-end gap-2 border-t border-border pt-2 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Expand a search term</span>
+            <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="e.g. Rhymney CC"
+              className="w-56 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
+          </label>
+          <Button size="sm" variant="outline" disabled={busy || !term.trim()} onClick={() => void expand()}>Expand</Button>
+          {expanded && (
+            <div className="flex flex-wrap items-center gap-1">
+              {expanded.map((t) => <Badge key={t} variant="muted">{t}</Badge>)}
+            </div>
+          )}
+        </div>
+        {msg && <p className="text-xs text-success">{msg}</p>}
+      </CardContent>
+    </Card>
   );
 }
 

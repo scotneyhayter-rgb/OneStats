@@ -436,6 +436,14 @@ export interface GapCategory {
   sample?: { match_id: string; match_date: string | null; round: string | null }[];
 }
 export type ResearchGaps = Record<string, GapCategory>;
+export interface ResearchAlias {
+  id: string;
+  entity_type: string;
+  entity_id: string | null;
+  alias: string;
+  alias_kind: string | null;
+  language: string | null;
+}
 export interface ProvenanceClaim {
   id: string;
   match_id: string;
@@ -1022,6 +1030,11 @@ export const api = {
     request<ProvenanceClaim>(`/api/v1/workspaces/${w}/research/provenance/${claimId}/accept`, { method: "POST", body: { note: note ?? null } }),
   researchRejectClaim: (w: string, claimId: string, note?: string) =>
     request<ProvenanceClaim>(`/api/v1/workspaces/${w}/research/provenance/${claimId}/reject`, { method: "POST", body: { note: note ?? null } }),
+  researchAliases: (w: string) => request<ResearchAlias[]>(`/api/v1/workspaces/${w}/research/aliases`),
+  researchCreateAlias: (w: string, body: Record<string, unknown>) =>
+    request<ResearchAlias>(`/api/v1/workspaces/${w}/research/aliases`, { method: "POST", body }),
+  researchExpandAliases: (w: string, term: string) =>
+    request<{ term: string; expanded: string[] }>(`/api/v1/workspaces/${w}/research/aliases/expand?term=${encodeURIComponent(term)}`),
   researchSourceFileObjectUrl: async (w: string, id: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();
