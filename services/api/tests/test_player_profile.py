@@ -118,3 +118,8 @@ def test_full_profile_and_awards_category(conn):
     assert prof["clubs"] and prof["honours"][0]["award_category"] == "Best & Fairest"
     # holds the Most Runs record
     assert any("Runs" in r["title"] for r in prof["records"])
+    # professional profile PDF (shared framework)
+    from onestats.core.config import Settings
+    from onestats.reports import player_pdf
+    pdf = player_pdf.player_profile_pdf(conn, Settings(env="test", db_password=None, _env_file=None), wid, p)
+    assert pdf[:5] == b"%PDF-" and len(pdf) > 2500

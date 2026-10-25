@@ -12,7 +12,7 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -156,6 +156,16 @@ def full_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return player_profile.full_profile(conn, workspace_id, person_id, competition_id=competition_id,
                                            season_id=season_id)
+
+
+@router.get("/{person_id}/profile.pdf")
+def profile_pdf(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> Response:
+    """Professional player career-profile PDF (shared framework; same figures as on screen)."""
+    from onestats.reports import player_pdf
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        pdf = player_pdf.player_profile_pdf(conn, settings, workspace_id, person_id)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="player-profile.pdf"'})
 
 
 @router.put("/{person_id}/profile")
