@@ -436,6 +436,17 @@ export interface GapCategory {
   sample?: { match_id: string; match_date: string | null; round: string | null }[];
 }
 export type ResearchGaps = Record<string, GapCategory>;
+export interface ProvenanceClaim {
+  id: string;
+  match_id: string;
+  field_path: string;
+  source_id: string | null;
+  claimed_value: string | null;
+  normalised_value: string | null;
+  status: "claimed" | "accepted" | "rejected" | "superseded";
+  confidence: number | null;
+  decision_note: string | null;
+}
 export interface AutoSyncConnector {
   connector_id: string;
   provider: string;
@@ -997,6 +1008,20 @@ export const api = {
       { method: "POST", body: { decision, reason: reason ?? null } }),
   researchSubmitForReview: (w: string, matchId: string) =>
     request<unknown>(`/api/v1/workspaces/${w}/research/matches/${matchId}/submit-for-review`, { method: "POST", body: {} }),
+  researchAttachSource: (w: string, matchId: string, body: { source_id: string; role?: string }) =>
+    request<unknown>(`/api/v1/workspaces/${w}/research/matches/${matchId}/attach-source`, { method: "POST", body }),
+  researchMatchSources: (w: string, matchId: string) =>
+    request<ResearchSource[]>(`/api/v1/workspaces/${w}/research/matches/${matchId}/sources`),
+  researchMatchProvenance: (w: string, matchId: string) =>
+    request<ProvenanceClaim[]>(`/api/v1/workspaces/${w}/research/matches/${matchId}/provenance`),
+  researchRecordClaim: (w: string, matchId: string, body: Record<string, unknown>) =>
+    request<ProvenanceClaim>(`/api/v1/workspaces/${w}/research/matches/${matchId}/provenance`, { method: "POST", body }),
+  researchConflicts: (w: string, matchId: string) =>
+    request<{ field_path: string; claims: ProvenanceClaim[] }[]>(`/api/v1/workspaces/${w}/research/matches/${matchId}/conflicts`),
+  researchAcceptClaim: (w: string, claimId: string, note?: string) =>
+    request<ProvenanceClaim>(`/api/v1/workspaces/${w}/research/provenance/${claimId}/accept`, { method: "POST", body: { note: note ?? null } }),
+  researchRejectClaim: (w: string, claimId: string, note?: string) =>
+    request<ProvenanceClaim>(`/api/v1/workspaces/${w}/research/provenance/${claimId}/reject`, { method: "POST", body: { note: note ?? null } }),
   researchSourceFileObjectUrl: async (w: string, id: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();

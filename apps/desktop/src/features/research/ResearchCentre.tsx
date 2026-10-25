@@ -18,6 +18,7 @@ import {
   api,
   ApiError,
   type GapCategory,
+  type ProvenanceClaim,
   type ResearchDashboard,
   type ResearchExtraction,
   type ResearchGaps,
@@ -64,6 +65,7 @@ export function ResearchCentre() {
   const [gaps, setGaps] = useState<ResearchGaps | null>(null);
   const [tasks, setTasks] = useState<ResearchTask[]>([]);
   const [matches, setMatches] = useState<ResearchMatchRow[]>([]);
+  const [openMatch, setOpenMatch] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -280,32 +282,42 @@ export function ResearchCentre() {
                 Start a reconstruction
               </Button>
               {matches.map((m) => (
-                <div key={m.match_id} className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm first:border-0">
-                  <Badge variant={m.approval_status === "approved" ? "success"
-                    : m.approval_status === "disputed" ? "warning" : "muted"}>{m.approval_status.replace(/_/g, " ")}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {m.match_date ?? "date unknown"} · {m.sources} source{m.sources === 1 ? "" : "s"}
-                  </span>
-                  <div className="ml-auto flex flex-wrap gap-1">
-                    {m.approval_status === "draft" && (
+                <div key={m.match_id} className="flex flex-col gap-2 border-t border-border pt-2 first:border-0">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge variant={m.approval_status === "approved" ? "success"
+                      : m.approval_status === "disputed" ? "warning" : "muted"}>{m.approval_status.replace(/_/g, " ")}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {m.match_date ?? "date unknown"} · {m.sources} source{m.sources === 1 ? "" : "s"}
+                    </span>
+                    <div className="ml-auto flex flex-wrap gap-1">
                       <Button size="sm" variant="outline" disabled={busy}
-                        onClick={() => void act(() => api.researchSubmitForReview(workspaceId, m.match_id), "Submitted for review.")}>
-                        Submit
+                        onClick={() => setOpenMatch(openMatch === m.match_id ? null : m.match_id)}>
+                        {openMatch === m.match_id ? "Close" : "Open"}
                       </Button>
-                    )}
-                    <Button size="sm" disabled={busy}
-                      onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "verified_partial"), "Verified (partial).")}>
-                      Verify partial
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busy}
-                      onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "approved"), "Verified.")}>
-                      Verify
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busy}
-                      onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "disputed"), "Marked disputed.")}>
-                      Dispute
-                    </Button>
+                      {m.approval_status === "draft" && (
+                        <Button size="sm" variant="outline" disabled={busy}
+                          onClick={() => void act(() => api.researchSubmitForReview(workspaceId, m.match_id), "Submitted for review.")}>
+                          Submit
+                        </Button>
+                      )}
+                      <Button size="sm" disabled={busy}
+                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "verified_partial"), "Verified (partial).")}>
+                        Verify partial
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busy}
+                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "approved"), "Verified.")}>
+                        Verify
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busy}
+                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "disputed"), "Marked disputed.")}>
+                        Dispute
+                      </Button>
+                    </div>
                   </div>
+                  {openMatch === m.match_id && (
+                    <ReconstructionDetail workspaceId={workspaceId} matchId={m.match_id}
+                      onChanged={() => void loadFor("review")} />
+                  )}
                 </div>
               ))}
               {matches.length === 0 && <p className="text-xs text-muted-foreground">Nothing under review yet.</p>}
@@ -359,6 +371,168 @@ export function ResearchCentre() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function ReconstructionDetail({ workspaceId, matchId, onChanged }: {
+  workspaceId: string;
+  matchId: string;
+  onChanged: () => void;
+}) {
+  const [allSources, setAllSources] = useState<ResearchSource[]>([]);
+  const [linked, setLinked] = useState<ResearchSource[]>([]);
+  const [claims, setClaims] = useState<ProvenanceClaim[]>([]);
+  const [conflicts, setConflicts] = useState<{ field_path: string; claims: ProvenanceClaim[] }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  // claim form
+  const [field, setField] = useState("match.result");
+  const [claimSource, setClaimSource] = useState("");
+  const [claimed, setClaimed] = useState("");
+  const [normalised, setNormalised] = useState("");
+  // attach form
+  const [attachSource, setAttachSource] = useState("");
+
+  const load = useCallback(async () => {
+    const [all, lk, pv, cf] = await Promise.all([
+      api.researchSources(workspaceId),
+      api.researchMatchSources(workspaceId, matchId),
+      api.researchMatchProvenance(workspaceId, matchId),
+      api.researchConflicts(workspaceId, matchId),
+    ]);
+    setAllSources(all);
+    setLinked(lk);
+    setClaims(pv);
+    setConflicts(cf);
+    if (!claimSource && lk[0]) setClaimSource(lk[0].id);
+  }, [workspaceId, matchId, claimSource]);
+  useEffect(() => { void load(); }, [load]);
+
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg(done);
+      await load();
+      onChanged();
+    } catch {
+      setMsg("Action failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sourceLabel = (id: string | null) =>
+    allSources.find((s) => s.id === id)?.title ?? (id ? "source" : "—");
+  const unlinked = allSources.filter((s) => !linked.some((l) => l.id === s.id));
+
+  return (
+    <div className="flex flex-col gap-3 rounded-[var(--radius-app)] border border-border bg-muted/20 p-3">
+      {msg && <p className="text-xs text-success">{msg}</p>}
+
+      {/* attach sources */}
+      <div className="flex flex-col gap-1">
+        <div className="text-xs font-semibold">Sources on this match ({linked.length})</div>
+        {linked.map((s) => <div key={s.id} className="text-xs text-muted-foreground">• {s.title}</div>)}
+        <div className="flex flex-wrap items-end gap-2">
+          <Select value={attachSource} onChange={(e) => setAttachSource(e.target.value)} className="w-56">
+            <option value="">Attach a source…</option>
+            {unlinked.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </Select>
+          <Button size="sm" disabled={busy || !attachSource}
+            onClick={() => void run(() => api.researchAttachSource(workspaceId, matchId, { source_id: attachSource, role: "supporting" }), "Source attached.")}>
+            Attach
+          </Button>
+        </div>
+      </div>
+
+      {/* record a claim (batting/bowling/result/etc. from a source) */}
+      <div className="flex flex-col gap-1 border-t border-border pt-2">
+        <div className="text-xs font-semibold">Record a claim from a source</div>
+        <div className="flex flex-wrap items-end gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Field</span>
+            <Select value={field} onChange={(e) => setField(e.target.value)} className="w-56">
+              <option value="match.result">match.result</option>
+              <option value="match.date">match.date</option>
+              <option value="match.venue">match.venue</option>
+              <option value="batting.home.Smith.runs">batting.home.&lt;player&gt;.runs</option>
+              <option value="bowling.away.Jones.wickets">bowling.away.&lt;player&gt;.wickets</option>
+              <option value="match.captain.home">match.captain.home</option>
+              <option value="match.wicketkeeper.home">match.wicketkeeper.home</option>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Source</span>
+            <Select value={claimSource} onChange={(e) => setClaimSource(e.target.value)} className="w-48">
+              <option value="">(no source)</option>
+              {linked.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Source's wording</span>
+            <input value={claimed} onChange={(e) => setClaimed(e.target.value)} placeholder="e.g. won by 5 wkts / 54"
+              className="w-40 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Normalised (blank = unknown)</span>
+            <input value={normalised} onChange={(e) => setNormalised(e.target.value)} placeholder="e.g. home_win / 54"
+              className="w-40 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
+          </label>
+          <Button size="sm" disabled={busy || !field}
+            onClick={() => void run(() => api.researchRecordClaim(workspaceId, matchId, {
+              field_path: field, source_id: claimSource || null, claimed_value: claimed || null,
+              normalised_value: normalised || null,
+            }), "Claim recorded.").then(() => { setClaimed(""); setNormalised(""); })}>
+            Record claim
+          </Button>
+        </div>
+      </div>
+
+      {/* provenance */}
+      <div className="flex flex-col gap-1 border-t border-border pt-2">
+        <div className="text-xs font-semibold">Field provenance ({claims.length})</div>
+        {claims.map((c) => (
+          <div key={c.id} className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium">{c.field_path}</span>
+            <span className="text-muted-foreground">= {c.normalised_value ?? "unknown"}</span>
+            <span className="text-muted-foreground">({sourceLabel(c.source_id)})</span>
+            <Badge variant={c.status === "accepted" ? "success" : c.status === "rejected" ? "warning"
+              : c.status === "superseded" ? "muted" : "outline"}>{c.status}</Badge>
+          </div>
+        ))}
+      </div>
+
+      {/* conflicts side by side */}
+      {conflicts.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-border pt-2">
+          <div className="text-xs font-semibold text-warning">Conflicting evidence ({conflicts.length})</div>
+          {conflicts.map((c) => (
+            <div key={c.field_path} className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-warning/40 p-2">
+              <div className="text-xs font-medium">{c.field_path}</div>
+              {c.claims.map((cl) => (
+                <div key={cl.id} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">{sourceLabel(cl.source_id)}:</span>
+                  <span className="font-medium">{cl.normalised_value ?? "unknown"}</span>
+                  <span className="text-muted-foreground">“{cl.claimed_value ?? ""}”</span>
+                  <div className="ml-auto flex gap-1">
+                    <Button size="sm" disabled={busy}
+                      onClick={() => void run(() => api.researchAcceptClaim(workspaceId, cl.id, "accepted in review"), "Resolved.")}>
+                      Accept
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy}
+                      onClick={() => void run(() => api.researchRejectClaim(workspaceId, cl.id, "rejected in review"), "Rejected (retained).")}>
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
