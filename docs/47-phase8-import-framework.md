@@ -157,7 +157,20 @@ single-transaction promotion rolls back wholly on failure, and idempotent source
 retry re-commits exactly once (no duplicate or half-written scorecards). **R3:** memory-efficient
 processing is verified against realistic datasets of **thousands of matches**, with performance
 results recorded and significant bottlenecks addressed (stream/chunk parsing; batched promotion;
-indexed source-ref lookups). Designed for
+indexed source-ref lookups).
+
+**Recorded results (R3, Stage 8.8).** Import throughput on the dev database via the generic pipeline
+(stage + promote, commit): **1000 matches ≈ 10.8 s (~93 matches/s), 2000 matches ≈ 26.6 s
+(~75/s)** — comfortably suitable for one-time historical imports of thousands of matches. A
+regression test ([`test_import_performance.py`](../services/api/tests/test_import_performance.py))
+guards against severe slowdowns. The dataset is processed per batch (the parsed file plus staged
+rows), not held open-endedly. Known bottleneck: per-row staging INSERTs and the several per-match
+promotion operations (create/sides/toss/result/season/source) — a **batched (`executemany`) staging
+insert** is the documented next optimization for very large (100k+) datasets, alongside streaming
+parse; neither is required for the thousands-of-matches target and both are deferred to avoid
+destabilising the shared staging path.
+
+**Recovery model (R2).** Designed for
 thousands of matches without loading everything into memory (stream/parse in chunks; the wizard
 already slices selected matches).
 
