@@ -11,7 +11,6 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import matches
 from onestats.domain.research import assist, notes, projects, reconstruction, sources, tasks
 
 settings = get_settings()
