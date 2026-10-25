@@ -25,7 +25,8 @@ def test_research_routes_registered(client):
               "/sources/{source_id}/extractions", "/sources/{source_id}/extract",
               "/sources/{source_id}/transcription", "/extractions/{extraction_id}/correct",
               "/reconstructions", "/matches/{match_id}/attach-source", "/matches/{match_id}/reconstruction",
-              "/matches/{match_id}/submit-for-review", "/matches/{match_id}/verify"):
+              "/matches/{match_id}/submit-for-review", "/matches/{match_id}/verify",
+              "/timeline", "/timeline/assessment", "/gaps"):
         assert f"{base}{p}" in paths, p
 
 

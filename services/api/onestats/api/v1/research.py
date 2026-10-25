@@ -21,11 +21,13 @@ from onestats.domain import matches as matches_domain
 from onestats.domain.research import (
     dashboard,
     extraction,
+    gaps,
     projects,
     provenance,
     reconstruction,
     sources,
     storage,
+    timeline,
 )
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
@@ -53,6 +55,8 @@ _ERRORS = {
     "source_not_found": status.HTTP_404_NOT_FOUND,
     "no_file": status.HTTP_409_CONFLICT,
     "extraction_not_found": status.HTTP_404_NOT_FOUND,
+    "invalid_assessed_class": status.HTTP_400_BAD_REQUEST,
+    "match_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -359,6 +363,37 @@ def verify_match(workspace_id: UUID, match_id: UUID, body: Verify, settings: Set
                                                   status=_VERIFY_MAP[body.decision], reason=body.reason))
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+class CoverageAssessment(BaseModel):
+    season_id: UUID
+    assessed_class: str = Field(pattern="^(comprehensive|partial|significant_gaps|unassessed|inactive)$")
+    competition_id: UUID | None = None
+    grade_id: UUID | None = None
+    basis: str | None = None
+
+
+@router.get("/timeline")
+def research_timeline(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
+                      competition_id: UUID | None = None) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return timeline.season_timeline(conn, workspace_id, competition_id=competition_id)
+
+
+@router.post("/timeline/assessment")
+def set_coverage_assessment(workspace_id: UUID, body: CoverageAssessment, settings: SettingsDep,
+                            ctx: VerifyCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(timeline.set_assessment(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/gaps")
+def research_gaps(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return gaps.coverage_gaps(conn, workspace_id)
 
 
 class ClaimCreate(BaseModel):
