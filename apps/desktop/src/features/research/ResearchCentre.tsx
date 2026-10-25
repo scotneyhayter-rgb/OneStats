@@ -278,11 +278,8 @@ export function ResearchCentre() {
                 Reconstructions under review. Only verified records feed official statistics; a partially
                 verified record contributes only the data it actually has; disputed records are held out.
               </p>
-              <Button size="sm" className="self-start" disabled={busy}
-                onClick={() => void act(() => api.researchStartReconstruction(workspaceId, { date_precision: "unknown" }),
-                  "Provisional historical match created.")}>
-                Start a reconstruction
-              </Button>
+              <StartReconstruction busy={busy}
+                onStart={(body) => act(() => api.researchStartReconstruction(workspaceId, body), "Provisional historical match created.")} />
               {matches.map((m) => (
                 <div key={m.match_id} className="flex flex-col gap-2 border-t border-border pt-2 first:border-0">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -373,6 +370,49 @@ export function ResearchCentre() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function StartReconstruction({ busy, onStart }: { busy: boolean; onStart: (body: Record<string, unknown>) => void }) {
+  const [precision, setPrecision] = useState("unknown");
+  const [date, setDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  return (
+    <form className="flex flex-wrap items-end gap-2 text-xs"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onStart({
+          date_precision: precision,
+          match_date: precision === "unknown" || precision === "season" ? null : date || null,
+          match_date_end: precision === "range" ? endDate || null : null,
+        });
+        setDate("");
+        setEndDate("");
+      }}>
+      <label className="flex flex-col gap-1">
+        <span className="text-muted-foreground">Date precision</span>
+        <Select value={precision} onChange={(e) => setPrecision(e.target.value)} className="w-40">
+          {["unknown", "exact", "year", "month", "approx", "range", "season"].map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </Select>
+      </label>
+      {precision !== "unknown" && precision !== "season" && (
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">{precision === "range" ? "Start date" : "Date"}</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            className="rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
+        </label>
+      )}
+      {precision === "range" && (
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">End date</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+            className="rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
+        </label>
+      )}
+      <Button size="sm" type="submit" disabled={busy}>Start a reconstruction</Button>
+    </form>
   );
 }
 
