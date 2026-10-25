@@ -21,7 +21,9 @@ def test_research_routes_registered(client):
     for p in ("/dashboard", "/projects", "/projects/{project_id}", "/sources", "/sources/{source_id}",
               "/sources/{source_id}/file", "/sources/{source_id}/link", "/matches/{match_id}/sources",
               "/publications/{publication}/editions", "/matches/{match_id}/provenance",
-              "/matches/{match_id}/conflicts", "/provenance/{claim_id}/accept", "/provenance/{claim_id}/reject"):
+              "/matches/{match_id}/conflicts", "/provenance/{claim_id}/accept", "/provenance/{claim_id}/reject",
+              "/sources/{source_id}/extractions", "/sources/{source_id}/extract",
+              "/sources/{source_id}/transcription", "/extractions/{extraction_id}/correct"):
         assert f"{base}{p}" in paths, p
 
 

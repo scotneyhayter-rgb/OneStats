@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.research import dashboard, projects, provenance, sources, storage
+from onestats.domain.research import dashboard, extraction, projects, provenance, sources, storage
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
@@ -31,6 +31,9 @@ _ERRORS = {
     "project_not_found": status.HTTP_404_NOT_FOUND,
     "field_path_required": status.HTTP_400_BAD_REQUEST,
     "claim_not_found": status.HTTP_404_NOT_FOUND,
+    "source_not_found": status.HTTP_404_NOT_FOUND,
+    "no_file": status.HTTP_409_CONFLICT,
+    "extraction_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -194,6 +197,60 @@ def get_source_file(workspace_id: UUID, source_id: UUID, settings: SettingsDep, 
 def list_editions(workspace_id: UUID, publication: str, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return [_s(r) for r in sources.list_editions(conn, workspace_id, publication)]
+
+
+class Extract(BaseModel):
+    page: int = 1
+    language: str | None = None
+
+
+class ManualTranscription(BaseModel):
+    text_value: str
+    page: int = 1
+
+
+class Correction(BaseModel):
+    corrected_text: str
+
+
+@router.get("/sources/{source_id}/extractions")
+def list_extractions(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in extraction.list_for_source(conn, workspace_id, source_id)]
+
+
+@router.post("/sources/{source_id}/extract", status_code=status.HTTP_201_CREATED)
+def extract_source(workspace_id: UUID, source_id: UUID, body: Extract, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """Run local OCR on the stored document. Falls back to a manual-transcription placeholder when no
+    local OCR engine is installed (never a paid cloud provider without approval)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(extraction.extract_source(conn, settings, workspace_id, str(ctx.user["id"]), source_id,
+                                                page=body.page, language=body.language))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/sources/{source_id}/transcription", status_code=status.HTTP_201_CREATED)
+def manual_transcription(workspace_id: UUID, source_id: UUID, body: ManualTranscription,
+                         settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(extraction.record_manual(conn, workspace_id, str(ctx.user["id"]), source_id,
+                                               text_value=body.text_value, page=body.page))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/extractions/{extraction_id}/correct")
+def correct_extraction(workspace_id: UUID, extraction_id: UUID, body: Correction,
+                       settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(extraction.set_correction(conn, workspace_id, str(ctx.user["id"]), extraction_id,
+                                                body.corrected_text))
+        except ValueError as exc:
+            raise _err(exc) from exc
 
 
 @router.post("/sources/{source_id}/link")
