@@ -61,6 +61,18 @@ def workspace_dashboard(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
                                   "AND status IN ('open','in_progress')"),
         "sources": _n("SELECT count(*) FROM research_source WHERE workspace_id = :w"),
     }
+    # leading performers from the one statistics engine (approved data only; empty on a new workspace)
+    from onestats.domain.stats import engine as stats_engine
+    f = {"workspace_id": workspace_id}
+    top_bat = stats_engine.batting_leaders(conn, f, order_by="runs", limit=1)
+    top_bowl = stats_engine.bowling_leaders(conn, f, order_by="wickets", limit=1)
+    leaders = {
+        "leading_run_scorer": ({"person_id": top_bat[0]["subject_id"], "runs": top_bat[0]["runs"]}
+                               if top_bat and top_bat[0]["runs"] else None),
+        "leading_wicket_taker": ({"person_id": top_bowl[0]["subject_id"], "wickets": top_bowl[0]["wickets"]}
+                                 if top_bowl and top_bowl[0]["wickets"] else None),
+    }
+
     recent = [
         {"action": r["action"], "category": _category(r["action"]), "entity": r["entity"],
          "at": r["at"].isoformat() if r["at"] else None, "actor": r["actor"]}
@@ -72,6 +84,7 @@ def workspace_dashboard(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
         "totals": totals,
         "attention": attention,
         "research": research,
+        "leaders": leaders,
         "recent_activity": recent,
         "is_empty": totals["matches"] == 0 and totals["players"] == 0 and totals["organisations"] == 0,
     }

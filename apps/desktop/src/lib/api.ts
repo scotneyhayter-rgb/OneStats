@@ -91,6 +91,36 @@ export interface User {
   display_name: string | null;
   is_super_admin: boolean;
 }
+export interface StatColumn {
+  key: string;
+  label: string;
+  align: "left" | "right" | "center";
+  decimals: number | null;
+}
+export interface StatReport {
+  report: string;
+  title: string;
+  columns: StatColumn[];
+  rows: Record<string, unknown>[];
+}
+export interface StatLadderRow {
+  position: number;
+  team_id: string;
+  played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  ties: number;
+  no_results: number;
+  bonus: number;
+  points: number;
+}
+export interface StatLadder {
+  competition_id: string;
+  scheme: Record<string, number>;
+  standings: StatLadderRow[];
+  note: string;
+}
 export interface WorkspaceDashboard {
   totals: {
     matches: number; players: number; approved_scorecards: number; seasons: number;
@@ -1149,6 +1179,27 @@ export const api = {
     if (t) headers["Authorization"] = `Bearer ${t}`;
     const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/media/assets/${id}/thumbnail`, { headers });
     if (!resp.ok) throw new ApiError(`thumbnail ${resp.status}`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
+
+  // --- Phase 12: statistics reports ---
+  statsReportCatalogue: (w: string) =>
+    request<{ report: string; title: string }[]>(`/api/v1/workspaces/${w}/stats/reports`),
+  statsReport: (w: string, report: string, q: Record<string, string | number | undefined> = {}) => {
+    const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    return request<StatReport>(`/api/v1/workspaces/${w}/stats/reports/${report}${qs2 ? `?${qs2}` : ""}`);
+  },
+  statsLadder: (w: string, competitionId: string, season_id?: string) =>
+    request<StatLadder>(`/api/v1/workspaces/${w}/stats/ladder?competition_id=${competitionId}${season_id ? `&season_id=${season_id}` : ""}`),
+  statsReportPdfUrl: async (w: string, report: string, q: Record<string, string | number | undefined> = {}): Promise<string> => {
+    const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/pdf${qs2 ? `?${qs2}` : ""}`, { headers });
+    if (!resp.ok) throw new ApiError(`PDF export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
 
