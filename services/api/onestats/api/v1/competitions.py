@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import competitions
+from onestats.domain import competitions, seasons
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/competitions", tags=["competitions"])
 
@@ -216,7 +216,7 @@ def get_competition(workspace_id: UUID, competition_id: UUID, settings: Settings
 def update_competition(workspace_id: UUID, competition_id: UUID, body: CompetitionUpdate, settings: SettingsDep, ctx: CompCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return competitions.update_competition(
+            updated = competitions.update_competition(
                 conn, workspace_id, str(ctx.user["id"]), competition_id,
                 name=body.name, short_name=body.short_name, status=body.status,
                 association_id=body.association_id, clear_association=body.clear_association,
@@ -224,6 +224,11 @@ def update_competition(workspace_id: UUID, competition_id: UUID, body: Competiti
             )
         except ValueError as exc:
             raise _value_error(exc) from exc
+        # when the season rule changes, back-fill existing matches' seasons (manual choices preserved)
+        if body.season_model is not None:
+            updated["seasons_reassigned"] = seasons.reassign_competition_matches(
+                conn, workspace_id, str(ctx.user["id"]), competition_id)
+        return updated
 
 
 @router.get("/{competition_id}/duplicate-candidates")

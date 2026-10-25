@@ -106,6 +106,27 @@ def auto_assign_season(conn: Connection, workspace_id: UUID, actor: str, match_i
     return {"applied": True, "season_id": str(season_id)}
 
 
+def reassign_competition_matches(
+    conn: Connection, workspace_id: UUID, actor: str, competition_id: UUID,
+) -> dict[str, Any]:
+    """Re-run automatic season assignment for every match in a competition — used when the
+    competition's season rule changes, so existing (including imported) matches are back-filled
+    rather than left unresolved until each is re-saved.
+
+    Non-destructive and idempotent: a manually chosen season is preserved, a match with no date is
+    left unresolved, and nothing is guessed. Returns how many matches were assigned a season."""
+    ids = conn.execute(
+        text("SELECT id FROM match WHERE competition_id = :c AND match_date IS NOT NULL "
+             "AND coalesce(season_source, 'unknown') <> 'manual'"),
+        {"c": competition_id},
+    ).scalars().all()
+    assigned = 0
+    for mid in ids:
+        if auto_assign_season(conn, workspace_id, actor, mid).get("applied"):
+            assigned += 1
+    return {"matches": len(ids), "assigned": assigned}
+
+
 def season_warnings(conn: Connection, match_id: UUID) -> list[str]:
     """Advisory: a match with a date and competition but no resolved season (rule unknown)."""
     match = matches.get_match(conn, match_id)

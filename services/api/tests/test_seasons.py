@@ -83,6 +83,34 @@ def test_unknown_model_is_unresolved(conn):
     assert any("season_unresolved" in w for w in seasons.season_warnings(conn, mid))   # flagged, not guessed
 
 
+def test_changing_rule_backfills_existing_matches_and_preserves_manual(conn):
+    """Setting a competition's season rule re-assigns existing (e.g. imported) matches that have no
+    manual season, so the user need not re-save each one; a manual choice is left untouched."""
+    wid = _ws(conn, "SZN BACKFILL")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="Imported League")  # 'unknown' at first
+    m1 = _match(conn, wid, comp, date(2019, 10, 19))   # -> 2019/20 once the rule is set
+    m2 = _match(conn, wid, comp, date(2020, 2, 15))    # -> 2019/20 as well
+    m_nodate = matches.create_match(conn, wid, ACTOR, competition_id=comp)  # no date -> stays unresolved
+    manual_sid = competitions.create_season(conn, wid, ACTOR, comp, label="Hand Picked")
+    m_manual = _match(conn, wid, comp, date(2021, 1, 10))
+    matches.update_match(conn, wid, ACTOR, m_manual, season_id=manual_sid)   # a deliberate manual choice
+    # unresolved under 'unknown'
+    assert matches.get_match(conn, m1)["season_id"] is None
+
+    competitions.update_competition(conn, wid, ACTOR, comp, season_model="au_summer")
+    out = seasons.reassign_competition_matches(conn, wid, ACTOR, comp)
+    assert out["assigned"] == 2   # m1 and m2 only; the dateless and the manual one are not counted
+
+    def label(mid):
+        s = matches.get_match(conn, mid)["season_id"]
+        return conn.execute(text("SELECT label FROM season WHERE id = :s"), {"s": s}).scalar_one() if s else None
+    assert label(m1) == "2019/20" and label(m2) == "2019/20"
+    assert matches.get_match(conn, m_nodate)["season_id"] is None            # no date -> never guessed
+    assert matches.get_match(conn, m_manual)["season_id"] == manual_sid      # manual preserved
+    # idempotent: a second run assigns nothing further
+    assert seasons.reassign_competition_matches(conn, wid, ACTOR, comp)["assigned"] == 0
+
+
 def test_manual_season_is_preserved(conn):
     wid = _ws(conn, "SZN MANUAL")
     comp = competitions.create_competition(conn, wid, ACTOR, name="League", season_model="au_summer")

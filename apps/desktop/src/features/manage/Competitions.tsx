@@ -375,8 +375,14 @@ function CompetitionDetailModal({
                 <Select value={comp.season_model ?? "unknown"} disabled={busy}
                   onChange={async (e) => {
                     setBusy(true);
-                    try { await api.updateCompetition(workspaceId, competitionId, { season_model: e.target.value }); await load(); onChanged("Season rule updated — matches assign automatically on save."); }
-                    finally { setBusy(false); }
+                    try {
+                      const res = await api.updateCompetition(workspaceId, competitionId, { season_model: e.target.value });
+                      await load();
+                      const n = res?.seasons_reassigned?.assigned ?? 0;
+                      onChanged(n > 0
+                        ? `Season rule updated — ${n} existing match${n === 1 ? "" : "es"} re-assigned a season (manual choices kept).`
+                        : "Season rule updated. Matches with a date are assigned automatically; manual choices are kept.");
+                    } finally { setBusy(false); }
                   }}>
                   {SEASON_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </Select>

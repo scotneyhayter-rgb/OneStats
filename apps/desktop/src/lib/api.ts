@@ -626,7 +626,8 @@ export const api = {
   createCompetition: (w: string, body: Record<string, unknown>) =>
     request<Competition>(`/api/v1/workspaces/${w}/competitions`, { method: "POST", body }),
   updateCompetition: (w: string, id: string, body: Record<string, unknown>) =>
-    request<Competition>(`/api/v1/workspaces/${w}/competitions/${id}`, { method: "PATCH", body }),
+    request<Competition & { seasons_reassigned?: { matches: number; assigned: number } }>(
+      `/api/v1/workspaces/${w}/competitions/${id}`, { method: "PATCH", body }),
   createDivision: (w: string, cid: string, body: Record<string, unknown>) =>
     request<{ division_id: string }>(`/api/v1/workspaces/${w}/competitions/${cid}/divisions`, { method: "POST", body }),
   createGrade: (w: string, cid: string, body: Record<string, unknown>) =>
