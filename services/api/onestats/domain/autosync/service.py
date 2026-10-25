@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain.autosync import discovery, jobs
+from onestats.domain.autosync import discovery, jobs, sources
 from onestats.domain.autosync.connectors import STATUS_INTERFACE_ONLY, catalog
 
 SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
@@ -37,21 +37,33 @@ def _connector_for(source_row: dict[str, Any]):
     return connector
 
 
+def _resolve_or_mark_down(conn, workspace_id, actor, src, scope_key):
+    """Resolve the source's connector; if it is unavailable (e.g. interface-only / awaiting access),
+    mark the source health 'down' and record failed coverage — a failed access is a health signal,
+    never 'searched, no matches' — then re-raise so the job fails/retries."""
+    try:
+        return _connector_for(dict(src))
+    except NotImplementedError as exc:
+        sources.record_health(conn, workspace_id, actor, src["id"], reliability="down", notes=str(exc)[:200])
+        discovery.record_coverage(conn, workspace_id, actor, source_id=src["id"], scope_key=scope_key,
+                                  scope=None, status="failed", notes=str(exc)[:200])
+        raise
+
+
 def _handle_new(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, Any]) -> dict[str, Any]:
     src = _source_for_job(conn, workspace_id, job)
     if src is None:
         raise ValueError("no enabled source for job")
-    connector = _connector_for(dict(src))
-    out = discovery.discover_new(conn, workspace_id, actor, connector=connector, source_id=src["id"],
-                                 mode="review_required", scope_key="new")
-    return out
+    connector = _resolve_or_mark_down(conn, workspace_id, actor, src, "new")
+    return discovery.discover_new(conn, workspace_id, actor, connector=connector, source_id=src["id"],
+                                  mode="review_required", scope_key="new")
 
 
 def _handle_updated(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, Any]) -> dict[str, Any]:
     src = _source_for_job(conn, workspace_id, job)
     if src is None:
         raise ValueError("no enabled source for job")
-    connector = _connector_for(dict(src))
+    connector = _resolve_or_mark_down(conn, workspace_id, actor, src, "updated")
     return discovery.discover_updated(conn, workspace_id, actor, connector=connector, source_id=src["id"])
 
 
@@ -59,7 +71,7 @@ def _handle_historical(conn: Connection, workspace_id: UUID, actor: str, job: di
     src = _source_for_job(conn, workspace_id, job)
     if src is None:
         raise ValueError("no enabled source for job")
-    connector = _connector_for(dict(src))
+    connector = _resolve_or_mark_down(conn, workspace_id, actor, src, "historical")
     scopes = (job.get("progress") or {}).get("scopes") or []
     done = set((job.get("checkpoint") or {}).get("done") or [])
     return discover_history(conn, workspace_id, actor, connector=connector, source_id=src["id"],

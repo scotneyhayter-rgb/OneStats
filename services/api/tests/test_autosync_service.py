@@ -95,6 +95,15 @@ def test_sync_now_catches_up_an_interrupted_job(conn):
     assert jobs.get_job(conn, jid)["status"] in ("succeeded", "failed")   # the interrupted job resumed
 
 
+def test_interface_only_source_marks_health_down_on_sync(conn):
+    wid = _ws(conn, "SVC HEALTH")
+    src = sources.register_source(conn, wid, ACTOR, connector_id="playhq", name="PlayHQ", enabled=True)
+    service.sync_now(conn, wid, ACTOR, source_system="playhq")   # interface-only connector cannot fetch
+    # a failed access is a HEALTH signal + failed coverage — never 'searched, no matches'
+    assert sources.get_source(conn, src["id"])["reliability"] == "down"
+    assert conn.execute(text("SELECT count(*) FROM discovery_coverage WHERE status='failed'")).scalar_one() >= 1
+
+
 def test_startup_reconcile_recovers_interrupted_jobs(conn):
     wid = _ws(conn, "SVC RECON")
     _source(conn, wid)
