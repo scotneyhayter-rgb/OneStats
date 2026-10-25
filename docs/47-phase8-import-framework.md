@@ -171,6 +171,12 @@ identical re-import, approval + recalc integration, interrupted/resumed imports,
 permissions, rollback/recovery. The existing CricketStatz regression suite must stay green. Realistic
 fixtures + deterministic sample datasets. Backend + frontend + integration + build each run.
 
+**Dismissal classification (for deferred Phase 12 reconciliation, [48](48-phase12-dismissal-reconciliation.md)):**
+import regression tests verify each dismissal classifies correctly and that run-out (CricketStatz
+`Howout` 7 → `run_out`) credits no bowler, and that the raw code, mapped type, bowler and fielder are
+retained — so Phase 12 can build the run-out/wicket reconciliation from preserved evidence. No Phase
+12 interface is built now.
+
 ## 12. Staged implementation plan
 
 - **8.1 Adapter core & CCDM.** Define the contract, registry, and CanonicalDataset; move the shared

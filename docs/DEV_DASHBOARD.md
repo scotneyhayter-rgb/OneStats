@@ -51,6 +51,10 @@ automated isolation tests. Defects found during acceptance were fixed and re-tes
 **Phase 7: implementation, automated tests AND user acceptance complete.**
 
 **Known limitations (deferred to later phases, by scope):**
+- **Run-out & wicket reconciliation** (bowling-summary run-out count, bowler-credited vs non-bowler
+  totals, reconciliation) → **Phase 12** ([48](48-phase12-dismissal-reconciliation.md)). Phase 8
+  retains all dismissal data it needs (raw code, mapped type, bowler, fielder); classification is
+  verified in import regression tests.
 - Competition **points/ladders** architecture exists (`playing_conditions`); the user-friendly
   Points Manager + ladder calc is a later phase.
 - Full **statistics/records/milestones** reporting modules build on the 7.8 ledger (integration
