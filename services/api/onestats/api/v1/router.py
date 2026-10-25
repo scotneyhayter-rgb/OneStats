@@ -12,6 +12,7 @@ from onestats.api.v1 import (
     bowling,
     branding,
     competitions,
+    dashboard,
     finals_series,
     health,
     identity,
@@ -55,6 +56,7 @@ api_v1.include_router(imports.router)
 api_v1.include_router(autosync.router)
 api_v1.include_router(research.router)
 api_v1.include_router(media.router)
+api_v1.include_router(dashboard.router)
 api_v1.include_router(finals_series.router)
 api_v1.include_router(people.router)
 api_v1.include_router(affiliations.router)

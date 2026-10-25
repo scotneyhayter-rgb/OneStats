@@ -91,6 +91,19 @@ export interface User {
   display_name: string | null;
   is_super_admin: boolean;
 }
+export interface WorkspaceDashboard {
+  totals: {
+    matches: number; players: number; approved_scorecards: number; seasons: number;
+    competitions: number; organisations: number; media_assets: number;
+  };
+  attention: {
+    scorecards_awaiting_approval: number; possible_duplicate_matches: number;
+    research_conflicts: number; failed_autosync_jobs: number;
+  };
+  research: { projects_active: number; incomplete_scorecards: number; open_research_tasks: number; sources: number };
+  recent_activity: { action: string; category: string; entity: string | null; at: string | null; actor: string | null }[];
+  is_empty: boolean;
+}
 export interface Workspace {
   id: string;
   name: string;
@@ -806,6 +819,17 @@ export const api = {
     request<{ branding: Record<string, unknown> | null; resolved: unknown; published: unknown }>(
       `/api/v1/workspaces/${workspaceId}/branding`,
     ),
+  brandingLogoObjectUrl: async (workspaceId: string): Promise<string | null> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${workspaceId}/branding/logo`, { headers });
+    if (!resp.ok) return null;
+    return URL.createObjectURL(await resp.blob());
+  },
+
+  // --- Workspace dashboard (home command centre) ---
+  workspaceDashboard: (w: string) => request<WorkspaceDashboard>(`/api/v1/workspaces/${w}/dashboard`),
 
   // --- Phase 4: organisations ---
   listOrganisations: (w: string, opts: { include_merged?: boolean; kind?: string } = {}) =>
