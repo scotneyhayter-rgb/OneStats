@@ -73,5 +73,5 @@ columns to the canonical model; column names are remappable.
 - **AutoSync discovery engine** — Phase 9; the service interfaces (sources, modes, cursors,
   orchestration reusing import/approval/recalc) are in place.
 
-**Phase 8: implementation + automated tests complete — awaiting user acceptance. Do not begin Phase 9
-until Phase 8 is accepted.**
+**Phase 8: ACCEPTED by the user on 2026-10-25.** Implementation + automated tests complete and
+accepted; Phase 9 (AutoSync) is cleared to begin.

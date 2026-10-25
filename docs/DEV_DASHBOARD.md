@@ -94,8 +94,9 @@ automated isolation tests. Defects found during acceptance were fixed and re-tes
 | 5 | People & Profiles | ✅ Complete |
 | **6** | **Matches & Scorecard Entry** | **✅ Complete (manual entry + CricketStatz import accepted)** |
 | **7** | **Validation, Integrity & Automatic Scorecard Intelligence** | **✅ Complete — user-accepted 2026-10-25** |
-| **8** | **Universal Third-Party Import Framework** | **✅ Implementation + tests complete — awaiting UAT ([49](49-phase8-acceptance.md))** |
-| 9–18 | AutoSync → … → RMCC Trial | ⏳ Future (Phase 9 interfaces in place) |
+| **8** | **Universal Third-Party Import Framework** | **✅ Complete — user-accepted 2026-10-25 ([49](49-phase8-acceptance.md))** |
+| **9** | **Automatic Online Discovery & AutoSync** | **🔄 In progress — plan [50](50-phase9-autosync-plan.md); started 2026-10-25** |
+| 10–18 | Research Centre → … → RMCC Trial | ⏳ Future |
 
 ## Phase 6 stage detail
 | Stage | Scope | Status |
