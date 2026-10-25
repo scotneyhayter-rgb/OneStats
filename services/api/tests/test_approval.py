@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import competitions, matches, permissions, results, validation
+from onestats.domain import competitions, matches, permissions, validation
 from onestats.domain import innings as inn
 
 settings = get_settings()

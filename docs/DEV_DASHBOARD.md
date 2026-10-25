@@ -3,12 +3,12 @@
 Lightweight, evidence-based status. Updated by hand from verified test/build runs — **no invented
 completion percentages**. Full assessment: [43. Testing & Acceleration](43-testing-and-acceleration.md).
 
-_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0032_scorecard_approval`._
+_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0033_stat_contributions`._
 
 ## Verified test evidence (last run)
 | Suite | Result | Command |
 |---|---|---|
-| Backend (pytest) | **348 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
+| Backend (pytest) | **355 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
 | Desktop (vitest) | **42 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
 
 ## Phase 7 — Validation, Integrity & Automatic Scorecard Intelligence (in progress)
@@ -21,16 +21,19 @@ _Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0032
 | 7.5 Workspace-configurable match formats (enable/default/custom; history preserved) | ✅ done |
 | 7.6 Historical team names & aliases (rename + source name; no auto-merge) | ✅ done |
 | 7.1 Validation aggregation + Scorecard Approval workflow (draft/awaiting/approved/rejected) | ✅ done |
-| 7.8 Automatic recalculation framework (approved-only, idempotent ledger) | ⏳ next |
-| 7.9 Import integrity · 7.10 comprehensive tests · 7.11 manual acceptance | ⏳ outstanding |
+| 7.8 Automatic recalculation framework (approved-only, idempotent ledger) | ✅ done |
+| 7.9 Import integrity (end-to-end preservation test) | ✅ done |
+| 7.10 Comprehensive tests (355 backend + 42 desktop across all stages) | ✅ done |
+| 7.11 Manual acceptance checklist ([46](46-phase7-acceptance.md)) | ✅ ready for your UAT |
+| Player-selector **club scoping** (fill-in discoverable) | ✅ done |
 
-**Known limitations / outstanding (Phase 7):**
-- "Preserve last approved version" is flagged (`revised_since_approval`); the durable last-approved
-  statistics preservation is implemented by the 7.8 recalculation ledger (next).
-- Player-selector **club scoping** (backend ready: `list_people(organisation_id)` + MyClub
-  affiliations) still needs the frontend wired — to be completed before final acceptance.
+**Phase 7: implementation + automated tests complete — awaiting user acceptance testing.**
+
+**Known limitations (deferred to later phases, by scope):**
 - Competition **points/ladders** architecture exists (`playing_conditions`); the user-friendly
   Points Manager + ladder calc is a later phase.
+- Full **statistics/records/milestones** reporting modules build on the 7.8 ledger (integration
+  points provided; two calculators — player batting & bowling — ship now).
 | Desktop type-check / build | **clean** | `cd apps\desktop && npm run build` |
 | Native Tauri window | **manual only** (no automated coverage) | — |
 
