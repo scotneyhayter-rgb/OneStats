@@ -129,6 +129,18 @@ for _info in (
     ConnectorInfo("cricket_archive", "CricketArchive", access_method="feed", status=STATUS_INTERFACE_ONLY,
                   countries=["*"], formats=["Test", "First-Class", "List A", "ODI", "T20I"], auth_required=True,
                   notes="Licensed historical dataset; commercial agreement required."),
+    # Phase 10, Stage 10.3 — historical newspaper / archive sources. Interface-only until verified,
+    # legitimate access terms exist; no access is assumed from a website alone and no paywall/anti-bot
+    # control is ever bypassed. Development runs on uploaded documents and fixtures instead.
+    ConnectorInfo("trove", "Trove (National Library of Australia)", access_method="api",
+                  status=STATUS_INTERFACE_ONLY, countries=["AU"], formats=["Newspaper"], auth_required=True,
+                  notes="Trove API key + adherence to NLA terms of use required; structure unverified."),
+    ConnectorInfo("newspaper_archive", "Historical newspaper archive (generic)", access_method="api",
+                  status=STATUS_INTERFACE_ONLY, countries=["*"], formats=["Newspaper"], auth_required=True,
+                  notes="A placeholder for a licensed/permitted newspaper collection; access terms required."),
+    ConnectorInfo("library_collection", "National/State library collection (generic)", access_method="api",
+                  status=STATUS_INTERFACE_ONLY, countries=["*"], formats=["Newspaper", "Publication"],
+                  auth_required=True, notes="Institutional access/agreement required; structure unverified."),
 ):
     catalog.register(InterfaceOnlyConnector(_info))
 

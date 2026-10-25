@@ -19,6 +19,7 @@ from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import matches as matches_domain
 from onestats.domain.research import (
+    aliases,
     assist,
     dashboard,
     extraction,
@@ -63,6 +64,8 @@ _ERRORS = {
     "task_not_found": status.HTTP_404_NOT_FOUND,
     "body_required": status.HTTP_400_BAD_REQUEST,
     "invalid_evidence_class": status.HTTP_400_BAD_REQUEST,
+    "invalid_entity_type": status.HTTP_400_BAD_REQUEST,
+    "alias_required": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -369,6 +372,37 @@ def verify_match(workspace_id: UUID, match_id: UUID, body: Verify, settings: Set
                                                   status=_VERIFY_MAP[body.decision], reason=body.reason))
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+class AliasCreate(BaseModel):
+    entity_type: str = Field(pattern="^(club|competition|grade|team|person|venue|place|other)$")
+    alias: str
+    entity_id: UUID | None = None
+    alias_kind: str | None = None
+    language: str | None = None
+    note: str | None = None
+
+
+@router.get("/aliases")
+def list_aliases(workspace_id: UUID, settings: SettingsDep, ctx: Ctx, entity_type: str | None = None,
+                 entity_id: UUID | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in aliases.list_aliases(conn, workspace_id, entity_type=entity_type, entity_id=entity_id)]
+
+
+@router.post("/aliases", status_code=status.HTTP_201_CREATED)
+def create_alias(workspace_id: UUID, body: AliasCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(aliases.register_alias(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/aliases/expand")
+def expand_terms(workspace_id: UUID, term: str, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return {"term": term, "expanded": aliases.expand_terms(conn, workspace_id, term)}
 
 
 class TaskCreate(BaseModel):
