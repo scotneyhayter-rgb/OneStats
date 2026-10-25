@@ -387,6 +387,55 @@ export interface ResearchSource {
   ocr_status: string;
   created_at: string;
 }
+export interface ResearchTask {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "open" | "in_progress" | "resolved" | "dismissed";
+  gap_kind: string | null;
+  priority: number;
+  assigned_to: string | null;
+  project_id: string | null;
+}
+export interface ResearchMatchRow {
+  match_id: string;
+  match_date: string | null;
+  date_precision: string;
+  approval_status: string;
+  round: string | null;
+  result_type: string | null;
+  sources: number;
+}
+export interface ResearchExtraction {
+  id: string;
+  source_id: string;
+  page: number;
+  method: string;
+  ocr_text: string | null;
+  corrected_text: string | null;
+  confidence: number | null;
+  status: string;
+}
+export interface TimelineSeason {
+  season_id: string;
+  label: string;
+  total_matches: number;
+  verified_matches: number;
+  disputed_matches: number;
+  matches_without_result: number;
+  coverage_class: string;
+  computed_class: string;
+  assessment_basis: string | null;
+}
+export interface ResearchTimeline {
+  seasons: TimelineSeason[];
+  methodology: { note: string };
+}
+export interface GapCategory {
+  count: number;
+  sample?: { match_id: string; match_date: string | null; round: string | null }[];
+}
+export type ResearchGaps = Record<string, GapCategory>;
 export interface AutoSyncConnector {
   connector_id: string;
   provider: string;
@@ -924,6 +973,38 @@ export const api = {
     request<ResearchSource[]>(`/api/v1/workspaces/${w}/research/publications/${encodeURIComponent(publication)}/editions`),
   researchLinkSource: (w: string, id: string, body: { match_id: string; role?: string }) =>
     request<unknown>(`/api/v1/workspaces/${w}/research/sources/${id}/link`, { method: "POST", body }),
+  researchExtractions: (w: string, id: string) =>
+    request<ResearchExtraction[]>(`/api/v1/workspaces/${w}/research/sources/${id}/extractions`),
+  researchExtract: (w: string, id: string) =>
+    request<ResearchExtraction>(`/api/v1/workspaces/${w}/research/sources/${id}/extract`, { method: "POST", body: {} }),
+  researchCorrect: (w: string, extractionId: string, corrected_text: string) =>
+    request<ResearchExtraction>(`/api/v1/workspaces/${w}/research/extractions/${extractionId}/correct`,
+      { method: "POST", body: { corrected_text } }),
+  researchTimeline: (w: string) => request<ResearchTimeline>(`/api/v1/workspaces/${w}/research/timeline`),
+  researchGaps: (w: string) => request<ResearchGaps>(`/api/v1/workspaces/${w}/research/gaps`),
+  researchTasks: (w: string, statusFilter?: string) =>
+    request<ResearchTask[]>(`/api/v1/workspaces/${w}/research/tasks${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
+  researchCreateTask: (w: string, body: Record<string, unknown>) =>
+    request<ResearchTask>(`/api/v1/workspaces/${w}/research/tasks`, { method: "POST", body }),
+  researchUpdateTask: (w: string, id: string, body: Record<string, unknown>) =>
+    request<ResearchTask>(`/api/v1/workspaces/${w}/research/tasks/${id}`, { method: "PATCH", body }),
+  researchMatches: (w: string, approvalStatus?: string) =>
+    request<ResearchMatchRow[]>(`/api/v1/workspaces/${w}/research/matches${approvalStatus ? `?approval_status=${approvalStatus}` : ""}`),
+  researchStartReconstruction: (w: string, body: Record<string, unknown>) =>
+    request<{ id: string }>(`/api/v1/workspaces/${w}/research/reconstructions`, { method: "POST", body }),
+  researchVerify: (w: string, matchId: string, decision: string, reason?: string) =>
+    request<unknown>(`/api/v1/workspaces/${w}/research/matches/${matchId}/verify`,
+      { method: "POST", body: { decision, reason: reason ?? null } }),
+  researchSubmitForReview: (w: string, matchId: string) =>
+    request<unknown>(`/api/v1/workspaces/${w}/research/matches/${matchId}/submit-for-review`, { method: "POST", body: {} }),
+  researchSourceFileObjectUrl: async (w: string, id: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/research/sources/${id}/file`, { headers });
+    if (!resp.ok) throw new ApiError(`Could not load document (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
 
   // --- Phase 6: matches ---
   listMatches: (

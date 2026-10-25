@@ -76,5 +76,30 @@ def summary(conn: Connection, workspace_id: UUID, match_id: UUID) -> dict[str, A
     }
 
 
+def list_matches_under_research(conn: Connection, workspace_id: UUID, *, approval_status: str | None = None,
+                                limit: int = 100) -> list[dict[str, Any]]:
+    """Matches relevant to research review: those with a research source attached, or not yet fully
+    approved (draft / awaiting / disputed / verified_partial). Each row carries its source count so the
+    Review & Verify queue has real data."""
+    where = ("(EXISTS (SELECT 1 FROM research_source_match l WHERE l.match_id = m.id) "
+             "OR m.approval_status IN ('draft','awaiting_approval','disputed','verified_partial'))")
+    params: dict[str, Any] = {"w": workspace_id, "lim": limit}
+    if approval_status is not None:
+        where += " AND m.approval_status = :st"
+        params["st"] = approval_status
+    rows = conn.execute(
+        text("SELECT m.id, m.match_date, m.date_precision, m.approval_status, m.round, m.result_type, "
+             "(SELECT count(*) FROM research_source_match l WHERE l.match_id = m.id) AS source_count "
+             f"FROM match m WHERE m.workspace_id = :w AND {where} "
+             "ORDER BY m.updated_at DESC LIMIT :lim"),
+        params,
+    ).mappings().all()
+    return [{"match_id": str(r["id"]),
+             "match_date": r["match_date"].isoformat() if r["match_date"] else None,
+             "date_precision": r["date_precision"], "approval_status": r["approval_status"],
+             "round": r["round"], "result_type": r["result_type"], "sources": r["source_count"]}
+            for r in rows]
+
+
 def _s(d: dict[str, Any]) -> dict[str, Any]:
     return {k: (str(v) if isinstance(v, UUID) else v) for k, v in d.items()}

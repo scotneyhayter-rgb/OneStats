@@ -326,6 +326,13 @@ def start_reconstruction(workspace_id: UUID, body: StartReconstruction, settings
             raise _err(exc) from exc
 
 
+@router.get("/matches")
+def list_research_matches(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
+                          approval_status: str | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return reconstruction.list_matches_under_research(conn, workspace_id, approval_status=approval_status)
+
+
 @router.post("/matches/{match_id}/attach-source")
 def attach_source(workspace_id: UUID, match_id: UUID, body: AttachSource, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
