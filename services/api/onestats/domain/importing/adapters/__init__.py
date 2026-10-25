@@ -5,6 +5,6 @@ a module here and a ``register_adapter(...)`` call; the pipeline never changes.
 """
 from __future__ import annotations
 
-from onestats.domain.importing.adapters import cricket_statz
+from onestats.domain.importing.adapters import cricket_statz, csv_scorecard
 
-__all__ = ["cricket_statz"]
+__all__ = ["cricket_statz", "csv_scorecard"]
