@@ -215,10 +215,21 @@ async def upload_source_file(workspace_id: UUID, source_id: UUID, settings: Sett
 
 @router.get("/sources/{source_id}/file")
 def get_source_file(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: Ctx):
-    """Serve a source's original document (for the document viewer, Stage 10.5)."""
+    """Serve a source's original document (for the document viewer, Stage 10.5). If the source has been
+    promoted into the media archive (Phase 11), the file now lives there — serve it from the asset."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         src = sources.get_source(conn, source_id)
-    if src is None or not src.get("file_ref"):
+        if src is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
+        if not src.get("file_ref") and src.get("media_asset_id"):
+            from onestats.domain.media import assets as media_assets
+            from onestats.domain.media import providers as media_providers
+            asset = media_assets.get_asset(conn, src["media_asset_id"])
+            if asset and asset["storage_provider"] == "internal" and asset.get("storage_locator"):
+                mpath = media_providers.internal_provider().path(settings, workspace_id, asset["storage_locator"])
+                if mpath is not None:
+                    return FileResponse(str(mpath), media_type=asset.get("content_type") or "application/octet-stream")
+    if not src.get("file_ref"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
     path = storage.source_file_path(settings, workspace_id, src["file_ref"])
     if path is None:

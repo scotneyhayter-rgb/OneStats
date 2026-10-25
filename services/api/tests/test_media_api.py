@@ -23,7 +23,7 @@ def test_media_routes_registered(client):
               "/assets/{asset_id}/migrate", "/assets/{asset_id}/verify",
               "/heritage/collections", "/heritage/collections/{collection_id}/items",
               "/heritage/items/{item_id}", "/backup/verify", "/backup/manifest",
-              "/entities/{entity_type}/{entity_id}/assets"):
+              "/from-research-source/{source_id}", "/entities/{entity_type}/{entity_id}/assets"):
         assert f"{base}{p}" in paths, p
 
 

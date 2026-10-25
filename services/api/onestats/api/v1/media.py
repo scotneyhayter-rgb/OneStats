@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.media import assets, backup, heritage, migration, providers
+from onestats.domain.media import assets, backup, heritage, integration, migration, providers
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/media", tags=["media"])
 Ctx = Annotated[RequestContext, Depends(require_permission("media.manage"))]
@@ -39,6 +39,10 @@ _ERRORS = {
     "item_not_found": status.HTTP_404_NOT_FOUND,
     "item_has_no_asset": status.HTTP_409_CONFLICT,
     "asset_not_cleared_for_publication": status.HTTP_409_CONFLICT,
+    "source_not_found": status.HTTP_404_NOT_FOUND,
+    "source_has_no_file": status.HTTP_409_CONFLICT,
+    "source_file_missing": status.HTTP_409_CONFLICT,
+    "source_integrity_failed": status.HTTP_409_CONFLICT,
 }
 
 
@@ -275,6 +279,16 @@ def update_item(workspace_id: UUID, item_id: UUID, body: ItemUpdate, settings: S
         try:
             return _s(heritage.update_item(conn, workspace_id, str(ctx.user["id"]), item_id,
                                           **body.model_dump(exclude_none=True)))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/from-research-source/{source_id}", status_code=status.HTTP_201_CREATED)
+def promote_research_source(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """Promote a Phase 10 research document into a canonical media asset (moves the file; no duplicate)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(integration.promote_research_source(conn, settings, workspace_id, str(ctx.user["id"]), source_id))
         except ValueError as exc:
             raise _err(exc) from exc
 
