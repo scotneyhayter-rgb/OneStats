@@ -43,13 +43,25 @@ Manual acceptance tests (DEFERRED to the post-17 programme):
 
 Automated coverage: `tests/test_ask.py` (7), `features/ask/ask.test.tsx` (2).
 
-## Phase 15 — Website Publishing & Public Report URLs (added as built)
+## Phase 15 — Website Publishing & Public Report URLs (IMPLEMENTED 2026-10-26 — see [64](64-phase15-report.md))
 
-Planned manual tests (deliverable 29 §29.6): publish a report → permanent public URL renders the correct
-**filtered, branded** report; the URL works in the **RMCC site's External URL field**; JSON feed returns the
-same figures; an approved-stats change **auto-refreshes** the public copy; **unpublish/revoke** stops the
-URL resolving; public **player profiles** publish with DOB/junior/unverified excluded; **no admin/DB
-surface** is reachable from any public URL.
+Manual acceptance tests (DEFERRED). Several require a **hosting decision** + reachable URL (see 64):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| PUB1 | Publish a report | Club Management → Website Publishing → publish | Permanent public URL created; snapshot stored |
+| PUB2 | Public render | Open the public URL (preview) | Correct, **filtered, club-branded** report; no admin/DB surface |
+| PUB3 | JSON feed | Open `/public/r/<slug>.json` | Same figures as the report |
+| PUB4 | Static export | Download static files | Self-contained HTML + JSON to upload to web hosting |
+| PUB5 | RMCC External URL | Paste the URL into the RMCC site's External URL field | Resolves/embeds correctly (**UNVERIFIED** — needs hosting + site access) |
+| PUB6 | Auto-update | Approve a stat change → Refresh | Published snapshot updates; public kept serving last-good meanwhile |
+| PUB7 | Unpublish / revoke | Toggle status | URL stops resolving |
+| PUB8 | Public player profile | Publish a profile | Public profile with **DOB/junior/private excluded** |
+| PUB9 | Offline | Stop the backend after publishing | Last-good snapshot still served from the host (no DB dependency) |
+| PUB10 | Permissions/isolation | As a non-admin / another workspace | Non-admins can't manage; no cross-workspace publications |
+
+Automated coverage: `tests/test_publishing.py` (6), `features/publishing/publishing.test.tsx` (1).
+**Hosting decision required before public deployment** (static hosting vs central service) — see 64.
 
 ## Phase 16 — Mobile Records Portal (added as built)
 

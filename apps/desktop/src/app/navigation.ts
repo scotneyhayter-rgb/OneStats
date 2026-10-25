@@ -4,6 +4,7 @@ import {
   DatabaseBackup,
   Award,
   GitBranch,
+  Globe,
   Image,
   LayoutDashboard,
   MessageCircleQuestion,
@@ -144,5 +145,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/records",
     icon: Award,
     blurb: "All-time record holders, seasonal leaders, milestones, Life Members and the Club Record Book.",
+  },
+  {
+    key: "publishing",
+    label: "Website Publishing",
+    path: "/manage/publishing",
+    icon: Globe,
+    blurb: "Publish reports and player profiles to permanent public URLs, or export them for your website.",
   },
 ];

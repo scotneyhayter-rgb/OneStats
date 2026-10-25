@@ -31,6 +31,8 @@ from onestats.api.v1 import (
     playing_conditions,
     premierships,
     profiles,
+    public,
+    publications,
     records,
     relationships,
     research,
@@ -76,3 +78,5 @@ api_v1.include_router(stats.router)
 api_v1.include_router(records.router)
 api_v1.include_router(premierships.router)
 api_v1.include_router(ask.router)
+api_v1.include_router(publications.router)
+api_v1.include_router(public.router)

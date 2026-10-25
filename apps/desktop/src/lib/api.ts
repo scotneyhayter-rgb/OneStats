@@ -169,6 +169,22 @@ export interface ReportCatalogue {
   categories: { category: string; reports: CatalogueReport[] }[];
   count: number;
 }
+export interface Publication {
+  id: string;
+  kind: string;
+  report_id: string | null;
+  person_id: string | null;
+  title: string;
+  filters?: Record<string, unknown>;
+  slug: string;
+  status: string;
+  stale?: boolean;
+  checksum?: string | null;
+  snapshot_at?: string | null;
+  public_path?: string;
+  public_url?: string | null;
+  json_path?: string;
+}
 export interface AskAnswer {
   question: string;
   matched: boolean;
@@ -1346,6 +1362,20 @@ export const api = {
   },
   askOneStats: (w: string, question: string, top = 10) =>
     request<AskAnswer>(`/api/v1/workspaces/${w}/ask`, { method: "POST", body: { question, top } }),
+  // --- Phase 15: website publishing ---
+  publicationsList: (w: string) =>
+    request<Publication[]>(`/api/v1/workspaces/${w}/publications`),
+  publicationCreate: (w: string, body: { kind: string; title: string; report_id?: string; person_id?: string; filters?: Record<string, unknown> }) =>
+    request<Publication>(`/api/v1/workspaces/${w}/publications`, { method: "POST", body }),
+  publicationSetStatus: (w: string, id: string, status: string) =>
+    request<{ id: string; status: string }>(`/api/v1/workspaces/${w}/publications/${id}/status`, { method: "POST", body: { status } }),
+  publicationRefresh: (w: string, id: string) =>
+    request<{ id: string; status: string }>(`/api/v1/workspaces/${w}/publications/${id}/refresh`, { method: "POST" }),
+  publicationRefreshAll: (w: string) =>
+    request<{ refreshed: number }>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
+  publicationExport: (w: string, id: string) =>
+    request<{ files: Record<string, string> }>(`/api/v1/workspaces/${w}/publications/${id}/export`),
+  publicPreviewUrl: (path: string) => `${BASE_URL}${path}`,
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),
   statsCatalogueIndexUrl: async (w: string): Promise<string> => {

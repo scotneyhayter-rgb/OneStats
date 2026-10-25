@@ -163,6 +163,16 @@ export function PlayerProfile() {
     }
   };
 
+  const publishProfile = async () => {
+    try {
+      await api.publicationCreate(current.id, { kind: "player_profile", person_id: personId!, title: name });
+      setError(null);
+      window.alert("Published to a permanent public URL. Manage it under Website Publishing.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not publish this profile (admins only).");
+    }
+  };
+
   const statCard = (label: string, value: unknown, dp?: number, flag?: boolean) => (
     <div className="rounded-[var(--radius-app)] border border-border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -226,6 +236,7 @@ export function PlayerProfile() {
           </div>
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
+            <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
             <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
           </div>
         </CardContent></Card>

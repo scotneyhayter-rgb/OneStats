@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # (gitignored; operator-readable). Never logged.
     setup_token_file: str = Field(default=".onestats-setup-token")
 
+    # Phase 15 publishing: the base URL public report/profile snapshots are served from (static host or a
+    # future central service). Display/export only — None when not yet deployed. No recurring cost implied.
+    public_base_url: str | None = Field(default=None)
+
     def _build_url(self, user: str, password: str) -> str:
         return str(
             PostgresDsn.build(

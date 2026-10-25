@@ -389,6 +389,10 @@ def recompute_match(conn: Connection, workspace_id: UUID, actor: str, match_id: 
                      "met": json.dumps(c["metrics"])},
                 )
                 written += 1
+    # Phase 15: an approved-stat change makes published reports/profiles stale — flag them so the
+    # publishing edge refreshes the public snapshot (public serving keeps the last snapshot meanwhile).
+    conn.execute(text("UPDATE publication SET stale = true WHERE workspace_id = :w AND status = 'published'"),
+                 {"w": workspace_id})
     audit.write_audit(conn, workspace_id, actor, "stats.recompute_match", entity="match",
                       entity_id=str(match_id), after={"contributions": written, "official": matches.official_for_stats(match)})
     return {"match_id": str(match_id), "contributions": written, "official": matches.official_for_stats(match)}

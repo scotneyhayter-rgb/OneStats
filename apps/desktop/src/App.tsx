@@ -7,6 +7,7 @@ import { Ask } from "./features/ask/Ask";
 import { Statistics } from "./features/statistics/Statistics";
 import { ReportCatalogue } from "./features/statistics/ReportCatalogue";
 import { CaptaincyCompare } from "./features/statistics/CaptaincyCompare";
+import { Publishing } from "./features/publishing/Publishing";
 import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
 import { PlayerProfile } from "./features/people/PlayerProfile";
@@ -54,6 +55,7 @@ function AuthedApp() {
         <Route path="/manage/research" element={<ResearchCentre />} />
         <Route path="/manage/media" element={<MediaArchive />} />
         <Route path="/manage/records" element={<Records />} />
+        <Route path="/manage/publishing" element={<Publishing />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />
