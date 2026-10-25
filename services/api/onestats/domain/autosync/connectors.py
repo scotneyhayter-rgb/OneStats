@@ -43,15 +43,16 @@ class FixtureConnector:
     real provider. Implements the SyncSource contract."""
 
     def __init__(self, source_system: str, rows: list[dict[str, Any]], *,
-                 updated_rows: list[dict[str, Any]] | None = None, countries=None, formats=None):
+                 updated_rows: list[dict[str, Any]] | None = None, countries=None, formats=None,
+                 provider: str = "Fixture source"):
         self.source_system = source_system
         self.format_id = "generic_json"
         self._rows = rows
         self._updated = updated_rows or []
-        self.info = ConnectorInfo(connector_id=source_system, provider="Fixture source",
+        self.info = ConnectorInfo(connector_id=source_system, provider=provider,
                                   access_method="fixture", status=STATUS_FIXTURE,
                                   countries=countries or [], formats=formats or [],
-                                  coverage="deterministic sample data")
+                                  coverage="deterministic sample data (not a live source)")
 
     def _batch(self, rows: list[dict[str, Any]]) -> SyncBatch:
         ds = build_match_summary(rows, source_system=self.source_system)
@@ -130,3 +131,25 @@ for _info in (
                   notes="Licensed historical dataset; commercial agreement required."),
 ):
     catalog.register(InterfaceOnlyConnector(_info))
+
+# A built-in, clearly-labelled SAMPLE source (deterministic fixture data — NOT a live provider), so
+# AutoSync can be exercised end to end in any workspace without external access. Two seasons of club
+# matches, with one updated result for the updated-scorecard flow.
+SAMPLE_ROWS = [
+    {"Date": "2023-11-04", "HomeTeam": "Sandbox Swifts", "AwayTeam": "Sandbox Saints",
+     "Competition": "Sandbox Saturday League", "Grade": "A Grade", "Venue": "Sample Oval",
+     "Result": "Home win", "Format": "One-Day", "Round": "1"},
+    {"Date": "2023-11-11", "HomeTeam": "Sandbox Saints", "AwayTeam": "Sandbox Strikers",
+     "Competition": "Sandbox Saturday League", "Grade": "A Grade", "Venue": "Sample Park",
+     "Result": "Away win", "Format": "One-Day", "Round": "2"},
+    {"Date": "2024-01-20", "HomeTeam": "Sandbox Swifts", "AwayTeam": "Sandbox Strikers",
+     "Competition": "Sandbox Saturday League", "Grade": "A Grade", "Venue": "Sample Oval",
+     "Result": "Tie", "Format": "T20", "Round": "9"},
+]
+SAMPLE_UPDATED = [
+    # the source now reports a corrected result for the first match (for the updated-scorecard test)
+    {**SAMPLE_ROWS[0], "Result": "Tie"},
+]
+catalog.register(FixtureConnector("onestats_sample", SAMPLE_ROWS, updated_rows=SAMPLE_UPDATED,
+                                  countries=["AU"], formats=["One-Day", "T20"],
+                                  provider="OneStats sample (fixture)"))
