@@ -18,9 +18,15 @@ from sqlalchemy.engine import Connection
 _SPLIT = {"home_away": "home_away", "finals": "final", "grand_final": "grand_final"}
 
 
+def _needs_match_join(filters: dict[str, Any]) -> bool:
+    """A join to ``match`` is only needed for format/date filters — scope, team, split and venue are all
+    on the contribution row (or in its metrics). Skipping the join keeps large-dataset queries fast."""
+    return bool(filters.get("format") or filters.get("date_from") or filters.get("date_to"))
+
+
 def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Build the shared WHERE clause + params for a ledger query (alias ``c`` for the contribution,
-    ``m`` for the joined match)."""
+    ``m`` for the match when joined)."""
     clauses: list[str] = ["c.workspace_id = :w"]
     params: dict[str, Any] = {"w": filters["workspace_id"]}
     for key, col in (("season_id", "c.season_id"), ("grade_id", "c.grade_id"),
@@ -53,8 +59,9 @@ def _rows(conn: Connection, calculator: str, filters: dict[str, Any], select: st
           group: str = "c.subject_id", having: str | None = None, order: str | None = None,
           limit: int | None = None) -> list[dict[str, Any]]:
     where, params = _where(filters)
+    join = "JOIN match m ON m.id = c.match_id " if _needs_match_join(filters) else ""
     sql = (f"SELECT c.subject_id, {select} FROM match_stat_contribution c "
-           f"JOIN match m ON m.id = c.match_id "
+           f"{join}"
            f"WHERE c.calculator = :cal AND {where} GROUP BY {group}")
     params["cal"] = calculator
     if having:
@@ -233,7 +240,8 @@ def _person_agg(conn: Connection, calculator: str, filters: dict[str, Any], pers
     where, params = _where(filters)
     params["cal"] = calculator
     params["pid"] = person_id
-    sql = (f"SELECT c.subject_id, {select} FROM match_stat_contribution c JOIN match m ON m.id = c.match_id "
+    join = "JOIN match m ON m.id = c.match_id " if _needs_match_join(filters) else ""
+    sql = (f"SELECT c.subject_id, {select} FROM match_stat_contribution c {join}"
            f"WHERE c.calculator = :cal AND {where} "
            "AND (c.subject_id = :pid OR c.subject_id IN (SELECT id FROM person WHERE merged_into_id = :pid)) "
            "GROUP BY c.subject_id")
