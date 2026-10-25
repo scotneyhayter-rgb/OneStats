@@ -1,0 +1,132 @@
+"""AutoSync connectors & catalog (Phase 9, Stage 9.2).
+
+A connector is a :class:`~onestats.domain.importing.sync.SyncSource` plus metadata. Real online
+connectors are registered **only when their access method and data structure are verified**; until
+then a provider is a catalog entry with ``status='interface_only'`` that cannot fetch — documented,
+never claimed to work. A deterministic :class:`FixtureConnector` lets the whole discovery→import→
+approval path be tested without any external website.
+
+No endpoints are invented and no authentication, paywall or anti-bot control is ever bypassed.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from onestats.domain.importing.sync import SyncBatch, SyncCursor
+from onestats.domain.importing.tabular import build_match_summary
+
+# connector status: a live, verified connector; a deterministic test fixture; or an interface that is
+# documented but NOT implemented because access/structure is not yet verified.
+STATUS_LIVE = "live"
+STATUS_FIXTURE = "fixture"
+STATUS_INTERFACE_ONLY = "interface_only"
+
+
+@dataclass(slots=True)
+class ConnectorInfo:
+    connector_id: str
+    provider: str
+    access_method: str                 # api | feed | file | fixture | (unspecified for interface_only)
+    status: str = STATUS_INTERFACE_ONLY
+    countries: list[str] = field(default_factory=list)
+    formats: list[str] = field(default_factory=list)
+    coverage: str | None = None
+    auth_required: bool = False
+    version: str = "0.1"
+    notes: str | None = None
+
+
+class FixtureConnector:
+    """A deterministic source backed by in-memory match-summary rows — for tests and demos, never a
+    real provider. Implements the SyncSource contract."""
+
+    def __init__(self, source_system: str, rows: list[dict[str, Any]], *,
+                 updated_rows: list[dict[str, Any]] | None = None, countries=None, formats=None):
+        self.source_system = source_system
+        self.format_id = "generic_json"
+        self._rows = rows
+        self._updated = updated_rows or []
+        self.info = ConnectorInfo(connector_id=source_system, provider="Fixture source",
+                                  access_method="fixture", status=STATUS_FIXTURE,
+                                  countries=countries or [], formats=formats or [],
+                                  coverage="deterministic sample data")
+
+    def _batch(self, rows: list[dict[str, Any]]) -> SyncBatch:
+        ds = build_match_summary(rows, source_system=self.source_system)
+        last = ds.matches[-1].source_ref if ds.matches else None
+        return SyncBatch(dataset=ds, cursor=SyncCursor(self.source_system, last_ref=last,
+                                                       last_seen_at=datetime.now(UTC)))
+
+    def fetch_new(self, since: SyncCursor | None) -> SyncBatch:
+        # first poll yields all rows; a subsequent poll (cursor set) yields nothing new
+        return self._batch([] if since and since.last_ref else self._rows)
+
+    def fetch_updated(self, since: SyncCursor | None) -> SyncBatch:
+        return self._batch(self._updated)
+
+
+class InterfaceOnlyConnector:
+    """A documented provider whose connector is NOT implemented (access/structure unverified). It
+    carries metadata but refuses to fetch, so nothing is ever fabricated for it."""
+
+    def __init__(self, info: ConnectorInfo):
+        self.source_system = info.connector_id
+        self.format_id = ""
+        self.info = info
+
+    def fetch_new(self, since: SyncCursor | None) -> SyncBatch:
+        raise NotImplementedError(f"{self.info.connector_id}: connector not implemented — {self._why()}")
+
+    def fetch_updated(self, since: SyncCursor | None) -> SyncBatch:
+        raise NotImplementedError(f"{self.info.connector_id}: connector not implemented — {self._why()}")
+
+    def _why(self) -> str:
+        return self.info.notes or "awaiting verified access / sample data"
+
+
+class ConnectorCatalog:
+    def __init__(self) -> None:
+        self._by_id: dict[str, Any] = {}
+
+    def register(self, connector: Any) -> Any:
+        self._by_id[connector.info.connector_id] = connector
+        return connector
+
+    def get(self, connector_id: str):
+        try:
+            return self._by_id[connector_id]
+        except KeyError as exc:
+            raise ValueError(f"unknown connector: {connector_id}") from exc
+
+    def all(self) -> list[Any]:
+        return list(self._by_id.values())
+
+    def describe(self) -> list[dict[str, Any]]:
+        out = []
+        for c in self._by_id.values():
+            i = c.info
+            out.append({"connector_id": i.connector_id, "provider": i.provider, "status": i.status,
+                        "access_method": i.access_method, "countries": i.countries, "formats": i.formats,
+                        "coverage": i.coverage, "auth_required": i.auth_required, "version": i.version,
+                        "notes": i.notes})
+        return out
+
+
+catalog = ConnectorCatalog()
+
+# Documented real providers — interface-ready, NOT implemented (no verified access/sample yet).
+# Adding a real connector is a verify-then-implement step; these never fetch or fabricate data.
+for _info in (
+    ConnectorInfo("playhq", "PlayHQ", access_method="api", status=STATUS_INTERFACE_ONLY,
+                  countries=["AU"], formats=["One-Day", "T20", "Multi-Day"], auth_required=True,
+                  notes="Official API access + credentials/agreement required; structure unverified."),
+    ConnectorInfo("play_cricket", "Play-Cricket (ECB)", access_method="api", status=STATUS_INTERFACE_ONLY,
+                  countries=["GB"], formats=["One-Day", "T20", "Multi-Day"], auth_required=True,
+                  notes="ECB Play-Cricket API key + site registration required; structure unverified."),
+    ConnectorInfo("cricket_archive", "CricketArchive", access_method="feed", status=STATUS_INTERFACE_ONLY,
+                  countries=["*"], formats=["Test", "First-Class", "List A", "ODI", "T20I"], auth_required=True,
+                  notes="Licensed historical dataset; commercial agreement required."),
+):
+    catalog.register(InterfaceOnlyConnector(_info))
