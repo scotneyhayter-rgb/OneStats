@@ -10,6 +10,22 @@ importer is retained and becomes the first adapter without breaking previously s
 
 ---
 
+## 0. Additional approved requirements (2026-10-25)
+
+Integrated into the existing stages — no extra stages:
+
+- **R1 — Multiple historical sources per match.** A match may carry several source records (e.g.
+  different newspaper editions). Source-specific evidence and *conflicting* values are preserved for
+  administrator review; verified information is never silently overwritten. → model & provenance
+  (§3.1, §6), duplicate handling "attach, don't overwrite" (§5), wizard review (§3.3), stages
+  **8.5 / 8.7**.
+- **R2 — Import recovery.** Interruption/recovery is tested during **database promotion** as well as
+  parsing/staging; retries cannot create duplicate or partially-committed scorecards (staging-first +
+  single-transaction promotion + idempotent source-ref keys). → stages **8.8 / 8.10**.
+- **R3 — Large-dataset reliability.** Memory-efficient processing is verified with realistic datasets
+  of thousands of matches; performance results recorded and significant bottlenecks addressed. →
+  stages **8.8 / 8.10**.
+
 ## 1. Principles (inherited, non-negotiable)
 
 Carried from Phases 5–7 and applied to every adapter:
@@ -98,12 +114,20 @@ competition/season + grade + both teams (alias-aware) + format + venue + innings
 possibles are never silently merged — the administrator chooses. Re-import of an identical source is
 an exact match → no new records.
 
+**R1 — attach, don't overwrite.** When a new source describes an existing match, it is recorded as an
+*additional* source (a `match_source` row: source system/ref, checksum, the source's own field
+values). Values differing from already-stored/verified ones are retained as **conflicts for
+administrator review**, never silently applied — a second newspaper edition adds evidence, it does
+not mutate the approved scorecard. Adding verified information is additive and leaves other trusted
+records intact.
+
 ## 6. Provenance & import history (STEP 8)
 
 Reuse `import_batch`/`import_staging_record`; populate `source_sha256` (checksum) for every import;
 add an accessible **Import History** view (batches, counts, warnings, outcome, who/when/workspace)
 and scorecard→source tracing. Retain the source payload or a reliable reference per storage/security
-policy.
+policy. **R1:** a canonical match links to one-or-more `match_source` records (multiple editions),
+each with its own provenance and field values, so conflicting accounts are both traceable.
 
 ## 7. Approval & recalculation integration (STEP 9)
 
@@ -116,7 +140,13 @@ merge-aware). Historical bulk approval stays permissioned and audited.
 
 Batch processing with progress reporting, recoverable failures, safe retries, cancellation,
 restart-after-interruption, useful errors and partial-success reporting. Staging first means a failed
-commit never leaves partially-committed scorecards; the batch is the unit of recovery. Designed for
+commit never leaves partially-committed scorecards; the batch is the unit of recovery. **R2:**
+interruption/recovery is tested during **promotion** (commit) as well as parsing/staging — a
+single-transaction promotion rolls back wholly on failure, and idempotent source-ref keys mean a
+retry re-commits exactly once (no duplicate or half-written scorecards). **R3:** memory-efficient
+processing is verified against realistic datasets of **thousands of matches**, with performance
+results recorded and significant bottlenecks addressed (stream/chunk parsing; batched promotion;
+indexed source-ref lookups). Designed for
 thousands of matches without loading everything into memory (stream/parse in chunks; the wizard
 already slices selected matches).
 
@@ -150,12 +180,18 @@ fixtures + deterministic sample datasets. Backend + frontend + integration + bui
 - **8.3 Generic mapping engine + CSV adapter.** Mapping templates; column→CCDM; preview/validation.
 - **8.4 Excel + JSON + XML adapters.** Reuse the mapping engine.
 - **8.5 Duplicate detection service.** Confidence scoring; exact vs possible; review actions.
+  **R1:** attach a new source to an existing match (`match_source`), retaining conflicts for review.
 - **8.6 Universal Import Wizard.** Source upload → format detect → workspace → review entities →
-  identity match/create → scorecard review → preview → confirm → results + Import History.
-- **8.7 Import history & provenance UI.** Checksums, batch history, scorecard→source tracing.
-- **8.8 Resumable/batch imports & error handling.**
+  identity match/create → scorecard review → preview → confirm → results + Import History. Surfaces
+  **R1** conflicting-source review.
+- **8.7 Import history & provenance UI.** Checksums, batch history, scorecard→source tracing, and the
+  **R1** multiple-sources-per-match view.
+- **8.8 Resumable/batch imports & error handling.** **R2** recovery on promotion + staging; **R3**
+  memory-efficient streaming/chunked processing.
 - **8.9 Phase 9 service interfaces.**
-- **8.10 Comprehensive tests, docs & Phase 8 acceptance checklist.**
+- **8.10 Comprehensive tests, docs & Phase 8 acceptance checklist.** Includes **R2** interruption/
+  recovery tests (parse, stage, promote) and **R3** large-dataset performance benchmarks (thousands
+  of matches) with recorded results.
 
 Each stage: implement → test (backend/frontend/integration/build) → fix defects → commit → continue
 without routine approval. Pause only for significant architectural conflict, destructive change,
