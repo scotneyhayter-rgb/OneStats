@@ -20,7 +20,8 @@ def test_research_routes_registered(client):
     base = "/api/v1/workspaces/{workspace_id}/research"
     for p in ("/dashboard", "/projects", "/projects/{project_id}", "/sources", "/sources/{source_id}",
               "/sources/{source_id}/file", "/sources/{source_id}/link", "/matches/{match_id}/sources",
-              "/publications/{publication}/editions"):
+              "/publications/{publication}/editions", "/matches/{match_id}/provenance",
+              "/matches/{match_id}/conflicts", "/provenance/{claim_id}/accept", "/provenance/{claim_id}/reject"):
         assert f"{base}{p}" in paths, p
 
 

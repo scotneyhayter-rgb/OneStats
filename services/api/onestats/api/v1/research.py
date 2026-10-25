@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.research import dashboard, projects, sources, storage
+from onestats.domain.research import dashboard, projects, provenance, sources, storage
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
@@ -29,6 +29,8 @@ _ERRORS = {
     "invalid_date_precision": status.HTTP_400_BAD_REQUEST,
     "invalid_ocr_status": status.HTTP_400_BAD_REQUEST,
     "project_not_found": status.HTTP_404_NOT_FOUND,
+    "field_path_required": status.HTTP_400_BAD_REQUEST,
+    "claim_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -206,3 +208,57 @@ def link_source_match(workspace_id: UUID, source_id: UUID, body: LinkMatch,
 def match_sources(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return [_s(r) for r in sources.list_sources_for_match(conn, workspace_id, match_id)]
+
+
+class ClaimCreate(BaseModel):
+    field_path: str
+    source_id: UUID | None = None
+    claimed_value: str | None = None
+    normalised_value: str | None = None
+    confidence: float | None = None
+    researcher: str | None = None
+
+
+class Decision(BaseModel):
+    note: str | None = None
+
+
+@router.get("/matches/{match_id}/provenance")
+def match_provenance(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in provenance.list_for_match(conn, workspace_id, match_id)]
+
+
+@router.post("/matches/{match_id}/provenance", status_code=status.HTTP_201_CREATED)
+def record_claim(workspace_id: UUID, match_id: UUID, body: ClaimCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(provenance.record_claim(conn, workspace_id, str(ctx.user["id"]), match_id=match_id,
+                                              **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/matches/{match_id}/conflicts")
+def match_conflicts(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [{"field_path": c["field_path"], "claims": [_s(x) for x in c["claims"]]}
+                for c in provenance.field_conflicts(conn, workspace_id, match_id)]
+
+
+@router.post("/provenance/{claim_id}/accept")
+def accept_claim(workspace_id: UUID, claim_id: UUID, body: Decision, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(provenance.accept_claim(conn, workspace_id, str(ctx.user["id"]), claim_id, note=body.note))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/provenance/{claim_id}/reject")
+def reject_claim(workspace_id: UUID, claim_id: UUID, body: Decision, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(provenance.reject_claim(conn, workspace_id, str(ctx.user["id"]), claim_id, note=body.note))
+        except ValueError as exc:
+            raise _err(exc) from exc
