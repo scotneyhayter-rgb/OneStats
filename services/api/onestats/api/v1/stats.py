@@ -16,7 +16,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import recalc
-from onestats.domain.stats import engine, reconciliation
+from onestats.domain.stats import engine, partnerships, reconciliation
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
 
@@ -125,6 +125,28 @@ def teams(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UU
     c = _common(workspace_id, season_id, grade_id, competition_id, None, split, None, None, None, None)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.team_records(conn, c["f"], order_by=order_by, limit=limit)
+
+
+@router.get("/partnerships/batting")
+def batting_partnerships(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
+                         grade_id: UUID | None = None, competition_id: UUID | None = None,
+                         by_wicket: bool = False, limit: int = 50) -> list[dict[str, Any]]:
+    f = _filters(workspace_id, season_id, grade_id, competition_id, None, None, None, None, None, None)
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return partnerships.batting_partnerships(conn, f, by_wicket=by_wicket, limit=limit)
+
+
+@router.get("/partnerships/bowling-groups")
+def bowling_groups(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, size: int = 2,
+                   season_id: UUID | None = None, grade_id: UUID | None = None,
+                   competition_id: UUID | None = None, team_id: UUID | None = None, split: str | None = None,
+                   limit: int = 50) -> dict[str, Any]:
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, None, None, None, None)
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return partnerships.bowling_groups(conn, f, size=size, limit=limit)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 @router.get("/matches/{match_id}/reconciliation")
