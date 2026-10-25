@@ -21,10 +21,12 @@ from onestats.core import images
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import photos, profiles
+from onestats.domain.records import player_profile
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/people", tags=["profiles"])
 
 PCtx = Annotated[RequestContext, Depends(require_permission("person.manage"))]
+ViewCtx = Annotated[RequestContext, Depends(require_permission("match.view"))]
 
 _VALUE_ERR_STATUS = {
     "person_not_found": status.HTTP_404_NOT_FOUND,
@@ -121,6 +123,39 @@ def get_public_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDe
         if view is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_public")
         return view
+
+
+# --- Phase 13: profile statistics (composed from the one engine; view-gated) ---
+
+@router.get("/{person_id}/career-stats")
+def career_stats(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                 competition_id: UUID | None = None, season_id: UUID | None = None) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return player_profile.career_summary(conn, workspace_id, person_id, competition_id=competition_id,
+                                             season_id=season_id)
+
+
+@router.get("/{person_id}/seasons")
+def profile_seasons(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return player_profile.season_breakdown(conn, workspace_id, person_id)
+
+
+@router.get("/{person_id}/matches")
+def profile_matches(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                    limit: int = 500) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return player_profile.match_history(conn, workspace_id, person_id, limit=limit)
+
+
+@router.get("/{person_id}/full-profile")
+def full_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                 competition_id: UUID | None = None, season_id: UUID | None = None) -> dict[str, Any]:
+    """Everything for the Player Profile screen in one call: career + seasons + clubs + records +
+    milestones + badges + honours (plus identity/photos via /profile)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return player_profile.full_profile(conn, workspace_id, person_id, competition_id=competition_id,
+                                           season_id=season_id)
 
 
 @router.put("/{person_id}/profile")

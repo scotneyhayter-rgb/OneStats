@@ -241,14 +241,17 @@ def _person_agg(conn: Connection, calculator: str, filters: dict[str, Any], pers
     params["cal"] = calculator
     params["pid"] = person_id
     join = "JOIN match m ON m.id = c.match_id " if _needs_match_join(filters) else ""
-    sql = (f"SELECT c.subject_id, {select} FROM match_stat_contribution c {join}"
+    # aggregate the WHOLE merge-aware set into one row — no GROUP BY, because a merged person's
+    # contributions span more than one subject_id and must all be summed together.
+    sql = (f"SELECT {select} FROM match_stat_contribution c {join}"
            f"WHERE c.calculator = :cal AND {where} "
-           "AND (c.subject_id = :pid OR c.subject_id IN (SELECT id FROM person WHERE merged_into_id = :pid)) "
-           "GROUP BY c.subject_id")
+           "AND (c.subject_id = :pid OR c.subject_id IN (SELECT id FROM person WHERE merged_into_id = :pid))")
     r = conn.execute(text(sql), params).mappings().first()
-    if r is None:
+    if r is None or r.get("matches") is None:
         return {"subject_id": str(person_id), "matches": 0, "innings": 0, "runs": 0, "wickets": 0}
-    return row_fn(dict(r))
+    d = dict(r)
+    d["subject_id"] = str(person_id)
+    return row_fn(d)
 
 
 def person_batting(conn: Connection, filters: dict[str, Any], person_id: UUID) -> dict[str, Any]:

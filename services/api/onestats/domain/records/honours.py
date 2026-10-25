@@ -15,7 +15,7 @@ from onestats.domain import audit
 
 TYPES = ("life_member", "honorary_member", "club_award", "historical_figure", "other")
 _FIELDS = ("person_id", "awarded_date", "awarded_season", "awarding_organisation_id", "description",
-           "evidence", "media_asset_id", "notes", "status")
+           "evidence", "media_asset_id", "notes", "status", "award_category")
 
 
 def create_honour(conn: Connection, workspace_id: UUID, actor: str, *, honour_type: str, title: str,

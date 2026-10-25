@@ -102,6 +102,7 @@ class HonourCreate(BaseModel):
     honour_type: str = Field(pattern="^(life_member|honorary_member|club_award|historical_figure|other)$")
     title: str
     person_id: UUID | None = None
+    award_category: str | None = None   # free-form (Best & Fairest, Batting Award, custom, ...)
     awarded_date: date | None = None
     awarded_season: str | None = None
     awarding_organisation_id: UUID | None = None
@@ -114,6 +115,7 @@ class HonourCreate(BaseModel):
 
 class HonourUpdate(BaseModel):
     title: str | None = None
+    award_category: str | None = None
     description: str | None = None
     evidence: str | None = None
     notes: str | None = None
