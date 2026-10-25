@@ -347,6 +347,46 @@ export interface AutoSyncDashboard {
   coverage: Record<string, number>;
   last_success_at: string | null;
 }
+export interface ResearchDashboard {
+  projects_active: number;
+  projects_total: number;
+  sources_total: number;
+  sources_recent: { id: string; title: string; source_type: string; created_at: string | null }[];
+  matches_under_investigation: number;
+  draft_scorecards: number;
+  awaiting_verification: number;
+  disputed: number;
+  verified: number;
+  conflicting_evidence: number;
+  open_tasks: number;
+  notes_total: number;
+}
+export interface ResearchProject {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "active" | "paused" | "completed" | "archived";
+  scope: Record<string, unknown> | null;
+  owner: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface ResearchSource {
+  id: string;
+  title: string;
+  source_type: string;
+  publication: string | null;
+  author: string | null;
+  publication_date: string | null;
+  publication_date_precision: string;
+  edition: string | null;
+  page_ref: string | null;
+  original_url: string | null;
+  copyright_status: string | null;
+  usage_restrictions: string | null;
+  ocr_status: string;
+  created_at: string;
+}
 export interface AutoSyncConnector {
   connector_id: string;
   provider: string;
@@ -861,6 +901,21 @@ export const api = {
   autosyncBulk: (w: string, body: { item_ids: string[]; action: "accept" | "reject" }) =>
     request<{ action: string; count: number }>(`/api/v1/workspaces/${w}/autosync/review/bulk`, { method: "POST", body }),
   autosyncCoverage: (w: string) => request<DiscoveryCoverage[]>(`/api/v1/workspaces/${w}/autosync/coverage`),
+
+  // --- Phase 10: Research Centre ---
+  researchDashboard: (w: string) => request<ResearchDashboard>(`/api/v1/workspaces/${w}/research/dashboard`),
+  researchProjects: (w: string, statusFilter?: string) =>
+    request<ResearchProject[]>(`/api/v1/workspaces/${w}/research/projects${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
+  researchCreateProject: (w: string, body: Record<string, unknown>) =>
+    request<ResearchProject>(`/api/v1/workspaces/${w}/research/projects`, { method: "POST", body }),
+  researchUpdateProject: (w: string, id: string, body: Record<string, unknown>) =>
+    request<ResearchProject>(`/api/v1/workspaces/${w}/research/projects/${id}`, { method: "PATCH", body }),
+  researchSources: (w: string, sourceType?: string) =>
+    request<ResearchSource[]>(`/api/v1/workspaces/${w}/research/sources${sourceType ? `?source_type=${sourceType}` : ""}`),
+  researchCreateSource: (w: string, body: Record<string, unknown>) =>
+    request<ResearchSource>(`/api/v1/workspaces/${w}/research/sources`, { method: "POST", body }),
+  researchLinkSource: (w: string, id: string, body: { match_id: string; role?: string }) =>
+    request<unknown>(`/api/v1/workspaces/${w}/research/sources/${id}/link`, { method: "POST", body }),
 
   // --- Phase 6: matches ---
   listMatches: (

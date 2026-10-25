@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   MessageCircleQuestion,
   RefreshCw,
+  ScrollText,
   Settings,
   SlidersHorizontal,
   Trophy,
@@ -120,5 +121,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/autosync",
     icon: RefreshCw,
     blurb: "Automatically discover new and historical matches and scorecard updates.",
+  },
+  {
+    key: "research",
+    label: "Research Centre",
+    path: "/manage/research",
+    icon: ScrollText,
+    blurb: "Reconstruct historical matches from newspapers, scorebooks and other sources.",
   },
 ];
