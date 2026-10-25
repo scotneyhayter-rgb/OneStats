@@ -3,6 +3,19 @@
 For a reviewer in the **OneStats Sandbox** workspace. AutoSync is reached from **Club Management →
 AutoSync** (`/manage/autosync`). Start the backend + desktop app (see [46](46-phase7-acceptance.md)).
 
+> **Acceptance walkthrough result (2026-10-25):** Tests **1–15 PASS** in the Sandbox using the
+> built-in fixture sources. Test **16 is N/A** — no verified live connector is available; PlayHQ,
+> Play-Cricket and CricketArchive are recorded as outstanding external dependencies
+> ([52](52-phase9-external-dependencies.md)) and are **not** operational.
+>
+> Defects found and fixed during this walkthrough (all re-tested): updated-scorecard diff now compares
+> like-for-like; re-discovery never re-queues an imported match; accepting a possible-duplicate
+> attaches to the existing match (no duplicate); dashboard load reconciles stale jobs (offline
+> catch-up); Sync Now runs its own job and catches up interrupted/due jobs; a failed/unavailable
+> connector marks the source **down** + failed coverage (fixing a masked import error). UI gained
+> Check-updates, Discover-History and two clearly-labelled sample sources. Final suites: 440 backend /
+> 56 desktop pass.
+
 ## Consolidated test results (last run)
 
 | Suite | Result |
