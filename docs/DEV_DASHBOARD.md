@@ -3,13 +3,23 @@
 Lightweight, evidence-based status. Updated by hand from verified test/build runs — **no invented
 completion percentages**. Full assessment: [43. Testing & Acceleration](43-testing-and-acceleration.md).
 
-_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0034_match_source`._
+_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0037_discovery`._
 
 ## Verified test evidence (last run)
 | Suite | Result | Command |
 |---|---|---|
-| Backend (pytest) | **409 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
-| Desktop (vitest) | **54 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+| Backend (pytest) | **436 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
+| Desktop (vitest) | **56 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+
+## Phase 9 — AutoSync — implementation + tests complete (awaiting UAT)
+
+Automatic discovery built on the Phase 8 pipeline (plan [50](50-phase9-autosync-plan.md); acceptance
+[51](51-phase9-acceptance.md)). Job engine (restart-safe), source registry + connector catalog
+(fixture; real providers interface-only), discovery (classification / new / updated / coverage /
+review queue / bulk), orchestration (Sync Now, historical + resume, dashboard), API + AutoSync page.
+Migrations 0035 (sync_job), 0036 (sync_source), 0037 (discovery). **No verified live connector ships
+this phase** — all discovery runs against deterministic fixtures. **Do not begin Phase 10 until
+accepted.**
 
 ## Phase 8 — Universal Third-Party Import Framework — implementation + tests complete (awaiting UAT)
 
@@ -95,7 +105,7 @@ automated isolation tests. Defects found during acceptance were fixed and re-tes
 | **6** | **Matches & Scorecard Entry** | **✅ Complete (manual entry + CricketStatz import accepted)** |
 | **7** | **Validation, Integrity & Automatic Scorecard Intelligence** | **✅ Complete — user-accepted 2026-10-25** |
 | **8** | **Universal Third-Party Import Framework** | **✅ Complete — user-accepted 2026-10-25 ([49](49-phase8-acceptance.md))** |
-| **9** | **Automatic Online Discovery & AutoSync** | **🔄 In progress — plan [50](50-phase9-autosync-plan.md); started 2026-10-25** |
+| **9** | **Automatic Online Discovery & AutoSync** | **✅ Implementation + tests complete — awaiting UAT ([51](51-phase9-acceptance.md))** |
 | 10–18 | Research Centre → … → RMCC Trial | ⏳ Future |
 
 ## Phase 6 stage detail
