@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.media import assets, heritage, migration, providers
+from onestats.domain.media import assets, backup, heritage, migration, providers
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/media", tags=["media"])
 Ctx = Annotated[RequestContext, Depends(require_permission("media.manage"))]
@@ -277,6 +277,20 @@ def update_item(workspace_id: UUID, item_id: UUID, body: ItemUpdate, settings: S
                                           **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+@router.get("/backup/verify")
+def backup_verify(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """Integrity scan: missing-file detection + checksum validation across the archive."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return backup.verify_media(conn, settings, workspace_id)
+
+
+@router.get("/backup/manifest")
+def backup_manifest(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """A validatable backup manifest (assets + checksums + relationships + heritage)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return backup.build_manifest(conn, settings, workspace_id)
 
 
 @router.get("/entities/{entity_type}/{entity_id}/assets")
