@@ -19,14 +19,17 @@ from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import matches as matches_domain
 from onestats.domain.research import (
+    assist,
     dashboard,
     extraction,
     gaps,
+    notes,
     projects,
     provenance,
     reconstruction,
     sources,
     storage,
+    tasks,
     timeline,
 )
 
@@ -57,6 +60,9 @@ _ERRORS = {
     "extraction_not_found": status.HTTP_404_NOT_FOUND,
     "invalid_assessed_class": status.HTTP_400_BAD_REQUEST,
     "match_not_found": status.HTTP_404_NOT_FOUND,
+    "task_not_found": status.HTTP_404_NOT_FOUND,
+    "body_required": status.HTTP_400_BAD_REQUEST,
+    "invalid_evidence_class": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -363,6 +369,81 @@ def verify_match(workspace_id: UUID, match_id: UUID, body: Verify, settings: Set
                                                   status=_VERIFY_MAP[body.decision], reason=body.reason))
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+class TaskCreate(BaseModel):
+    title: str
+    description: str | None = None
+    project_id: UUID | None = None
+    gap_kind: str | None = None
+    scope: dict[str, Any] | None = None
+    priority: int = 0
+    assigned_to: str | None = None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    priority: int | None = None
+    assigned_to: str | None = None
+    status: str | None = Field(default=None, pattern="^(open|in_progress|resolved|dismissed)$")
+
+
+class NoteCreate(BaseModel):
+    body: str
+    evidence_class: str = Field(default="unverified", pattern="^(verified|supported|oral_history|unverified|disputed)$")
+    project_id: UUID | None = None
+    match_id: UUID | None = None
+    source_id: UUID | None = None
+
+
+@router.get("/tasks")
+def list_tasks(workspace_id: UUID, settings: SettingsDep, ctx: Ctx, project_id: UUID | None = None,
+               status_filter: str | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in tasks.list_tasks(conn, workspace_id, project_id=project_id, status=status_filter)]
+
+
+@router.post("/tasks", status_code=status.HTTP_201_CREATED)
+def create_task(workspace_id: UUID, body: TaskCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(tasks.create_task(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.patch("/tasks/{task_id}")
+def update_task(workspace_id: UUID, task_id: UUID, body: TaskUpdate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(tasks.update_task(conn, workspace_id, str(ctx.user["id"]), task_id,
+                                        **body.model_dump(exclude_none=True)))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/notes")
+def list_notes(workspace_id: UUID, settings: SettingsDep, ctx: Ctx, project_id: UUID | None = None,
+               match_id: UUID | None = None, source_id: UUID | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in notes.list_notes(conn, workspace_id, project_id=project_id, match_id=match_id,
+                                                source_id=source_id)]
+
+
+@router.post("/notes", status_code=status.HTTP_201_CREATED)
+def create_note(workspace_id: UUID, body: NoteCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(notes.create_note(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/matches/{match_id}/suggestions")
+def match_suggestions(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return assist.suggestions_for_match(conn, workspace_id, match_id)
 
 
 class CoverageAssessment(BaseModel):
