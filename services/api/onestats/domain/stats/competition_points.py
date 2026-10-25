@@ -37,7 +37,7 @@ def ladder(conn: Connection, workspace_id: UUID, *, competition_id: UUID, season
     )["conditions"].get("points")) or DEFAULT_SCHEME
 
     sql = (
-        "SELECT mt.team_id, mt.bonus_points, m.result_type, m.won_by_team_id "
+        "SELECT mt.team_id, mt.bonus_points, m.result_type, m.won_by_team_id, m.first_innings_winner_team_id "
         "FROM match_team mt JOIN match m ON m.id = mt.match_id "
         "WHERE m.workspace_id = :w AND m.competition_id = :c "
         "AND m.approval_status IN ('approved','verified_partial') AND m.include_in_statistics = true"
@@ -56,11 +56,18 @@ def ladder(conn: Connection, workspace_id: UUID, *, competition_id: UUID, season
         key = _result_key(r["result_type"], r["team_id"], r["won_by_team_id"])
         t = table.setdefault(str(r["team_id"]), {
             "team_id": str(r["team_id"]), "played": 0, "wins": 0, "losses": 0, "draws": 0, "ties": 0,
-            "no_results": 0, "unknown": 0, "bonus": 0.0, "points": 0.0})
+            "no_results": 0, "unknown": 0, "bonus": 0.0, "first_innings": 0.0, "points": 0.0})
         t["played"] += 1
         if r["bonus_points"] is not None:
             t["bonus"] += float(r["bonus_points"])
             t["points"] += float(r["bonus_points"])
+        # multi-day: first-innings result points (configurable; NULL winner skips this)
+        fiw = r["first_innings_winner_team_id"]
+        if fiw is not None:
+            fi_key = "first_innings_win" if str(r["team_id"]) == str(fiw) else "first_innings_loss"
+            fi_pts = float(scheme.get(fi_key, 0))
+            t["first_innings"] += fi_pts
+            t["points"] += fi_pts
         if key is None:
             t["unknown"] += 1
             continue
@@ -81,6 +88,7 @@ def ladder(conn: Connection, workspace_id: UUID, *, competition_id: UUID, season
         t["position"] = i
         t["points"] = round(t["points"], 2)
         t["bonus"] = round(t["bonus"], 2)
+        t["first_innings"] = round(t["first_innings"], 2)
     return {"competition_id": str(competition_id), "scheme": scheme, "standings": standings,
             "note": "Points use the competition's configured scheme; unknown results are excluded, not "
                     "assumed. Historical competitions keep their own scheme."}

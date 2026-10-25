@@ -34,7 +34,7 @@ _COLS = (
     "id, workspace_id, competition_id, grade_id, season_id, season_source, venue_id, match_date, match_date_end, date_precision, "
     "round, matchtype, format, status, classification, finals_stage, classification_verified, "
     "classification_ref_id, result_type, result_raw, result_source, result_override_reason, "
-    "won_by_team_id, margin_runs, margin_wickets, "
+    "won_by_team_id, first_innings_winner_team_id, margin_runs, margin_wickets, "
     "toss_winner_team_id, toss_decision, "
     "include_in_statistics, approval_status, approval_reason, approved_by, approved_at, "
     "revised_since_approval, notes, source_system, source_ref, created_at, updated_at"
@@ -190,6 +190,7 @@ def set_result(
     conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *, result_type: str,
     won_by_team_id: UUID | None = None, margin_runs: int | None = None, margin_wickets: int | None = None,
     result_raw: str | None = None, result_source: str = "recorded", result_override_reason: str | None = None,
+    first_innings_winner_team_id: UUID | None = None,
 ) -> dict[str, Any]:
     before = get_match(conn, match_id)
     if before is None:
@@ -203,12 +204,20 @@ def set_result(
         {"m": match_id, "t": won_by_team_id},
     ).first() is None:
         raise ValueError("winner_not_in_match")
+    if first_innings_winner_team_id is not None and conn.execute(
+        text("SELECT 1 FROM match_team WHERE match_id = :m AND team_id = :t"),
+        {"m": match_id, "t": first_innings_winner_team_id},
+    ).first() is None:
+        raise ValueError("first_innings_winner_not_in_match")
     conn.execute(
         text("UPDATE match SET result_type = :rt, won_by_team_id = :w, margin_runs = :mr, "
              "margin_wickets = :mw, result_raw = coalesce(:raw, result_raw), result_source = :rs, "
-             "result_override_reason = :reason, updated_at = now() WHERE id = :id"),
+             "result_override_reason = :reason, "
+             "first_innings_winner_team_id = coalesce(:fiw, first_innings_winner_team_id), "
+             "updated_at = now() WHERE id = :id"),
         {"rt": result_type, "w": won_by_team_id, "mr": margin_runs, "mw": margin_wickets,
-         "raw": result_raw, "rs": result_source, "reason": result_override_reason, "id": match_id},
+         "raw": result_raw, "rs": result_source, "reason": result_override_reason,
+         "fiw": first_innings_winner_team_id, "id": match_id},
     )
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.result", entity="match", entity_id=str(match_id),

@@ -41,11 +41,12 @@ def _team(conn, wid, name):
                         {"w": wid, "o": org, "n": name}).scalar_one()
 
 
-def _match(conn, wid, comp, home, away, *, result, won_by=None, home_bonus=None):
+def _match(conn, wid, comp, home, away, *, result, won_by=None, home_bonus=None, first_innings_winner=None):
     mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
     matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True, bonus_points=home_bonus)
     matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
-    matches.set_result(conn, wid, ACTOR, mid, result_type=result, won_by_team_id=won_by)
+    matches.set_result(conn, wid, ACTOR, mid, result_type=result, won_by_team_id=won_by,
+                       first_innings_winner_team_id=first_innings_winner)
     matches.set_approval(conn, wid, ACTOR, mid, status="approved")
     return mid
 
@@ -73,6 +74,24 @@ def test_ladder_uses_configured_scheme(conn):
     lad = competition_points.ladder(conn, wid, competition_id=comp)
     assert lad["scheme"]["win"] == 6
     assert next(s for s in lad["standings"] if s["team_id"] == str(home))["points"] == 6.0  # configured, not default 4
+
+
+def test_multi_day_first_innings_and_outright(conn):
+    wid = _ws(conn, "LADDER MD")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="Multi-Day")
+    # configurable multi-day scheme: outright win 6, draw 0, first-innings win 2
+    playing_conditions.set_conditions(conn, wid, ACTOR, scope="competition", target_id=comp,
+                                      points={"win": 6, "loss": 0, "draw": 0, "tie": 3,
+                                              "first_innings_win": 2, "first_innings_loss": 0})
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    # drawn outright, home won first innings -> home 0 (draw) + 2 (FI win) = 2; away 0
+    _match(conn, wid, comp, home, away, result="draw", first_innings_winner=home)
+    # home outright win AND first-innings win -> 6 + 2 = 8
+    _match(conn, wid, comp, home, away, result="home_win", won_by=home, first_innings_winner=home)
+    lad = competition_points.ladder(conn, wid, competition_id=comp)
+    by_team = {s["team_id"]: s for s in lad["standings"]}
+    assert by_team[str(home)]["points"] == 10.0 and by_team[str(home)]["first_innings"] == 4.0
+    assert by_team[str(away)]["points"] == 0.0
 
 
 def test_unknown_result_excluded(conn):
