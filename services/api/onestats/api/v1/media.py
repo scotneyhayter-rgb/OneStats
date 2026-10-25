@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.media import assets, providers
+from onestats.domain.media import assets, migration, providers
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/media", tags=["media"])
 Ctx = Annotated[RequestContext, Depends(require_permission("media.manage"))]
@@ -27,6 +27,10 @@ _ERRORS = {
     "invalid_entity_type": status.HTTP_400_BAD_REQUEST,
     "asset_not_found": status.HTTP_404_NOT_FOUND,
     "unknown_provider": status.HTTP_400_BAD_REQUEST,
+    "cannot_migrate_external": status.HTTP_400_BAD_REQUEST,
+    "cannot_migrate_to_external": status.HTTP_400_BAD_REQUEST,
+    "source_integrity_failed": status.HTTP_409_CONFLICT,
+    "migration_verify_failed": status.HTTP_409_CONFLICT,
 }
 
 
@@ -160,6 +164,32 @@ def get_thumbnail(workspace_id: UUID, asset_id: UUID, settings: SettingsDep, ctx
     if a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "asset_not_found")
     return _serve(settings, workspace_id, a, a.get("thumbnail_ref"))
+
+
+class MigrateBody(BaseModel):
+    to_provider: str = Field(pattern="^(internal|onevault|external)$")
+    remove_source: bool = False
+
+
+@router.get("/assets/{asset_id}/verify")
+def verify_asset(workspace_id: UUID, asset_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        a = assets.get_asset(conn, asset_id)
+        if a is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "asset_not_found")
+    return migration.verify_asset(settings, workspace_id, a)
+
+
+@router.post("/assets/{asset_id}/migrate")
+def migrate_asset(workspace_id: UUID, asset_id: UUID, body: MigrateBody, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(migration.migrate_asset(conn, settings, workspace_id, str(ctx.user["id"]), asset_id,
+                                              to_provider=body.to_provider, remove_source=body.remove_source))
+        except providers.ProviderUnavailable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        except ValueError as exc:
+            raise _err(exc) from exc
 
 
 @router.post("/assets/{asset_id}/link")
