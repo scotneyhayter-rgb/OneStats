@@ -29,6 +29,9 @@ def test_import_routes_registered(client):
     assert f"{base}/{{batch_id}}/promote" in paths
     assert f"{base}/{{batch_id}}/cancel" in paths
     assert f"{base}/{{batch_id}}/rollback" in paths
+    # Phase 8 universal import (any format)
+    assert f"{base}/detect" in paths
+    assert f"{base}/generic" in paths
 
 
 def test_import_endpoints_require_authentication(client):
@@ -38,3 +41,5 @@ def test_import_endpoints_require_authentication(client):
     assert client.post(base, json={"data": {"clubs": []}}).status_code == 401
     assert client.post(f"{base}/{uuid.uuid4()}/promote").status_code == 401
     assert client.post(f"{base}/{uuid.uuid4()}/rollback").status_code == 401
+    assert client.post(f"{base}/detect", json={"content": "x"}).status_code == 401
+    assert client.post(f"{base}/generic", json={"content": "x"}).status_code == 401

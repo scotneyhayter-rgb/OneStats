@@ -20,6 +20,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { api, ApiError, type CricketStatzImportResult, type ImportBatch } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
+import { UniversalImport } from "./UniversalImport";
 
 // loose shapes — the CricketStatz export is parsed as-is (the backend owns validation)
 interface CsFile { [k: string]: unknown[] | null | undefined }
@@ -84,6 +85,7 @@ type Step = "select" | "analyse" | "preview" | "importing" | "results";
 export function ImportWizard() {
   const { workspaceId } = useManage();
   const navigate = useNavigate();
+  const [mode, setMode] = useState<"cricketstatz" | "universal">("cricketstatz");
   const [step, setStep] = useState<Step>("select");
   const [file, setFile] = useState<CsFile | null>(null);
   const [fileName, setFileName] = useState("");
@@ -167,12 +169,23 @@ export function ImportWizard() {
   if (!workspaceId) return <AppShell title="Import Data"><NoWorkspace /></AppShell>;
 
   return (
-    <AppShell title="Import Data" subtitle="Bring matches and scorecards in from CricketStatz">
+    <AppShell title="Import Data" subtitle="Bring matches and scorecards in from CricketStatz and other formats">
       <div className="mx-auto flex max-w-4xl flex-col gap-4">
-        <Stepper step={step} />
+        <div className="flex gap-1 rounded-[var(--radius-app)] border border-border p-1 text-sm w-fit">
+          {([["cricketstatz", "CricketStatz"], ["universal", "Other formats (CSV, Excel, JSON, XML)"]] as const).map(([m, label]) => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`rounded-[var(--radius-app)] px-3 py-1 ${mode === m ? "bg-brand text-brand-foreground" : "hover:bg-muted"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "universal" && <UniversalImport />}
+
+        {mode === "cricketstatz" && <Stepper step={step} />}
         {error && <ErrorState message={error} />}
 
-        {step === "select" && (
+        {mode === "cricketstatz" && step === "select" && (
           <SelectStep busy={busy} onFile={onFile} history={history} />
         )}
 

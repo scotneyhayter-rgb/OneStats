@@ -17,6 +17,8 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import imports
+from onestats.domain.importing import adapters as _adapters  # noqa: F401 - import registers adapters
+from onestats.domain.importing import detect_adapter, get_adapter, pipeline, registry
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/imports", tags=["imports"])
 
@@ -29,6 +31,7 @@ _VALUE_ERR_STATUS = {
     "batch_has_promoted_rows_use_rollback": status.HTTP_409_CONFLICT,
     "batch_cancelled": status.HTTP_409_CONFLICT,
     "batch_promoted": status.HTTP_409_CONFLICT,
+    "unrecognised_format": status.HTTP_422_UNPROCESSABLE_ENTITY,
 }
 
 
@@ -94,6 +97,62 @@ def cricketstatz_import(
         else:
             sp.rollback()     # preview only — discard all staging/promotion
         return result
+
+
+class GenericImportRequest(BaseModel):
+    content: str | None = Field(default=None, description="Text source (CSV/JSON/XML)")
+    content_base64: str | None = Field(default=None, description="Base64 of a binary source (Excel)")
+    filename: str | None = None
+    format_id: str | None = Field(default=None, description="Adapter id; auto-detected when omitted")
+    commit: bool = Field(default=False, description="False = preview (nothing persists); True = import")
+
+
+def _content(body: GenericImportRequest) -> bytes | str:
+    if body.content_base64 is not None:
+        import base64
+        try:
+            return base64.b64decode(body.content_base64)
+        except Exception as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_base64") from exc
+    if body.content is not None:
+        return body.content
+    raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "no_content")
+
+
+@router.post("/detect")
+def detect_import_format(workspace_id: UUID, body: GenericImportRequest, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    """Which registered adapters recognise this file, best first (so the wizard can confirm/choose)."""
+    hits = registry.detect(_content(body), body.filename)
+    return {"candidates": [{"format_id": a.format_id, "display_name": a.display_name,
+                            "confidence": round(c, 3)} for a, c in hits]}
+
+
+@router.post("/generic")
+def generic_import(workspace_id: UUID, body: GenericImportRequest, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    """Universal import: detect/parse/normalise a file via its adapter, then stage+promote through the
+    one shared pipeline. A preview runs inside a savepoint that is rolled back (nothing persists); a
+    commit releases it. Workspace-isolated, gated by ``import.manage``; imported matches are draft."""
+    content = _content(body)
+    adapter = get_adapter(body.format_id) if body.format_id else detect_adapter(content, body.filename)
+    if adapter is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unrecognised_format")
+    try:
+        dataset = adapter.normalize(adapter.parse(content, filename=body.filename))
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        sp = conn.begin_nested()
+        try:
+            result = pipeline.import_dataset(conn, workspace_id, str(ctx.user["id"]),
+                                             dataset=dataset, commit=body.commit, filename=body.filename)
+        except ValueError as exc:
+            sp.rollback()
+            raise _value_error(exc) from exc
+        if body.commit:
+            sp.commit()
+        else:
+            sp.rollback()
+        return {"format_id": adapter.format_id, "display_name": adapter.display_name, **result}
 
 
 @router.get("")

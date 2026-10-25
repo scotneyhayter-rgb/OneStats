@@ -336,6 +336,17 @@ export interface CricketStatzImportResult {
   people: { detected?: { matched: number; possible_existing: number; new: number }; promoted?: { created: Record<string, number>; linked: Record<string, number> } };
   promoted?: { created: Record<string, number>; matched: Record<string, number>; status: string };
 }
+export interface GenericImportResult {
+  format_id: string;
+  display_name: string;
+  batch_id: string;
+  counts: Record<string, number>;
+  source_system: string;
+  committed: boolean;
+  created?: Record<string, number>;
+  matched?: Record<string, number>;
+  status?: string;
+}
 export interface ImportRecord {
   id: string;
   entity_type: string;
@@ -744,6 +755,15 @@ export const api = {
     body: { data: unknown; people?: unknown; commit: boolean; filename?: string },
   ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
   listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
+
+  // --- Phase 8: universal import (any format) ---
+  importDetect: (w: string, body: { content?: string; content_base64?: string; filename?: string }) =>
+    request<{ candidates: { format_id: string; display_name: string; confidence: number }[] }>(
+      `/api/v1/workspaces/${w}/imports/detect`, { method: "POST", body }),
+  importGeneric: (
+    w: string,
+    body: { content?: string; content_base64?: string; filename?: string; format_id?: string; commit: boolean },
+  ) => request<GenericImportResult>(`/api/v1/workspaces/${w}/imports/generic`, { method: "POST", body }),
 
   // --- Phase 6: matches ---
   listMatches: (
