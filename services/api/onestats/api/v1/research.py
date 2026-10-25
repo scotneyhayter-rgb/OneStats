@@ -17,7 +17,15 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.research import dashboard, extraction, projects, provenance, sources, storage
+from onestats.domain.research import (
+    dashboard,
+    extraction,
+    projects,
+    provenance,
+    reconstruction,
+    sources,
+    storage,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
@@ -265,6 +273,49 @@ def link_source_match(workspace_id: UUID, source_id: UUID, body: LinkMatch,
 def match_sources(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return [_s(r) for r in sources.list_sources_for_match(conn, workspace_id, match_id)]
+
+
+class StartReconstruction(BaseModel):
+    competition_id: UUID | None = None
+    grade_id: UUID | None = None
+    season_id: UUID | None = None
+    venue_id: UUID | None = None
+    match_date: date | None = None
+    date_precision: str = Field(default="unknown", pattern="^(unknown|exact|year|month|approx|range|season)$")
+    match_date_end: date | None = None
+    notes: str | None = None
+    source_id: UUID | None = None
+    source_role: str | None = "primary"
+
+
+class AttachSource(BaseModel):
+    source_id: UUID
+    role: str | None = None
+
+
+@router.post("/reconstructions", status_code=status.HTTP_201_CREATED)
+def start_reconstruction(workspace_id: UUID, body: StartReconstruction, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(reconstruction.start_reconstruction(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/matches/{match_id}/attach-source")
+def attach_source(workspace_id: UUID, match_id: UUID, body: AttachSource, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _s(reconstruction.attach_source(conn, workspace_id, str(ctx.user["id"]), match_id, body.source_id,
+                                               role=body.role))
+
+
+@router.get("/matches/{match_id}/reconstruction")
+def reconstruction_summary(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return reconstruction.summary(conn, workspace_id, match_id)
+        except ValueError as exc:
+            raise _err(exc) from exc
 
 
 class ClaimCreate(BaseModel):

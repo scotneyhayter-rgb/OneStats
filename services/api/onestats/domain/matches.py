@@ -25,13 +25,13 @@ from onestats.domain import audit, playing_conditions
 CLASSIFICATIONS = ("home_away", "final", "grand_final", "other", "unclassified")
 FINALS_STAGES = ("qualifying_final", "elimination_final", "semi_final", "preliminary_final", "grand_final", "custom")
 RESULT_TYPES = ("home_win", "away_win", "tie", "draw", "no_result", "abandoned", "washout", "forfeit", "unknown")
-DATE_PRECISIONS = ("unknown", "exact", "year", "month", "approx")
+DATE_PRECISIONS = ("unknown", "exact", "year", "month", "approx", "range", "season")
 STATUSES = ("draft", "final", "abandoned")
 
 TOSS_DECISIONS = ("bat", "field", "no_toss", "not_recorded", "unknown")
 
 _COLS = (
-    "id, workspace_id, competition_id, grade_id, season_id, season_source, venue_id, match_date, date_precision, "
+    "id, workspace_id, competition_id, grade_id, season_id, season_source, venue_id, match_date, match_date_end, date_precision, "
     "round, matchtype, format, status, classification, finals_stage, classification_verified, "
     "classification_ref_id, result_type, result_raw, result_source, result_override_reason, "
     "won_by_team_id, margin_runs, margin_wickets, "
@@ -137,8 +137,8 @@ def update_match(
     before = get_match(conn, match_id)
     if before is None:
         raise ValueError("match_not_found")
-    allowed = {"competition_id", "grade_id", "season_id", "venue_id", "match_date", "date_precision",
-               "round", "matchtype", "format", "status", "notes", "include_in_statistics"}
+    allowed = {"competition_id", "grade_id", "season_id", "venue_id", "match_date", "match_date_end",
+               "date_precision", "round", "matchtype", "format", "status", "notes", "include_in_statistics"}
     if "date_precision" in fields and fields["date_precision"] not in DATE_PRECISIONS:
         raise ValueError("invalid_date_precision")
     if "status" in fields and fields["status"] not in STATUSES:

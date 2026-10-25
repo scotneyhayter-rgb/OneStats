@@ -23,7 +23,8 @@ def test_research_routes_registered(client):
               "/publications/{publication}/editions", "/matches/{match_id}/provenance",
               "/matches/{match_id}/conflicts", "/provenance/{claim_id}/accept", "/provenance/{claim_id}/reject",
               "/sources/{source_id}/extractions", "/sources/{source_id}/extract",
-              "/sources/{source_id}/transcription", "/extractions/{extraction_id}/correct"):
+              "/sources/{source_id}/transcription", "/extractions/{extraction_id}/correct",
+              "/reconstructions", "/matches/{match_id}/attach-source", "/matches/{match_id}/reconstruction"):
         assert f"{base}{p}" in paths, p
 
 
