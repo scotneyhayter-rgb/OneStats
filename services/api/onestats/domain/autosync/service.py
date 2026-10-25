@@ -102,14 +102,13 @@ def discover_history(conn: Connection, workspace_id: UUID, actor: str, *, connec
 
 
 def sync_now(conn: Connection, workspace_id: UUID, actor: str, *, source_system: str, kind: str = "manual") -> dict[str, Any]:
-    """Enqueue and immediately run a real job (the dashboard's Sync Now). Duplicate-active prevention
-    applies; returns the job and its outcome."""
+    """Enqueue and immediately run a real job (the dashboard's Sync Now), then catch up any other due
+    or interrupted jobs for this workspace (offline catch-up). Duplicate-active prevention applies."""
     job = jobs.create_job(conn, workspace_id, actor, source_system=source_system, kind=kind)
-    claimed = jobs.claim_next_job(conn, workspace_id, actor)
-    if claimed is None or claimed["id"] != job["id"]:
-        return {"job": job, "ran": False}
-    done = jobs.run_job(conn, workspace_id, actor, claimed)
-    return {"job": done, "ran": True}
+    claimed = jobs.claim_job(conn, workspace_id, actor, job["id"])
+    done = jobs.run_job(conn, workspace_id, actor, claimed) if claimed else job
+    caught = jobs.run_due_jobs(conn, workspace_id, actor)   # resume interrupted / due-while-offline jobs
+    return {"job": done, "ran": claimed is not None, "caught_up": caught["ran"]}
 
 
 def startup_reconcile(conn: Connection, workspace_id: UUID, actor: str = SYSTEM_ACTOR) -> dict[str, int]:

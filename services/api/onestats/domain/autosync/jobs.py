@@ -101,6 +101,20 @@ def claim_next_job(
     return _row(conn, row)
 
 
+def claim_job(conn: Connection, workspace_id: UUID, actor: str, job_id: UUID, *,
+              lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict[str, Any] | None:
+    """Claim one SPECIFIC pending/interrupted job (mark it running under a fresh lease). Used by
+    Sync Now to run exactly the job it created, rather than the oldest due one."""
+    res = conn.execute(
+        text("UPDATE sync_job SET status = 'running', lease_owner = :o, "
+             "lease_expires_at = now() + make_interval(secs => :ls), "
+             "started_at = COALESCE(started_at, now()), updated_at = now() "
+             "WHERE id = :id AND status IN ('pending','interrupted')"),
+        {"o": actor, "ls": lease_seconds, "id": job_id},
+    )
+    return _row(conn, job_id) if res.rowcount else None
+
+
 def heartbeat(conn: Connection, job_id: UUID, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> None:
     """Renew a running job's lease (called periodically by the worker)."""
     conn.execute(

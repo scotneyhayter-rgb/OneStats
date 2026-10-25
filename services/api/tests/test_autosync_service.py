@@ -84,6 +84,17 @@ def test_discover_history_covers_each_scope_and_is_resumable(conn):
     assert out2["searched"] == 1
 
 
+def test_sync_now_catches_up_an_interrupted_job(conn):
+    wid = _ws(conn, "SVC CATCHUP")
+    _source(conn, wid)
+    # a job left 'interrupted' by a crash (offline) — should resume when AutoSync runs again
+    jid = jobs.create_job(conn, wid, ACTOR, source_system="svc_feed", kind="historical")["id"]
+    conn.execute(text("UPDATE sync_job SET status='interrupted', lease_owner=NULL, lease_expires_at=NULL WHERE id=:id"), {"id": jid})
+    out = service.sync_now(conn, wid, ACTOR, source_system="svc_feed")   # runs the manual job + catch-up
+    assert out["ran"] is True and out["caught_up"] >= 1
+    assert jobs.get_job(conn, jid)["status"] in ("succeeded", "failed")   # the interrupted job resumed
+
+
 def test_startup_reconcile_recovers_interrupted_jobs(conn):
     wid = _ws(conn, "SVC RECON")
     _source(conn, wid)
