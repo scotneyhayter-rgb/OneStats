@@ -102,26 +102,36 @@ Automated coverage: `features/settings/connection-settings.test.tsx`; `tauri.con
 sync. **Decisions required:** public hosting (static vs central) and code-signing certificate (both paid;
 no cost without approval).
 
-## Post-Phase-17 consolidated acceptance programme (to assemble)
+## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
-One organised programme combining all of the above plus cross-cutting suites, de-duplicated with complete
-requirement coverage:
+All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one
+programme, de-duplicated, with complete requirement coverage. Each area maps to the concrete, numbered test
+blocks above (run those rows); cross-cutting areas add the extra checks listed.
 
-- End-to-end workflows across the complete application.
-- Statistics & report accuracy (incl. the 79-report catalogue, mixed-over-length economy, multi-keeper).
-- Player profiles, records & awards.
-- Historical research & source provenance.
-- Media archive & OneVault integration.
-- Ask OneStats (AI Research Assistant) behaviour.
-- Website publishing & public report URLs.
-- Mobile portal.
-- Windows installation, upgrade & uninstall (incl. USB).
-- Backup, restoration & disaster recovery.
-- Permissions, security & workspace isolation.
-- Accessibility & user experience.
-- Performance & stability.
+| # | Area | Run these | Extra cross-cutting checks |
+|---|---|---|---|
+| 1 | End-to-end workflows | A full create→enter→approve→report→publish pass | Each major workflow start-to-finish in the sandbox |
+| 2 | Statistics & report accuracy | Phase 12 (28) + Report Catalogue **RC1–RC15** + spot-checks **A1–A5** | 79-report catalogue, mixed-over-length economy, multi-keeper, forfeits |
+| 3 | Player profiles, records & awards | Phase 13 (22) + Player Profiles **P1–P16** | Charts, Grand Finals, honours vs calculated |
+| 4 | Historical research & provenance | Phase 10 acceptance ([55](55-phase10-acceptance.md)) | Evidence never overwrites approved stats |
+| 5 | Media archive & OneVault | Phase 11 (20) | OneVault must show **unavailable** |
+| 6 | Ask OneStats (AI assistant) | **ASK1–ASK7** | No fabrication; deterministic; permission-scoped |
+| 7 | Website publishing & public URLs | **PUB1–PUB10** | RMCC External-URL (hosting-gated); privacy |
+| 8 | Mobile portal | **MOB1–MOB8** | Responsive on a real phone; read-only |
+| 9 | Windows install / upgrade / uninstall | **INS1–INS9** | USB install; upgrade preserves data; signing decision |
+| 10 | Backup, restoration & disaster recovery | Phase 11 test 18 + a full restore drill | Pre-upgrade backup; recover from a backup |
+| 11 | Permissions, security & workspace isolation | Phase isolation checks + a cross-workspace pass | DB-level RLS (automated suite green); role-scoped views |
+| 12 | Accessibility & UX | Keyboard, focus, contrast, scaling across key screens | WCAG AA target |
+| 13 | Performance & stability | Association-scale report + large PDF + repeated use | Startup/shutdown; reconnect; interrupted-op recovery |
+
+**Blocking decisions before public/production release** (both paid; no cost without user approval):
+public **hosting** (static vs central service), and the **code-signing certificate**.
+
+**External dependencies** (not application defects): OneVault API (unverified), PlayHQ/online connectors
+(gated), RMCC External-URL integration (unverified).
 
 ## Maintenance
 
-Each phase's completion report updates this register (its planned tests become concrete, numbered rows).
-The register is the single source of truth for what the user will manually verify after Phase 17.
+Each phase's completion report updated this register (planned tests → concrete numbered rows). This register
+is the single source of truth for what the user will manually verify. **No phase is user-accepted until the
+user approves it.**
