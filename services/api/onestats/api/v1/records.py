@@ -10,14 +10,31 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.records import milestones, records
+from onestats.domain.records import badges, honours, milestones, records
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/records", tags=["records"])
 ViewCtx = Annotated[RequestContext, Depends(require_permission("match.view"))]
+HonourCtx = Annotated[RequestContext, Depends(require_permission("honour.manage"))]
+
+_ERRORS = {
+    "invalid_honour_type": status.HTTP_400_BAD_REQUEST,
+    "title_required": status.HTTP_400_BAD_REQUEST,
+    "honour_not_found": status.HTTP_404_NOT_FOUND,
+    "invalid_status": status.HTTP_400_BAD_REQUEST,
+}
+
+
+def _s(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: (str(v) if isinstance(v, UUID) else v) for k, v in d.items()}
+
+
+def _err(exc: ValueError) -> HTTPException:
+    return HTTPException(_ERRORS.get(str(exc), status.HTTP_400_BAD_REQUEST), str(exc))
 
 
 def _engine(settings):
@@ -60,3 +77,59 @@ def person_milestones(workspace_id: UUID, person_id: UUID, settings: SettingsDep
 def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int = 10) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return milestones.upcoming_for_workspace(conn, workspace_id, window=window)
+
+
+@router.get("/badges/{person_id}")
+def person_badges(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return badges.person_badges(conn, workspace_id, person_id)
+
+
+class HonourCreate(BaseModel):
+    honour_type: str = Field(pattern="^(life_member|honorary_member|club_award|historical_figure|other)$")
+    title: str
+    person_id: UUID | None = None
+    awarded_date: date | None = None
+    awarded_season: str | None = None
+    awarding_organisation_id: UUID | None = None
+    description: str | None = None
+    evidence: str | None = None
+    media_asset_id: UUID | None = None
+    notes: str | None = None
+    status: str = Field(default="confirmed", pattern="^(proposed|confirmed)$")
+
+
+class HonourUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    evidence: str | None = None
+    notes: str | None = None
+    media_asset_id: UUID | None = None
+    status: str | None = Field(default=None, pattern="^(proposed|confirmed)$")
+
+
+@router.get("/honours")
+def list_honours(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, honour_type: str | None = None,
+                 person_id: UUID | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in honours.list_honours(conn, workspace_id, honour_type=honour_type, person_id=person_id)]
+
+
+@router.post("/honours", status_code=status.HTTP_201_CREATED)
+def create_honour(workspace_id: UUID, body: HonourCreate, settings: SettingsDep, ctx: HonourCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(honours.create_honour(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.patch("/honours/{honour_id}")
+def update_honour(workspace_id: UUID, honour_id: UUID, body: HonourUpdate, settings: SettingsDep,
+                  ctx: HonourCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(honours.update_honour(conn, workspace_id, str(ctx.user["id"]), honour_id,
+                                            **body.model_dump(exclude_none=True)))
+        except ValueError as exc:
+            raise _err(exc) from exc
