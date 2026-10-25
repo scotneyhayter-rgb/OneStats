@@ -436,6 +436,56 @@ export interface GapCategory {
   sample?: { match_id: string; match_date: string | null; round: string | null }[];
 }
 export type ResearchGaps = Record<string, GapCategory>;
+export interface MediaProviderInfo {
+  name: string;
+  available: boolean;
+  default: boolean;
+  note: string | null;
+}
+export interface MediaAsset {
+  id: string;
+  storage_provider: "internal" | "onevault" | "external";
+  storage_locator: string | null;
+  original_filename: string | null;
+  content_type: string | null;
+  file_bytes: number | null;
+  sha256: string | null;
+  kind: string;
+  title: string | null;
+  description: string | null;
+  copyright_status: string | null;
+  licence: string | null;
+  attribution: string | null;
+  visibility: "private" | "workspace" | "publishable";
+  publication_eligible: boolean;
+  sensitive: boolean;
+  junior_protected: boolean;
+  thumbnail_ref: string | null;
+  created_at: string;
+}
+export interface MediaVerifyReport {
+  total: number;
+  verified_ok: number;
+  missing: string[];
+  mismatch: string[];
+  unverifiable: string[];
+  ok: boolean;
+}
+export interface HeritageCollection {
+  id: string;
+  name: string;
+  description: string | null;
+  items: number;
+}
+export interface HeritageItem {
+  id: string;
+  media_asset_id: string | null;
+  title: string | null;
+  significance: string | null;
+  description: string | null;
+  display_order: number;
+  publication_eligible: boolean;
+}
 export interface ResearchAlias {
   id: string;
   entity_type: string;
@@ -1041,6 +1091,40 @@ export const api = {
     if (t) headers["Authorization"] = `Bearer ${t}`;
     const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/research/sources/${id}/file`, { headers });
     if (!resp.ok) throw new ApiError(`Could not load document (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
+
+  // --- Phase 11: Media Archive ---
+  mediaProviders: (w: string) => request<MediaProviderInfo[]>(`/api/v1/workspaces/${w}/media/providers`),
+  mediaAssets: (w: string, kind?: string) =>
+    request<MediaAsset[]>(`/api/v1/workspaces/${w}/media/assets${kind ? `?kind=${kind}` : ""}`),
+  mediaPublishable: (w: string) => request<MediaAsset[]>(`/api/v1/workspaces/${w}/media/assets/publishable`),
+  mediaUpload: (w: string, file: File, kind: string, title?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    const q = `?kind=${encodeURIComponent(kind)}${title ? `&title=${encodeURIComponent(title)}` : ""}`;
+    return request<MediaAsset & { duplicate_of: string | null }>(`/api/v1/workspaces/${w}/media/assets${q}`,
+      { method: "POST", form });
+  },
+  mediaAddExternal: (w: string, body: Record<string, unknown>) =>
+    request<MediaAsset>(`/api/v1/workspaces/${w}/media/assets/external`, { method: "POST", body }),
+  mediaUpdateAsset: (w: string, id: string, body: Record<string, unknown>) =>
+    request<MediaAsset>(`/api/v1/workspaces/${w}/media/assets/${id}`, { method: "PATCH", body }),
+  mediaVerify: (w: string) => request<MediaVerifyReport>(`/api/v1/workspaces/${w}/media/backup/verify`),
+  mediaHeritageCollections: (w: string) =>
+    request<HeritageCollection[]>(`/api/v1/workspaces/${w}/media/heritage/collections`),
+  mediaCreateCollection: (w: string, body: Record<string, unknown>) =>
+    request<HeritageCollection>(`/api/v1/workspaces/${w}/media/heritage/collections`, { method: "POST", body }),
+  mediaCollectionItems: (w: string, id: string) =>
+    request<HeritageItem[]>(`/api/v1/workspaces/${w}/media/heritage/collections/${id}/items`),
+  mediaAddHeritageItem: (w: string, id: string, body: Record<string, unknown>) =>
+    request<HeritageItem>(`/api/v1/workspaces/${w}/media/heritage/collections/${id}/items`, { method: "POST", body }),
+  mediaThumbnailObjectUrl: async (w: string, id: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/media/assets/${id}/thumbnail`, { headers });
+    if (!resp.ok) throw new ApiError(`thumbnail ${resp.status}`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
 

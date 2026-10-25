@@ -3,6 +3,7 @@ import {
   Building2,
   DatabaseBackup,
   GitBranch,
+  Image,
   LayoutDashboard,
   MessageCircleQuestion,
   RefreshCw,
@@ -128,5 +129,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/research",
     icon: ScrollText,
     blurb: "Reconstruct historical matches from newspapers, scorebooks and other sources.",
+  },
+  {
+    key: "media",
+    label: "Media Archive",
+    path: "/manage/media",
+    icon: Image,
+    blurb: "Preserve original scorecard images, photographs and documents, with heritage collections.",
   },
 ];
