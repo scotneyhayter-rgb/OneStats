@@ -2,6 +2,7 @@ import {
   BarChart3,
   Building2,
   DatabaseBackup,
+  Award,
   GitBranch,
   Image,
   LayoutDashboard,
@@ -136,5 +137,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/media",
     icon: Image,
     blurb: "Preserve original scorecard images, photographs and documents, with heritage collections.",
+  },
+  {
+    key: "records",
+    label: "Records & Achievements",
+    path: "/manage/records",
+    icon: Award,
+    blurb: "All-time record holders, seasonal leaders, milestones, Life Members and the Club Record Book.",
   },
 ];

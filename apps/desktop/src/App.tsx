@@ -18,6 +18,7 @@ import { ImportWizard } from "./features/import/ImportWizard";
 import { AutoSync } from "./features/autosync/AutoSync";
 import { ResearchCentre } from "./features/research/ResearchCentre";
 import { MediaArchive } from "./features/media/MediaArchive";
+import { Records } from "./features/records/Records";
 import { useAuth } from "./lib/auth";
 import { LayoutProvider } from "./lib/layout";
 import { WorkspaceProvider } from "./lib/workspace-context";
@@ -48,6 +49,7 @@ function AuthedApp() {
         <Route path="/manage/autosync" element={<AutoSync />} />
         <Route path="/manage/research" element={<ResearchCentre />} />
         <Route path="/manage/media" element={<MediaArchive />} />
+        <Route path="/manage/records" element={<Records />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/statistics" element={<Statistics />} />

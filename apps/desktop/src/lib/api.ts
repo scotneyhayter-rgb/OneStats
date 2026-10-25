@@ -91,6 +91,21 @@ export interface User {
   display_name: string | null;
   is_super_admin: boolean;
 }
+export interface RecordHolder {
+  player: string;
+  subject_id: string;
+  value: number;
+  tied: boolean;
+  known_minimum: boolean;
+}
+export interface RecordCategory {
+  title: string;
+  metric: string;
+  value: number | null;
+  holder: RecordHolder | null;
+  ties: { player: string; subject_id: string }[];
+  ranking: { rank: number; player: string; value: number }[];
+}
 export interface StatColumn {
   key: string;
   label: string;
@@ -1200,6 +1215,29 @@ export const api = {
     if (t) headers["Authorization"] = `Bearer ${t}`;
     const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/pdf${qs2 ? `?${qs2}` : ""}`, { headers });
     if (!resp.ok) throw new ApiError(`PDF export failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
+
+  // --- Phase 13: records & achievements ---
+  recordsAllTime: (w: string, q: Record<string, string | undefined> = {}) => {
+    const qs2 = Object.entries(q).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    return request<Record<string, RecordCategory>>(`/api/v1/workspaces/${w}/records${qs2 ? `?${qs2}` : ""}`);
+  },
+  recordsSeasonal: (w: string) =>
+    request<{ season_id: string; label: string; leading_run_scorer: { player: string; value: number } | null;
+              leading_wicket_taker: { player: string; value: number } | null }[]>(`/api/v1/workspaces/${w}/records/seasonal`),
+  recordsUpcoming: (w: string, window = 10) =>
+    request<{ person_id: string; metric: string; threshold: number; current: number; to_go: number }[]>(`/api/v1/workspaces/${w}/records/upcoming?window=${window}`),
+  recordsHonours: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honours`),
+  recordsBadges: (w: string, personId: string) =>
+    request<{ calculated: { label: string; source: string; state: string }[];
+              awarded: { label: string; source: string }[] }>(`/api/v1/workspaces/${w}/records/badges/${personId}`),
+  recordBookPdfUrl: async (w: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/records/book/pdf`, { headers });
+    if (!resp.ok) throw new ApiError(`Record book export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
 
