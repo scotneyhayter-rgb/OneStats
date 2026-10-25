@@ -106,6 +106,17 @@ their real export structure is verified against legitimate sample data — other
 "interface ready, awaiting verified sample" (see §10). PDF/scanned/OCR research belongs to the
 Research Centre phase; Phase 8 establishes the import interface only.
 
+## Technical improvement (not a defect): CricketStatz staging convergence
+
+CricketStatz currently stages via its own `parse_and_stage`/`_stage_scorecards`, while CSV and other
+generic sources stage via adapter → `stage_dataset`. **Both already share the same source-agnostic
+`promote_batch`/`_promote_scorecards`**, so CricketStatz imports function correctly (28 regression
+tests green) and the shared promotion pipeline is operational. Migrating CricketStatz's scorecard
+staging onto `stage_dataset` is a **maintainability improvement, not a functional gap** — deferred, to
+be revisited only if later work shows a genuine architectural, reliability or maintainability need.
+The risk to manage then is reproducing CricketStatz's exact composite scorecard source-refs (e.g.
+`700:20:1`) under the 28-test regression lock.
+
 ## 5. Duplicate detection (STEP 7)
 
 Confidence-based match identification over: existing source identifiers (exact), then date +
