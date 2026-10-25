@@ -64,7 +64,37 @@ same snapshot/cache as statistics — design in
 unverified data are excluded; a profile re-publishes through the normal approval flow after
 a stat change or an identity merge (deliverable 12 §12.3a).
 
+## 29.6 Individual report publishing (Phase 15 — MANDATORY, added 2026-10-26)
+
+Every **eligible** report in the Report Catalogue (deliverable 23 / the Phase 12 catalogue) must be able
+to receive a **permanent public URL** that carries its **saved report filters**, so it can be linked from,
+or embedded in, the existing RMCC website. Requirements:
+
+- **Permanent, stable URLs per published report.** A publish action mints a durable, unguessable public
+  URL (slug or token) bound to a report **id + saved filter set** (season/grade/competition/team/date/
+  split/qualification). The URL does not change when the data updates. The RMCC website's category
+  **External URL** field must accept these URLs directly.
+- **Read-only JSON/API feed per report.** The same published report is available as read-only JSON
+  (`.../r/<token>.json`) for embedding and third-party consumption — approved data only, never the admin DB.
+- **Embeddable HTML** (an `<iframe>`-able, branded, read-only rendering) for sites that embed rather than
+  link.
+- **Automatic updates.** When approved statistics change (recompute / re-approval / merge), the published
+  snapshot refreshes through the normal publication edge (§29.1/§29.4) — no manual re-export.
+- **Club branding** on every public report (logo, colours, club name) via the workspace branding.
+- **Public player profiles** publishable the same way (§29.4a), DOB/junior/unverified excluded.
+- **Publish / unpublish / revoke** controls, per report, permission-gated; a revoked token stops resolving.
+- **Privacy protections**: only publication-eligible, approved, non-private data; junior/DOB excluded;
+  unverified/known-minimum clearly marked.
+- **Secure hosting**: the public edge serves cached snapshots only; it **never** exposes the local
+  PostgreSQL database or the desktop backend (§33). No admin surface is reachable from a public URL.
+
+**Acceptance (Phase 15):** publish a report → the URL renders the correct, filtered, branded report; paste
+it into the RMCC site's External URL field → it works; the JSON feed returns the same figures; a stats
+change refreshes the public copy; unpublish/revoke makes the URL stop resolving; no admin/DB surface is
+reachable. These tests join the deferred acceptance register (deliverable 62).
+
 ## 29.5 Phasing
 
 Specified now; built in **Phase 15** (Website Publishing & Synchronisation), after the
-stats/reporting engine (Phase 12) and records (Phase 13).
+stats/reporting engine (Phase 12) and records (Phase 13). Individual report publishing (§29.6) is a
+mandatory part of Phase 15.

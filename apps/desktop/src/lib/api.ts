@@ -169,6 +169,22 @@ export interface ReportCatalogue {
   categories: { category: string; reports: CatalogueReport[] }[];
   count: number;
 }
+export interface AskAnswer {
+  question: string;
+  matched: boolean;
+  message?: string;
+  confidence?: string;
+  report_id?: string;
+  report_name?: string;
+  category?: string;
+  interpretation?: string;
+  scope?: string[];
+  columns?: StatColumn[];
+  rows?: Record<string, unknown>[];
+  qualifications?: string[];
+  answer_summary?: string | null;
+  suggestions?: { id: string; name: string; category: string }[];
+}
 export interface CaptaincyCompareRow {
   subject_id: string;
   player: string;
@@ -1328,6 +1344,8 @@ export const api = {
     if (!resp.ok) throw new ApiError(`CSV export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+  askOneStats: (w: string, question: string, top = 10) =>
+    request<AskAnswer>(`/api/v1/workspaces/${w}/ask`, { method: "POST", body: { question, top } }),
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),
   statsCatalogueIndexUrl: async (w: string): Promise<string> => {

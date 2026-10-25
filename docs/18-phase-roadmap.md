@@ -68,3 +68,35 @@ supports it as a config change).
 - **Phase 8:** real Cricket Statz sample files + PlayHQ API access for RMCC.
 - **Phase 9:** legal review of discovery sources.
 - **Phase 15:** confirmation of the RMCC Lovable site's integration capability.
+
+## Revised plan — manual acceptance deferred to after Phase 17 (2026-10-26)
+
+By user decision, the combined **manual** acceptance testing is **deferred until after Phase 17** (a
+scheduling decision — **no completed phase is accepted** until the user formally approves it). Development
+continues through the approved sequence:
+
+- **Phase 14 — Ask OneStats** (NL → deterministic query over the Report Catalogue; no LLM / no external
+  service in the first implementation per D16; numbers always from the one engine).
+- **Phase 15 — Website Publishing & Sync**, including the **mandatory individual report publishing** with
+  permanent public URLs + saved filters, JSON feeds, embeds, branding and publish/unpublish/revoke
+  (§29.6), working in the RMCC site's External URL field.
+- **Phase 16 — Mobile Records Portal** (responsive read-only portal over the publication edge).
+- **Phase 17 — Windows, Website & Mobile Release**, including the **mandatory production installer & USB
+  distribution** (three install paths, dependency-managed, upgrade-safe, repair/uninstall, signed where
+  feasible — §31.6).
+
+**Acceptance register:** all deferred Phase 11–13 manual tests (including the Report Catalogue tests
+RC1–RC15 and the integrity/spot-checks) are preserved and maintained in the **deferred acceptance register**
+([62-deferred-acceptance-register.md](62-deferred-acceptance-register.md)); Phase 14–17 acceptance tests are
+added there as each phase completes. After Phase 17, the outstanding manual tests are consolidated into one
+organised acceptance programme (end-to-end workflows, statistics/report accuracy, profiles/records/awards,
+research/provenance, media/OneVault, Ask OneStats, website publishing & public URLs, mobile portal, Windows
+install/upgrade/uninstall, backup/restore/DR, permissions/security/isolation, accessibility/UX, performance/
+stability), de-duplicated but with complete requirement coverage.
+
+**Per-phase reporting:** at each phase completion — what was implemented, automated test results,
+outstanding risks/limitations, updated docs, updated deferred acceptance register, and readiness to
+proceed. Development proceeds to the next approved phase unless a **consequential** decision (architecture,
+security, privacy, destructive-data, paid service) needs the user. Serious bugs, security, data-corruption
+or statistical-integrity issues are fixed immediately, never deferred. The application is **not** declared
+production-ready before successful acceptance testing.

@@ -81,7 +81,49 @@ backend process** is specified now (per the Phase 2 review):
   separates server, clients and publication edge to make this a configuration change, not
   a rewrite.
 
+## 31.6 Production installer & USB distribution (Phase 17 — MANDATORY, added 2026-10-26)
+
+A professional Windows installation package, **distributable on a USB flash drive**, is a mandatory Phase
+17 deliverable. Ordinary production installation must **never** require the user to install Python,
+PostgreSQL, Node.js or developer tools by hand — the installer manages all dependencies.
+
+**Three installation paths (one installer, a mode chosen at first run):**
+- **A — Main computer / server:** installs the app + a **new standalone database** and the backend service.
+- **B — Additional desktop client:** installs the app and connects to an **existing shared server/database**.
+- **C — Standalone single computer:** app + local database on one machine (the common RMCC case).
+
+**Requirements:**
+- A standard Windows **installer executable** (e.g. MSI/NSIS/WiX), with app branding and Start-menu +
+  desktop **shortcuts**.
+- **Offline installation** where technically feasible (bundled prerequisites), suitable for USB.
+- **Bundled or clearly-managed prerequisites** (the packaged FastAPI backend per §31.3a, and the database
+  engine) — no manual developer-tool installs.
+- **Guided first-run configuration**: choose path A/B/C; set up the admin; configure a **secure server
+  connection** (TLS on LAN, §31.3) for clients.
+- **Clear distinction between a new standalone database and an existing shared database**, with no
+  ambiguity about which is being used.
+- **Upgrade installation without loss of user data** — migrations run forward; a pre-upgrade **backup** is
+  taken automatically (§32).
+- **Repair** and **uninstall** options (uninstall must not silently delete the user's data without explicit
+  confirmation).
+- **Appropriate permissions and secure service configuration** (least-privilege service account; no
+  unnecessary open ports).
+- **Signed installers where feasible**, with clear handling of the code-signing **certificate requirements
+  and costs** (a cost/paid decision to raise with the user before purchase).
+- **Version information and release notes**; **installer checksums** published for verification.
+- A **user-friendly installation guide** (non-technical, RMCC-volunteer-oriented).
+
+**The installer must never overwrite an existing database without an explicit, verified and recoverable
+migration process** (confirm target, back up first, migrate forward, allow rollback).
+
+**Acceptance (Phase 17):** tested installation **from removable USB storage**; tested **clean install** on
+a supported Windows machine; tested **additional-client** install against an existing server; tested
+**upgrade** (data preserved) and **repair/uninstall**; checksums verified; release notes present. These
+tests join the deferred acceptance register (deliverable 62). Several of these require real Windows
+hardware/USB media and are **manual** acceptance items.
+
 ## 31.5 Phasing
 
 Foundation built in **Phase 2** (Windows Desktop & Server Foundation); server/client
-split and remote access hardened through Phase 17 (Release).
+split and remote access hardened through Phase 17 (Release). The production installer & USB distribution
+(§31.6) is a mandatory Phase 17 deliverable.

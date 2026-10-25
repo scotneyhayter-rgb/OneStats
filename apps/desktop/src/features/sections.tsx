@@ -29,20 +29,6 @@ export function Statistics() {
   );
 }
 
-export function Ask() {
-  return (
-    <Placeholder
-      title="Ask OneStats"
-      subtitle="Natural-language statistical queries"
-      planned={[
-        "Deterministic natural-language query mapping",
-        "Answers from verified records only",
-        "Supporting records and qualifications",
-      ]}
-    />
-  );
-}
-
 export function Settings() {
   const { current, reload } = useWorkspace();
   const { user } = useAuth();
