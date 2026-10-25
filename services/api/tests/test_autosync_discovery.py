@@ -100,7 +100,7 @@ def test_classification_existing_and_additional_evidence(conn):
     # different source, same date + teams -> POSSIBLE duplicate (queued for review, never auto-merged)
     other = discovery.discover_new(conn, wid, ACTOR, connector=FixtureConnector("herald", [ROWS[0]]), mode=REVIEW_REQUIRED)
     assert other["counts"].get("possible_duplicate") == 1
-    item = [i for i in discovery.list_items(conn, wid) if i["source_system"] == "herald"][0]
+    item = next(i for i in discovery.list_items(conn, wid) if i["source_system"] == "herald")
     assert item["classification"] == "possible_duplicate" and item["match_id"] is not None   # links the candidate
 
 
@@ -115,13 +115,29 @@ def test_discover_updated_queues_change_without_overwriting_approved(conn):
     changed_row = {**ROWS[0], "Result": "Tie"}
     out = discovery.discover_updated(conn, wid, ACTOR, connector=_conn_feed(ROWS, updated=[changed_row]))
     assert out["changed"] == 1
-    item = [i for i in discovery.list_items(conn, wid) if i["kind"] == "updated_scorecard"][0]
+    item = next(i for i in discovery.list_items(conn, wid) if i["kind"] == "updated_scorecard")
     pc = item["proposed_changes"] or {}
     # only the genuine change is flagged (the result), not every field
     assert item["classification"] == "conflicting" and "result_label" in pc
     assert pc["result_label"]["was"] == "home_win" and pc["result_label"]["now"] == "tie"
     # the approved scorecard is UNCHANGED — the change only sits in the review queue
     assert matches.get_match(conn, mid)["result_type"] == before_result
+
+
+def test_rediscovery_does_not_reopen_accepted_or_duplicate(conn):
+    wid = _ws(conn, "DISC REDISCOVER")
+    discovery.discover_new(conn, wid, ACTOR, connector=_conn_feed(), mode=REVIEW_REQUIRED)
+    item = discovery.list_items(conn, wid)[0]
+    discovery.accept_item(conn, wid, ACTOR, item["id"])     # one accepted -> draft match exists
+    matches_before = conn.execute(text("SELECT count(*) FROM match WHERE source_system='news_feed'")).scalar_one()
+
+    # re-run discovery: the accepted match is now 'existing' (not re-queued), no duplicate match
+    out = discovery.discover_new(conn, wid, ACTOR, connector=_conn_feed(), mode=REVIEW_REQUIRED)
+    assert out["counts"].get("existing") == 1
+    assert discovery.get_item(conn, item["id"])["status"] == "accepted"   # NOT reopened
+    assert conn.execute(text("SELECT count(*) FROM match WHERE source_system='news_feed'")).scalar_one() == matches_before
+    # the other (un-accepted) item is still pending, not duplicated
+    assert len([i for i in discovery.list_items(conn, wid) if i["status"] == "pending_review"]) == 1
 
 
 def test_bulk_review_accepts_many(conn):

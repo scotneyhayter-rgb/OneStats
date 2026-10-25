@@ -170,17 +170,21 @@ def discover_new(conn: Connection, workspace_id: UUID, actor: str, *, connector:
     queued = imported = 0
     for m in ds.matches:
         cls = classify_match(conn, workspace_id, ds.provenance.source_system, m, names)
-        counts[cls["classification"]] = counts.get(cls["classification"], 0) + 1
-        auto = (mode == AUTHORISED_AUTOMATIC and can_approve and cls["classification"] == "new")
+        name = cls["classification"]
+        counts[name] = counts.get(name, 0) + 1
+        if name == "existing":
+            # already imported from THIS source — nothing to queue; never re-opens an accepted item
+            continue
+        auto = (mode == AUTHORISED_AUTOMATIC and can_approve and name == "new")
         _upsert_item(conn, workspace_id, source_id=source_id, source_system=ds.provenance.source_system,
-                     source_ref=m.source_ref, kind="new_match", classification=cls["classification"],
+                     source_ref=m.source_ref, kind="new_match", classification=name,
                      confidence=cls["confidence"], match_id=cls["match_id"],
                      candidate=_serialise_candidate(m, ds, cls),
                      status="auto_imported" if auto else "pending_review")
         if auto:
             _import_match(conn, workspace_id, actor, m, ds, approve=True)
             imported += 1
-        elif cls["classification"] in ("new", "possible_duplicate", "additional_evidence", "insufficient"):
+        else:
             queued += 1
 
     if source_id is not None:
