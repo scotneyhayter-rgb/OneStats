@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
 
+    # --- AutoSync connectors (Phase 9) — secrets from env/.env, never committed ---
+    # PlayHQ public API key (a UUID "Client ID") and tenant short-name (e.g. 'ca' for cricket).
+    # When the key is absent the PlayHQ connector stays interface-only (cannot fetch).
+    playhq_api_key: str | None = Field(default=None)
+    playhq_tenant: str = Field(default="ca")
+
     # --- Auth / sessions ---
     session_ttl_hours: int = Field(default=12)
     # Local file where the one-time super-admin setup token is written on first run
