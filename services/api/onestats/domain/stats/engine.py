@@ -74,6 +74,7 @@ def _num(metric: str, as_: str, agg: str = "sum") -> str:
 # ---- batting ------------------------------------------------------------------------------------
 _BAT_SELECT = (
     "count(DISTINCT c.match_id) AS matches, " + _num("innings", "innings") + ", " + _num("runs", "runs")
+    + ", " + _num("runs_known", "runs_known")
     + ", " + _num("balls", "balls") + ", " + _num("balls_known", "balls_known") + ", "
     + _num("fours", "fours") + ", " + _num("sixes", "sixes") + ", " + _num("dismissed", "dismissed")
     + ", " + _num("not_out", "not_out") + ", " + _num("fifties", "fifties") + ", "
@@ -97,6 +98,8 @@ def _bat_row(r: dict[str, Any]) -> dict[str, Any]:
         "strike_rate": round(runs * 100 / balls, 2) if balls else None,
         # strike rate is over recorded balls only; flag when some innings had unknown balls faced
         "balls_incomplete": balls_known < innings,
+        # runs are a known-minimum when some innings had unknown runs (never treated as zero)
+        "runs_known_minimum": int(r["runs_known"]) < innings,
     }
     return d
 
@@ -115,7 +118,7 @@ def batting_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str 
 _BOWL_SELECT = (
     "count(DISTINCT c.match_id) AS matches, " + _num("innings", "innings") + ", " + _num("balls", "balls")
     + ", " + _num("balls_known", "balls_known") + ", " + _num("maidens", "maidens") + ", "
-    + _num("runs", "runs") + ", " + _num("wickets", "wickets") + ", "
+    + _num("runs", "runs") + ", " + _num("wickets", "wickets") + ", " + _num("wickets_known", "wickets_known") + ", "
     + _num("five_wkt_innings", "five_wkt_innings") + ", " + _num("ten_wkt_match", "ten_wkt_match")
     + ", coalesce(max((c.metrics->>'match_wickets')::int),0) AS best_match_wickets"
     + ", count(*) AS contributions"
@@ -134,6 +137,7 @@ def _bowl_row(r: dict[str, Any], over_length: int = 6) -> dict[str, Any]:
         "economy": round(runs / overs, 2) if overs else None,
         "strike_rate": round(balls / wickets, 2) if wickets else None,
         "balls_incomplete": int(r["balls_known"]) < int(r["innings"]),
+        "wickets_known_minimum": int(r["wickets_known"]) < int(r["innings"]),
     }
 
 
@@ -245,6 +249,20 @@ def person_batting(conn: Connection, filters: dict[str, Any], person_id: UUID) -
 
 def person_bowling(conn: Connection, filters: dict[str, Any], person_id: UUID, *, over_length: int = 6) -> dict[str, Any]:
     return _person_agg(conn, "player_bowling", filters, person_id, _BOWL_SELECT, lambda r: _bowl_row(r, over_length))
+
+
+def person_participation(conn: Connection, filters: dict[str, Any], person_id: UUID) -> dict[str, Any]:
+    sel = "count(DISTINCT c.match_id) AS matches, " + _num("win", "wins") + ", " + _num("loss", "losses")
+    return _person_agg(conn, "player_appearance", filters, person_id, sel,
+                       lambda r: {"matches": int(r["matches"]), "wins": int(r["wins"]), "losses": int(r["losses"])})
+
+
+def person_captaincy(conn: Connection, filters: dict[str, Any], person_id: UUID) -> dict[str, Any]:
+    return _person_agg(conn, "player_captaincy", filters, person_id, _CAPT_SELECT,
+                       lambda r: {"captained": int(r["captained"]), "wins": int(r["wins"]),
+                                  "losses": int(r["losses"]), "draws": int(r["draws"]), "ties": int(r["ties"]),
+                                  "no_results": int(r["no_results"]), "gf_captained": int(r["gf_captained"]),
+                                  "gf_wins": int(r["gf_wins"])})
 
 
 def person_fielding(conn: Connection, filters: dict[str, Any], person_id: UUID) -> dict[str, Any]:

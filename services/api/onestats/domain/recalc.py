@@ -107,13 +107,15 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
     cls = match.get("classification")
     agg: dict[Any, dict[str, Any]] = {}
     for r in rows:
-        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "runs": 0, "balls": 0,
-                                      "balls_known": 0, "fours": 0, "sixes": 0, "dismissed": 0,
+        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "runs": 0, "runs_known": 0,
+                                      "balls": 0, "balls_known": 0, "fours": 0, "sixes": 0, "dismissed": 0,
                                       "not_out": 0, "hs": None, "fifties": 0, "hundreds": 0, "ducks": 0})
         runs = r["runs"] or 0
         dismissed = r["dt"] is not None and r["dt"] not in NON_WICKET_STATUSES
         a["innings"] += 1
         a["runs"] += runs
+        if r["runs"] is not None:
+            a["runs_known"] += 1
         a["fours"] += r["fours"]
         a["sixes"] += r["sixes"]
         if r["balls"] is not None:
@@ -136,9 +138,9 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
         if a["innings"] == 0:
             continue
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
-                    "metrics": {"innings": a["innings"], "runs": a["runs"], "balls": a["balls"],
-                                "balls_known": a["balls_known"], "fours": a["fours"], "sixes": a["sixes"],
-                                "dismissed": a["dismissed"], "not_out": a["not_out"], "hs": a["hs"],
+                    "metrics": {"innings": a["innings"], "runs": a["runs"], "runs_known": a["runs_known"],
+                                "balls": a["balls"], "balls_known": a["balls_known"], "fours": a["fours"],
+                                "sixes": a["sixes"], "dismissed": a["dismissed"], "not_out": a["not_out"], "hs": a["hs"],
                                 "fifties": a["fifties"], "hundreds": a["hundreds"], "ducks": a["ducks"],
                                 "match_runs": a["runs"],
                                 "is_home": str(a["team_id"]) == str(home) if home else None,
@@ -154,7 +156,8 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
         text(
             "SELECT be.person_id AS pid, coalesce(be.legal_balls,0) AS balls, be.legal_balls AS balls_raw, "
             " coalesce(be.maidens,0) AS maidens, coalesce(be.runs_conceded,0) AS runs, "
-            " be.runs_conceded AS runs_raw, coalesce(be.wickets,0) AS wickets, i.bowling_team_id AS team_id "
+            " be.runs_conceded AS runs_raw, coalesce(be.wickets,0) AS wickets, be.wickets AS wickets_raw, "
+            " i.bowling_team_id AS team_id "
             "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id "
             "WHERE i.match_id = :m AND be.person_id IS NOT NULL"
         ),
@@ -166,8 +169,8 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
     agg: dict[Any, dict[str, Any]] = {}
     for r in rows:
         a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "balls_known": 0,
-                                      "maidens": 0, "runs": 0, "wickets": 0, "five_wkt_innings": 0,
-                                      "bbi_w": -1, "bbi_r": None})
+                                      "maidens": 0, "runs": 0, "wickets": 0, "wickets_known": 0,
+                                      "five_wkt_innings": 0, "bbi_w": -1, "bbi_r": None})
         a["innings"] += 1
         a["balls"] += r["balls"]
         if r["balls_raw"] is not None:
@@ -175,6 +178,8 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
         a["maidens"] += r["maidens"]
         a["runs"] += r["runs"]
         a["wickets"] += r["wickets"]
+        if r["wickets_raw"] is not None:
+            a["wickets_known"] += 1
         if r["wickets"] >= 5:
             a["five_wkt_innings"] += 1
         # best bowling in an innings: most wickets, then fewest runs
@@ -186,7 +191,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"innings": a["innings"], "balls": a["balls"], "balls_known": a["balls_known"],
                                 "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
-                                "five_wkt_innings": a["five_wkt_innings"],
+                                "wickets_known": a["wickets_known"], "five_wkt_innings": a["five_wkt_innings"],
                                 "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],
                                 "ten_wkt_match": 1 if a["wickets"] >= 10 else 0, "match_wickets": a["wickets"],
                                 "is_home": str(a["team_id"]) == str(home) if home else None,

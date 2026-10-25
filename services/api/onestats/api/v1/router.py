@@ -30,6 +30,7 @@ from onestats.api.v1 import (
     playing_conditions,
     premierships,
     profiles,
+    records,
     relationships,
     research,
     setup,
@@ -71,4 +72,5 @@ api_v1.include_router(bowling.router)
 api_v1.include_router(partnerships.router)
 api_v1.include_router(participation.router)
 api_v1.include_router(stats.router)
+api_v1.include_router(records.router)
 api_v1.include_router(premierships.router)
