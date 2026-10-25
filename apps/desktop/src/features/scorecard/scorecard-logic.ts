@@ -182,6 +182,86 @@ export function inningsAdvisories(input: {
   return out;
 }
 
+/**
+ * Immediate, per-row Fall-of-Wickets advisories, driving a subtle inline highlight as well as the
+ * advisory list — no server round-trip. Rows arrive ordered by wicket number. Advisory only: an
+ * incomplete or odd historical card still saves. Nothing is inferred and no value is changed.
+ */
+export interface FowRowLike {
+  id: string;
+  wicket_number: number | null;
+  team_score: number | null;
+}
+export interface FowIssues {
+  /** rows whose team score is lower than an earlier wicket's (Law 18 — the total only rises). */
+  decreasingScoreIds: Set<string>;
+  /** rows that repeat a wicket number already used in this innings. */
+  duplicateWicketIds: Set<string>;
+  messages: AdvisoryWarning[];
+}
+export function fowIssues(rows: FowRowLike[]): FowIssues {
+  const decreasingScoreIds = new Set<string>();
+  const duplicateWicketIds = new Set<string>();
+  let prevScore: number | null = null;
+  for (const r of rows) {
+    if (r.team_score === null) continue;
+    if (prevScore !== null && r.team_score < prevScore) decreasingScoreIds.add(r.id);
+    prevScore = r.team_score;
+  }
+  const firstForWicket = new Map<number, string>();
+  for (const r of rows) {
+    if (r.wicket_number === null) continue;
+    const first = firstForWicket.get(r.wicket_number);
+    if (first !== undefined) { duplicateWicketIds.add(r.id); duplicateWicketIds.add(first); }
+    else firstForWicket.set(r.wicket_number, r.id);
+  }
+  const messages: AdvisoryWarning[] = [];
+  if (decreasingScoreIds.size > 0)
+    messages.push({ code: "fow_scores_not_increasing", message: "A fall-of-wicket score is lower than an earlier wicket — the team total only rises." });
+  if (duplicateWicketIds.size > 0)
+    messages.push({ code: "fow_duplicate_wicket", message: "Two falls of wicket share the same wicket number." });
+  return { decreasingScoreIds, duplicateWicketIds, messages };
+}
+
+/**
+ * Immediate, per-row batting-order advisories (inline highlight + list). The card is shown in
+ * batting-position order, so a batter is "out of order" when their position repeats or is not
+ * greater than a preceding batter's. Advisory only; never blocks saving and changes nothing.
+ */
+export interface BattingOrderRowLike {
+  id: string;
+  batting_position: number | null;
+  person_id: string | null;
+}
+export interface BattingOrderIssues {
+  outOfOrderIds: Set<string>;
+  duplicatePersonIds: Set<string>;
+  messages: AdvisoryWarning[];
+}
+export function battingOrderIssues(rows: BattingOrderRowLike[]): BattingOrderIssues {
+  const outOfOrderIds = new Set<string>();
+  let prev: number | null = null;
+  for (const r of rows) {
+    if (r.batting_position === null) continue;
+    if (prev !== null && r.batting_position <= prev) outOfOrderIds.add(r.id);
+    prev = r.batting_position;
+  }
+  const duplicatePersonIds = new Set<string>();
+  const firstForPerson = new Map<string, string>();
+  for (const r of rows) {
+    if (r.person_id === null) continue;
+    const first = firstForPerson.get(r.person_id);
+    if (first !== undefined) { duplicatePersonIds.add(r.id); duplicatePersonIds.add(first); }
+    else firstForPerson.set(r.person_id, r.id);
+  }
+  const messages: AdvisoryWarning[] = [];
+  if (outOfOrderIds.size > 0)
+    messages.push({ code: "batting_order_out_of_sequence", message: "A batter's position is out of order (positions should increase down the card)." });
+  if (duplicatePersonIds.size > 0)
+    messages.push({ code: "duplicate_batter", message: "A player appears more than once in this batting innings." });
+  return { outOfOrderIds, duplicatePersonIds, messages };
+}
+
 // ---- keyboard navigation (spreadsheet-style grids) -------------------------------------------
 
 export interface GridPos {

@@ -74,6 +74,32 @@ describe("player dropdown selection", () => {
     });
   });
 
+  it("offers a priority player (this innings' batter) even when the club-scoped search excludes them", async () => {
+    // David batted as a fill-in; the club-scoped search returns nobody, but he must stay selectable
+    listPeople.mockResolvedValue([]);
+    identityCandidates.mockResolvedValue([]);
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <PlayerSelect
+        workspaceId="w"
+        value={null}
+        nameOf={(id) => (id === "pd" ? "David Padley" : null)}
+        onChange={onChange}
+        onPersonLoaded={() => {}}
+        organisationId="club-pomonal"
+        scopeLabel="Pomonal"
+        priorityPeople={[{ id: "pd", display_name: "David Padley" }]}
+        aria-label="Batter out 1"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Batter out 1" }));
+    // shown despite the club scope and empty search results, and selectable
+    const option = await screen.findByText("David Padley");
+    await user.click(option);
+    expect(onChange).toHaveBeenCalledWith("pd");
+  });
+
   it("can be cleared back to unknown", async () => {
     listPeople.mockResolvedValue([frank]);
     identityCandidates.mockResolvedValue([]);

@@ -29,8 +29,8 @@ import { BattingGrid, BowlingGrid, FowGrid, PartnershipsGrid } from "./grids";
 import { PlayerSelect } from "./PlayerSelect";
 import { SectionCard, SubPanel, SubtleBar, TeamPanel } from "./ui";
 import {
-  deserializeDraft, draftKey, formatScore, inningsAdvisories, INNINGS_STATUSES,
-  scoreStatusLabel, serializeDraft, showNum,
+  battingOrderIssues, deserializeDraft, draftKey, formatScore, fowIssues, inningsAdvisories,
+  INNINGS_STATUSES, scoreStatusLabel, serializeDraft, showNum,
 } from "./scorecard-logic";
 import { useScoreFormat } from "../../lib/score-format";
 
@@ -678,18 +678,27 @@ function InningsEditor({
 
   const recompute = useCallback(async () => {
     try {
-      const [t, batting, bowling] = await Promise.all([
+      const [t, batting, bowling, fows] = await Promise.all([
         api.getInningsTotals(w, matchId, innings.id),
         api.listBatting(w, innings.id),
         api.listBowling(w, innings.id),
+        api.listFow(w, innings.id),
       ]);
       setTotals(t);
-      setClientWarnings(inningsAdvisories({
-        batting: batting.map((b) => ({ person_id: b.person_id, batting_position: b.batting_position, runs: b.runs, dismissal_type: b.dismissal_type, bowler_person_id: b.bowler_person_id })),
-        bowling: bowling.map((b) => ({ person_id: b.person_id, wickets: b.wickets, runs_conceded: b.runs_conceded })),
-        extras: { byes: innings.byes, legbyes: innings.legbyes, wides: innings.wides, noballs: innings.noballs, penalty: innings.penalty },
-        officialTotal: innings.official_total, officialWickets: innings.official_wickets,
-      }));
+      // merge the batting/bowling/extras advisories with the immediate FOW and batting-order ones,
+      // deduped by code, so the panel reflects these without a manual server re-check
+      const merged = [
+        ...inningsAdvisories({
+          batting: batting.map((b) => ({ person_id: b.person_id, batting_position: b.batting_position, runs: b.runs, dismissal_type: b.dismissal_type, bowler_person_id: b.bowler_person_id })),
+          bowling: bowling.map((b) => ({ person_id: b.person_id, wickets: b.wickets, runs_conceded: b.runs_conceded })),
+          extras: { byes: innings.byes, legbyes: innings.legbyes, wides: innings.wides, noballs: innings.noballs, penalty: innings.penalty },
+          officialTotal: innings.official_total, officialWickets: innings.official_wickets,
+        }),
+        ...fowIssues(fows.map((f) => ({ id: f.id, wicket_number: f.wicket_number, team_score: f.team_score }))).messages,
+        ...battingOrderIssues(batting.map((b) => ({ id: b.id, batting_position: b.batting_position, person_id: b.person_id }))).messages,
+      ];
+      const byCode = new Map(merged.map((m) => [m.code, m]));
+      setClientWarnings([...byCode.values()]);
       onScoreChanged?.();  // let the innings tabs refresh their scores
     } catch {
       /* totals are advisory; ignore transient errors */

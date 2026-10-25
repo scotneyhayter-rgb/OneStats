@@ -14,13 +14,41 @@ import { Select } from "../../components/ui/select";
 import { api, ApiError, type BattingEntry, type BowlingEntry, type FallOfWicket, type Partnership, type Person } from "../../lib/api";
 import { PlayerSelect } from "./PlayerSelect";
 import {
+  battingOrderIssues,
   DISMISSAL_TYPES,
+  fowIssues,
   nextCell,
   parseIntOrNull,
   PARTNERSHIP_END_REASONS,
 } from "./scorecard-logic";
 
 type Saver = (msg: string | null) => void;
+
+/** This innings' batters, as always-available options for the FOW/partnership batter selectors —
+ *  a fall of wicket or partnership can only involve a batter who batted, even a fill-in from
+ *  another club who would otherwise be hidden by the club-scoped default. Names come from the
+ *  editor's preloaded cache; re-fetched when the batting card changes. */
+function useInningsBatters(
+  workspaceId: string, inningsId: string, nameOf: (id: string | null) => string | null, refreshKey?: number,
+): { id: string; display_name: string }[] {
+  const [ids, setIds] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void api.listBatting(workspaceId, inningsId)
+      .then((rows) => { if (alive) setIds(rows.map((r) => r.person_id).filter((x): x is string => !!x)); })
+      .catch(() => { if (alive) setIds([]); });
+    return () => { alive = false; };
+  }, [workspaceId, inningsId, refreshKey]);
+  // dedupe, keep batting order; resolve names from the shared cache (fallback keeps them selectable)
+  const seen = new Set<string>();
+  const out: { id: string; display_name: string }[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, display_name: nameOf(id) ?? "Unknown player" });
+  }
+  return out;
+}
 
 interface GridCtx {
   workspaceId: string;
@@ -71,6 +99,8 @@ function NumCell({
   ariaLabel,
   disabled,
   width = "w-16",
+  invalid = false,
+  invalidTitle,
 }: {
   value: number | null;
   onCommit: (v: number | null) => void;
@@ -79,6 +109,9 @@ function NumCell({
   ariaLabel: string;
   disabled?: boolean;
   width?: string;
+  /** Subtle advisory highlight (e.g. a FOW score that decreased); never blocks editing. */
+  invalid?: boolean;
+  invalidTitle?: string;
 }) {
   const [text, setText] = useState(value === null ? "" : String(value));
   useEffect(() => setText(value === null ? "" : String(value)), [value]);
@@ -86,6 +119,8 @@ function NumCell({
     <input
       ref={inputRef}
       aria-label={ariaLabel}
+      aria-invalid={invalid || undefined}
+      title={invalid ? invalidTitle : undefined}
       inputMode="numeric"
       disabled={disabled}
       value={text}
@@ -97,7 +132,9 @@ function NumCell({
         setText(parsed === null ? "" : String(parsed));
         if (parsed !== value) onCommit(parsed);
       }}
-      className={`${width} h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50`}
+      className={`${width} h-8 rounded-[var(--radius-app)] border px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50 ${
+        invalid ? "border-danger/60 bg-danger/5 text-danger" : "border-border bg-card"
+      }`}
     />
   );
 }
@@ -125,6 +162,8 @@ export function BattingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
   const { rows, refresh } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty, ctx.refreshKey);
   const nav = useFocusGrid(4, rows.length); // runs, balls, 4s, 6s
+  // immediate, non-blocking advisories: a batter out of order / appearing twice (subtle highlight)
+  const bIssues = battingOrderIssues(rows.map((r) => ({ id: r.id, batting_position: r.batting_position, person_id: r.person_id })));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BattingEntry | null>(null);
 
@@ -224,11 +263,16 @@ export function BattingGrid(ctx: GridCtx) {
                   </span>
                 </td>
               )}
-              <td className="px-1 py-1 text-muted-foreground tabular-nums">{r.batting_position ?? "—"}</td>
+              <td className={`px-1 py-1 tabular-nums ${bIssues.outOfOrderIds.has(r.id) ? "font-semibold text-danger" : "text-muted-foreground"}`}
+                title={bIssues.outOfOrderIds.has(r.id) ? "Batting position is out of order (positions should increase down the card)." : undefined}>
+                {r.batting_position ?? "—"}</td>
               <td className="min-w-[180px] px-1 py-1">
-                <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Batter ${i + 1}`} organisationId={ctx.battingOrgId} scopeLabel={ctx.battingTeamName}
-                  onChange={(pid) => void commit(r.id, { person_id: pid })} />
+                <div className={bIssues.duplicatePersonIds.has(r.id) ? "rounded-[var(--radius-app)] ring-1 ring-danger/60" : undefined}
+                  title={bIssues.duplicatePersonIds.has(r.id) ? "This player already appears in this batting innings." : undefined}>
+                  <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
+                    disabled={!canManage} aria-label={`Batter ${i + 1}`} organisationId={ctx.battingOrgId} scopeLabel={ctx.battingTeamName}
+                    onChange={(pid) => void commit(r.id, { person_id: pid })} />
+                </div>
               </td>
               <td className="px-1 py-1">
                 <Select aria-label={`How out ${i + 1}`} disabled={!canManage} value={r.dismissal_type ?? ""}
@@ -284,6 +328,11 @@ export function BattingGrid(ctx: GridCtx) {
           )}
         </tbody>
       </table>
+      {bIssues.messages.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[11px] text-danger">
+          {bIssues.messages.map((m) => <li key={m.code}>• {m.message}</li>)}
+        </ul>
+      )}
       {canManage && (
         <Button variant="outline" size="sm" className="mt-2" onClick={() => void addRow()}>
           <Plus className="h-4 w-4" aria-hidden /> Add batter
@@ -397,6 +446,9 @@ export function BowlingGrid(ctx: GridCtx) {
 export function FowGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
   const { rows, refresh } = useRows<FallOfWicket>(() => api.listFow(workspaceId, inningsId), onDirty, ctx.refreshKey);
+  const batters = useInningsBatters(workspaceId, inningsId, nameOf, ctx.refreshKey);
+  // immediate, non-blocking advisories driving the subtle inline highlight (never blocks saving)
+  const issues = fowIssues(rows.map((r) => ({ id: r.id, wicket_number: r.wicket_number, team_score: r.team_score })));
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -431,11 +483,16 @@ export function FowGrid(ctx: GridCtx) {
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.id} className="border-t border-border">
-              <td className="px-1 py-1"><NumCell value={r.wicket_number} ariaLabel={`Wicket number ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wicket_number: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.team_score} ariaLabel={`Team score ${i + 1}`} disabled={!canManage} onCommit={(v) => void commit(r.id, { team_score: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.wicket_number} ariaLabel={`Wicket number ${i + 1}`} disabled={!canManage} width="w-12"
+                invalid={issues.duplicateWicketIds.has(r.id)} invalidTitle="This wicket number is used by another fall of wicket."
+                onCommit={(v) => void commit(r.id, { wicket_number: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.team_score} ariaLabel={`Team score ${i + 1}`} disabled={!canManage}
+                invalid={issues.decreasingScoreIds.has(r.id)} invalidTitle="Lower than an earlier wicket — the team total only rises."
+                onCommit={(v) => void commit(r.id, { team_score: v })} /></td>
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.dismissed_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
                   disabled={!canManage} aria-label={`Batter out ${i + 1}`} organisationId={ctx.battingOrgId} scopeLabel={ctx.battingTeamName}
+                  priorityPeople={batters}
                   onChange={(pid) => void commit(r.id, { dismissed_person_id: pid })} />
               </td>
               {canManage && (
@@ -453,6 +510,11 @@ export function FowGrid(ctx: GridCtx) {
           )}
         </tbody>
       </table>
+      {issues.messages.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[11px] text-danger">
+          {issues.messages.map((m) => <li key={m.code}>• {m.message}</li>)}
+        </ul>
+      )}
       {canManage && (
         <Button variant="outline" size="sm" className="mt-2" onClick={() => void addRow()}>
           <Plus className="h-4 w-4" aria-hidden /> Add fall of wicket
@@ -467,6 +529,7 @@ export function FowGrid(ctx: GridCtx) {
 export function PartnershipsGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
   const { rows, refresh } = useRows<Partnership>(() => api.listPartnerships(workspaceId, inningsId), onDirty, ctx.refreshKey);
+  const batters = useInningsBatters(workspaceId, inningsId, nameOf, ctx.refreshKey);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -506,12 +569,12 @@ export function PartnershipsGrid(ctx: GridCtx) {
               <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Partnership runs ${i + 1}`} disabled={!canManage} onCommit={(v) => void commit(r.id, { runs: v })} /></td>
               <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.player1_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Partnership ${i + 1} batter 1`}
+                  disabled={!canManage} aria-label={`Partnership ${i + 1} batter 1`} priorityPeople={batters}
                   onChange={(pid) => void commit(r.id, { player1_person_id: pid })} />
               </td>
               <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.player2_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Partnership ${i + 1} batter 2`}
+                  disabled={!canManage} aria-label={`Partnership ${i + 1} batter 2`} priorityPeople={batters}
                   onChange={(pid) => void commit(r.id, { player2_person_id: pid })} />
               </td>
               <td className="px-1 py-1">

@@ -11,6 +11,7 @@ import type { Partnership } from "../../lib/api";
 const H = vi.hoisted(() => ({
   listPartnerships: vi.fn(), createPartnership: vi.fn(), updatePartnership: vi.fn(),
   deletePartnership: vi.fn(), derivePartnerships: vi.fn(), listPeople: vi.fn(), identityCandidates: vi.fn(),
+  listBatting: vi.fn(() => Promise.resolve([])),  // priority-batter lookup for the batter selectors
 }));
 vi.mock("../../lib/api", () => ({ ApiError: class ApiError extends Error {}, api: { ...H } }));
 
@@ -30,7 +31,10 @@ function renderGrid() {
   );
 }
 
-beforeEach(() => Object.values(H).forEach((fn) => fn.mockReset()));
+beforeEach(() => {
+  Object.values(H).forEach((fn) => fn.mockReset());
+  H.listBatting.mockResolvedValue([]);  // default: no priority batters unless a test sets them
+});
 afterEach(cleanup);
 
 describe("partnerships section", () => {

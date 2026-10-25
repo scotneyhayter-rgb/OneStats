@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  battingOrderIssues,
   battingRunsTotal,
   creditedBowlerWickets,
   derivedInningsTotal,
   deserializeDraft,
   draftKey,
   extrasTotal,
+  fowIssues,
   inningsAdvisories,
   nextCell,
   parseIntOrNull,
@@ -107,6 +109,63 @@ describe("advisory warnings (non-blocking)", () => {
       officialWickets: null,
     });
     expect(w).toEqual([]);
+  });
+});
+
+describe("fall-of-wicket advisories (inline, non-blocking)", () => {
+  it("flags only the fall whose score fell (10, 9, 25 → wicket 2)", () => {
+    const r = fowIssues([
+      { id: "w1", wicket_number: 1, team_score: 10 },
+      { id: "w2", wicket_number: 2, team_score: 9 },
+      { id: "w3", wicket_number: 3, team_score: 25 },
+    ]);
+    expect([...r.decreasingScoreIds]).toEqual(["w2"]);
+    expect(r.messages.map((m) => m.code)).toContain("fow_scores_not_increasing");
+  });
+  it("flags duplicate wicket numbers (both rows)", () => {
+    const r = fowIssues([
+      { id: "a", wicket_number: 1, team_score: 10 },
+      { id: "b", wicket_number: 1, team_score: 20 },
+    ]);
+    expect(r.duplicateWicketIds).toEqual(new Set(["a", "b"]));
+    expect(r.messages.map((m) => m.code)).toContain("fow_duplicate_wicket");
+  });
+  it("is clean for a rising, unique sequence and tolerates unknown scores", () => {
+    const r = fowIssues([
+      { id: "a", wicket_number: 1, team_score: 10 },
+      { id: "b", wicket_number: 2, team_score: null },
+      { id: "c", wicket_number: 3, team_score: 40 },
+    ]);
+    expect(r.decreasingScoreIds.size).toBe(0);
+    expect(r.duplicateWicketIds.size).toBe(0);
+    expect(r.messages).toEqual([]);
+  });
+});
+
+describe("batting-order advisories (inline, non-blocking)", () => {
+  it("flags a batter whose position is out of sequence", () => {
+    const r = battingOrderIssues([
+      { id: "a", batting_position: 1, person_id: "p1" },
+      { id: "b", batting_position: 3, person_id: "p2" },
+      { id: "c", batting_position: 2, person_id: "p3" },  // out of order
+    ]);
+    expect(r.outOfOrderIds).toEqual(new Set(["c"]));
+    expect(r.messages.map((m) => m.code)).toContain("batting_order_out_of_sequence");
+  });
+  it("flags a batter appearing twice", () => {
+    const r = battingOrderIssues([
+      { id: "a", batting_position: 1, person_id: "p1" },
+      { id: "b", batting_position: 2, person_id: "p1" },
+    ]);
+    expect(r.duplicatePersonIds).toEqual(new Set(["a", "b"]));
+    expect(r.messages.map((m) => m.code)).toContain("duplicate_batter");
+  });
+  it("is clean for an ordered, unique card", () => {
+    const r = battingOrderIssues([
+      { id: "a", batting_position: 1, person_id: "p1" },
+      { id: "b", batting_position: 2, person_id: "p2" },
+    ]);
+    expect(r.messages).toEqual([]);
   });
 });
 

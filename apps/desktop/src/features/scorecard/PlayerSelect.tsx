@@ -34,7 +34,17 @@ export interface PlayerSelectProps {
   organisationId?: string | null;
   /** Short club name shown on the scope toggle (e.g. "Northside CC"). */
   scopeLabel?: string | null;
+  /** People always offered at the top of the list regardless of club scope — e.g. this innings'
+   *  batters in the Fall-of-Wickets selector, so a fill-in who batted is never hidden. */
+  priorityPeople?: { id: string; display_name: string; is_junior?: boolean }[];
   "aria-label"?: string;
+}
+
+interface Option {
+  id: string;
+  display_name: string;
+  is_junior?: boolean;
+  full?: Person;   // a full record (from search) for the name cache; priority items carry none
 }
 
 interface PanelPos {
@@ -57,6 +67,7 @@ export function PlayerSelect({
   defaultRole = "player",
   organisationId = null,
   scopeLabel = null,
+  priorityPeople = [],
   ...rest
 }: PlayerSelectProps) {
   const [open, setOpen] = useState(false);
@@ -76,7 +87,16 @@ export function PlayerSelect({
 
   const label = nameOf(value);
   const canCreate = query.trim().length > 0;
-  const optionCount = results.length + (canCreate ? 1 : 0);
+  // priority people (e.g. this innings' batters) are always offered, filtered by the query and
+  // placed ahead of the club-scoped search results, deduped by id.
+  const q = query.trim().toLowerCase();
+  const priorityMatches: Option[] = priorityPeople.filter((p) => !q || p.display_name.toLowerCase().includes(q));
+  const priorityIds = new Set(priorityMatches.map((p) => p.id));
+  const options: Option[] = [
+    ...priorityMatches,
+    ...results.filter((r) => !priorityIds.has(r.id)).map((r) => ({ id: r.id, display_name: r.display_name, is_junior: r.is_junior, full: r })),
+  ];
+  const optionCount = options.length + (canCreate ? 1 : 0);
 
   // ---- positioning (portal, fixed) -----------------------------------------------------------
   const reposition = useCallback(() => {
@@ -156,12 +176,13 @@ export function PlayerSelect({
     [workspaceId],
   );
 
-  const pick = (p: Person) => {
-    onPersonLoaded(p);
-    onChange(p.id);
+  const pick = (opt: Option) => {
+    // the name cache only needs id + display_name; a priority item carries no full record
+    onPersonLoaded(opt.full ?? ({ id: opt.id, display_name: opt.display_name } as Person));
+    onChange(opt.id);
     setOpen(false);
     setQuery("");
-    void checkDuplicates(p.id);
+    void checkDuplicates(opt.id);
   };
 
   // "Create new …" launches the shared Create Person wizard (prefilled with the search text),
@@ -174,7 +195,7 @@ export function PlayerSelect({
   };
 
   const chooseActive = () => {
-    if (active < results.length) pick(results[active]);
+    if (active < options.length) pick(options[active]);
     else if (canCreate) launchWizard();
   };
 
@@ -244,9 +265,9 @@ export function PlayerSelect({
           {err && <p className="px-1 pb-1 text-xs text-danger">{err}</p>}
           <div className="min-h-0 flex-1 overflow-auto">
             {busy && <p className="px-1 py-2 text-xs text-muted-foreground">Searching…</p>}
-            {!busy && results.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>}
+            {!busy && options.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>}
             <ul>
-              {results.map((p, i) => (
+              {options.map((p, i) => (
                 <li key={p.id}>
                   <button
                     type="button"
@@ -268,8 +289,8 @@ export function PlayerSelect({
             <button
               type="button"
               role="option"
-              aria-selected={active === results.length}
-              onMouseEnter={() => setActive(results.length)}
+              aria-selected={active === options.length}
+              onMouseEnter={() => setActive(options.length)}
               onClick={launchWizard}
               disabled={busy}
               className={`mt-1 flex w-full shrink-0 items-center gap-2 rounded-[var(--radius-app)] border border-dashed border-border px-2 py-1.5 text-left text-sm text-brand ${active === results.length ? "bg-muted" : "hover:bg-muted"}`}
