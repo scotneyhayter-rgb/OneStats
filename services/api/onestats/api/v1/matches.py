@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import match_formats, matches, results, seasons, validation
+from onestats.domain import match_formats, match_sources, matches, results, seasons, validation
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
@@ -271,3 +271,14 @@ def effective_conditions(workspace_id: UUID, match_id: UUID, settings: SettingsD
             return matches.effective_conditions(conn, match_id)
         except ValueError as exc:
             raise _value_error(exc) from exc
+
+
+@router.get("/{match_id}/sources")
+def match_source_provenance(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    """The sources that describe this match (import provenance, R1) and any fields on which they
+    disagree — for tracing a scorecard back to its source(s) and reviewing conflicting accounts."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return {
+            "sources": [_ids(s) for s in match_sources.list_match_sources(conn, match_id)],
+            "conflicts": match_sources.source_conflicts(conn, match_id),
+        }

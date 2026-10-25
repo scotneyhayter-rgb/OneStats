@@ -305,8 +305,50 @@ export function ScorecardEditor({
             try { await api.setMatchResult(workspaceId, matchId, body); await load(); flash("Result saved."); }
             catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save result"); }
           }} />
+        <MatchSourcesSection workspaceId={workspaceId} matchId={matchId} />
       </div>
     </div>
+  );
+}
+
+function MatchSourcesSection({ workspaceId, matchId }: { workspaceId: string; matchId: string }) {
+  const [sources, setSources] = useState<import("../../lib/api").MatchSource[]>([]);
+  const [conflicts, setConflicts] = useState<import("../../lib/api").MatchSourceConflict[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void api.matchSources(workspaceId, matchId)
+      .then((r) => { if (alive) { setSources(r.sources); setConflicts(r.conflicts); } })
+      .catch(() => { /* provenance is best-effort */ });
+    return () => { alive = false; };
+  }, [workspaceId, matchId]);
+  if (sources.length === 0) return null;
+  return (
+    <SectionCard icon={ClipboardList} title="Sources & Provenance"
+      description="Where this match came from. Additional sources are kept as evidence; conflicting accounts are flagged, never auto-resolved.">
+      <ul className="flex flex-col gap-1 text-sm">
+        {sources.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{s.source_system}</Badge>
+            <span className="text-muted-foreground">{s.source_ref}</span>
+            {s.edition && <span className="text-xs">· {s.edition}</span>}
+            {s.source_filename && <span className="text-xs text-muted-foreground">· {s.source_filename}</span>}
+          </li>
+        ))}
+      </ul>
+      {conflicts.length > 0 && (
+        <div className="mt-3 rounded-[var(--radius-app)] border border-warning/40 bg-warning/5 p-2 text-xs">
+          <div className="mb-1 font-medium text-warning">Conflicting source information — review, do not assume</div>
+          {conflicts.map((c) => (
+            <div key={c.field} className="mb-1">
+              <span className="font-medium">{c.field.replace(/_/g, " ")}:</span>{" "}
+              {c.values.map((v, i) => (
+                <span key={i} className="text-muted-foreground">{i > 0 ? " · " : ""}{String(v.value)} <span className="opacity-60">({v.source_system})</span></span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionCard>
   );
 }
 

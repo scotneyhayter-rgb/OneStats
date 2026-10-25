@@ -336,6 +336,20 @@ export interface CricketStatzImportResult {
   people: { detected?: { matched: number; possible_existing: number; new: number }; promoted?: { created: Record<string, number>; linked: Record<string, number> } };
   promoted?: { created: Record<string, number>; matched: Record<string, number>; status: string };
 }
+export interface MatchSource {
+  id: string;
+  source_system: string;
+  source_ref: string;
+  edition: string | null;
+  source_filename: string | null;
+  source_sha256: string | null;
+  recorded_fields: Record<string, unknown> | null;
+  created_at: string;
+}
+export interface MatchSourceConflict {
+  field: string;
+  values: { source_system: string; source_ref: string; edition: string | null; value: unknown }[];
+}
 export interface GenericImportResult {
   format_id: string;
   display_name: string;
@@ -771,6 +785,8 @@ export const api = {
     opts: { competition_id?: string; grade_id?: string; season_id?: string; venue_id?: string; classification?: string; status_?: string } = {},
   ) => request<Match[]>(`/api/v1/workspaces/${w}/matches${qs(opts)}`),
   getMatch: (w: string, id: string) => request<MatchDetail>(`/api/v1/workspaces/${w}/matches/${id}`),
+  matchSources: (w: string, id: string) =>
+    request<{ sources: MatchSource[]; conflicts: MatchSourceConflict[] }>(`/api/v1/workspaces/${w}/matches/${id}/sources`),
   createMatch: (w: string, body: Record<string, unknown>) =>
     request<MatchDetail>(`/api/v1/workspaces/${w}/matches`, { method: "POST", body }),
   updateMatch: (w: string, id: string, body: Record<string, unknown>) =>
