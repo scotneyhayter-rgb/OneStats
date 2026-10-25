@@ -278,9 +278,11 @@ def parse_and_stage(
             "away_captain_source_ref": _ref0(row.get("awaycaptain1")),
             "away_keeper_source_ref": _ref0(row.get("awaykeeper1")),
             "away_keeper2_source_ref": _ref0(row.get("awaykeeper2")),
-            # Toss winner is a PlayerID in this schema and is absent (0) across the known export;
-            # captured verbatim for provenance, resolved only if a real reference is present.
-            "toss_won_by_source_ref": _ref0(row.get("tosswonby")),
+            # Toss winner is a home/away code (0 = not recorded, 1 = home side, 2 = away side) —
+            # the same convention CricketStatz uses for Result. Captured verbatim; the winning TEAM
+            # is resolved at promotion. The source carries no bat/bowl decision, so the decision is
+            # left unknown and never inferred from the batting order or result.
+            "toss_won_by_code": row.get("tosswonby"),
         }
         # Matches are staged structurally only; never promoted in Stage 6 (no canonical match table).
         _insert_record(conn, workspace_id, batch_id, "match", ref, row, norm,
@@ -305,6 +307,16 @@ def _s(v: Any) -> str | None:
 def _ref0(v: Any) -> str | None:
     """A CricketStatz person/entity reference, where 0/blank means none/unknown (never a real id)."""
     return None if v in (None, 0, "0", "") else str(v)
+
+
+def _toss_winner_team(code: Any, home_id: UUID | None, away_id: UUID | None) -> UUID | None:
+    """Map a CricketStatz ``tosswonby`` code to the winning team. 1 = home side, 2 = away side
+    (the same home/away convention as Result); 0/blank/unknown → not recorded, so unknown."""
+    if code in (1, "1"):
+        return home_id
+    if code in (2, "2"):
+        return away_id
+    return None
 
 
 def _stage_scorecards(
@@ -681,6 +693,11 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
                              wicketkeeper2_person_id=away_keeper2)
         else:
             _flag(conn, rec["id"], "away_team_unresolved: match imported without away side")
+        # Toss winner (home/away code 1/2 → that side; 0/absent → not recorded, left unknown). The
+        # decision to bat/bowl is not in the source, so it stays unknown — never inferred.
+        toss_team = _toss_winner_team(norm.get("toss_won_by_code"), home_id, away_id)
+        if toss_team is not None:
+            matches.set_toss(conn, workspace_id, actor, mid, toss_winner_team_id=toss_team)
         # preserve the raw CricketStatz result code; set a known winner only where evidence-verified
         rtype = norm.get("result_label") if norm.get("result_status") == "known" else "unknown"
         won_by = home_id if rtype == "home_win" else away_id if rtype == "away_win" else None
@@ -739,14 +756,16 @@ def _person_by_source(conn: Connection, ref: str | None) -> UUID | None:
     ).scalar_one_or_none()
 
 
-def backfill_match_people(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, int]:
-    """Fill captains/wicketkeepers on already-imported CricketStatz matches from their staged source
-    rows, WITHOUT re-importing and WITHOUT creating or duplicating any people.
+def backfill_imported_match_details(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, int]:
+    """Fill captains/wicketkeepers and the toss winner on already-imported CricketStatz matches from
+    their staged source rows, WITHOUT re-importing and WITHOUT creating or duplicating any people or
+    matches.
 
-    Non-destructive and safe to re-run: a role is set only where the match side currently has it
-    unset (COALESCE), so any manual correction already made by a user is preserved. Source refs of
-    0/absent are left unset — nothing is inferred. A player named as both captain and keeper keeps
-    both roles. Returns how many match sides were updated and how many roles were filled.
+    Non-destructive and safe to re-run: a value is set only where the match currently has it unset,
+    so any manual correction already made by a user is preserved. Source refs of 0/absent are left
+    unset — nothing is inferred (the toss winner is never guessed from batting order or result, and
+    the bat/bowl decision, absent from the source, is left unknown). A player named as both captain
+    and keeper keeps both roles. Returns how many sides/roles were filled and tosses were set.
     """
     rows = conn.execute(
         text("SELECT r.raw, r.matched_canonical_id AS canonical_id FROM import_staging_record r "
@@ -757,6 +776,7 @@ def backfill_match_people(conn: Connection, workspace_id: UUID, actor: str) -> d
     ).mappings().all()
     sides_updated = 0
     roles_filled = 0
+    toss_set = 0
     for row in rows:
         raw = row["raw"] or {}
         mid = row["canonical_id"]
@@ -785,10 +805,24 @@ def backfill_match_people(conn: Connection, workspace_id: UUID, actor: str) -> d
             if res.rowcount:
                 sides_updated += res.rowcount
                 roles_filled += sum(1 for v in (cap, wk, wk2) if v is not None)
-    audit.write_audit(conn, workspace_id, actor, "import.backfill_match_people", entity="workspace",
+        # Toss winner (home/away code), only where the match has no toss winner recorded yet.
+        sides = conn.execute(
+            text("SELECT team_id, is_home FROM match_team WHERE match_id = :m"), {"m": mid},
+        ).mappings().all()
+        home_id = next((s["team_id"] for s in sides if s["is_home"]), None)
+        away_id = next((s["team_id"] for s in sides if not s["is_home"]), None)
+        toss_team = _toss_winner_team(raw.get("tosswonby"), home_id, away_id)
+        if toss_team is not None:
+            res = conn.execute(
+                text("UPDATE match SET toss_winner_team_id = :t, updated_at = now() "
+                     "WHERE id = :m AND toss_winner_team_id IS NULL"),
+                {"t": toss_team, "m": mid},
+            )
+            toss_set += res.rowcount
+    audit.write_audit(conn, workspace_id, actor, "import.backfill_match_details", entity="workspace",
                       entity_id=str(workspace_id),
-                      after={"sides_updated": sides_updated, "roles_filled": roles_filled})
-    return {"sides_updated": sides_updated, "roles_filled": roles_filled}
+                      after={"sides_updated": sides_updated, "roles_filled": roles_filled, "toss_set": toss_set})
+    return {"sides_updated": sides_updated, "roles_filled": roles_filled, "toss_set": toss_set}
 
 
 def _canonical_by_source(conn: Connection, table: str, ref: str) -> UUID | None:

@@ -28,7 +28,8 @@ PAYLOAD = {
                  "Ground": 10, "Grade": 50, "Result": 1, "round": "1", "matchtype": 1,
                  # home: player 10 is BOTH captain and keeper; away: captain 20, keeper 21
                  "homecaptain1": 10, "homekeeper1": 10, "homekeeper2": 0,
-                 "awaycaptain1": 20, "awaykeeper1": 21, "awaykeeper2": 0, "tosswonby": 0}],
+                 "awaycaptain1": 20, "awaykeeper1": 21, "awaykeeper2": 0,
+                 "tosswonby": 1}],  # 1 = home side won the toss (decision not in source)
     "innings": [{"MatchID": 500, "cricket_Innings": [
         {"InningsID": 700, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 200, "iresult": 1,
          "Byes": 4, "Legbyes": 2, "Noballs": 1, "Wides": 3}]}],
@@ -133,6 +134,34 @@ def test_import_links_captains_and_keepers_per_match(conn):
     assert away["captain_person_id"] == p20 and away["wicketkeeper_person_id"] == p21
 
 
+def test_import_links_toss_winner_and_leaves_decision_unknown(conn):
+    """The toss winner (home/away code) is linked to the correct team; the batting-first team is a
+    separate fact; the bat/bowl decision, absent from the source, stays unknown and is not inferred."""
+    wid = _ws(conn, "TOSS")
+    imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=PEOPLE, commit=True)
+    mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '500'")).scalar_one()
+    home_team = conn.execute(text("SELECT team_id FROM match_team WHERE match_id = :m AND is_home = true"),
+                             {"m": mid}).scalar_one()
+    m = matches.get_match(conn, mid)
+    assert m["toss_winner_team_id"] == home_team     # code 1 → home side won the toss
+    assert m["toss_decision"] is None                # never inferred; source has no decision
+    # toss winner is independent of who batted first (home batted first here too, but by its own fact)
+    batting_first = conn.execute(text("SELECT batting_team_id FROM innings WHERE match_id = :m AND inns_number = 1"),
+                                 {"m": mid}).scalar_one()
+    assert batting_first == home_team                # same team, but recorded as a distinct field
+
+
+def test_import_leaves_toss_unknown_when_source_has_none(conn):
+    """A match whose source toss code is 0 (not recorded) imports with no toss winner — never zero
+    or a guess."""
+    payload = {**PAYLOAD, "matches": [{**PAYLOAD["matches"][0], "MatchID": 501, "tosswonby": 0}]}
+    wid = _ws(conn, "TOSS NONE")
+    imports.controlled_import(conn, wid, ACTOR, data=payload, people=PEOPLE, commit=True)
+    mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '501'")).scalar_one()
+    m = matches.get_match(conn, mid)
+    assert m["toss_winner_team_id"] is None and m["toss_decision"] is None
+
+
 def test_backfill_fills_missing_roles_without_overwriting_manual_entry(conn):
     """Already-imported matches gain captains/keepers from their staged source rows without
     re-importing or duplicating people, and a manual correction is preserved."""
@@ -141,15 +170,18 @@ def test_backfill_fills_missing_roles_without_overwriting_manual_entry(conn):
     mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '500'")).scalar_one()
     p10, p11, p20, p21 = _person(conn, "10"), _person(conn, "11"), _person(conn, "20"), _person(conn, "21")
 
-    # simulate a pre-fix import (roles never linked) plus one manual correction on the home captain
+    home_team = conn.execute(text("SELECT team_id FROM match_team WHERE match_id = :m AND is_home = true"),
+                             {"m": mid}).scalar_one()
+    # simulate a pre-fix import (roles + toss never linked) plus one manual correction on the home captain
     conn.execute(text("UPDATE match_team SET captain_person_id = NULL, wicketkeeper_person_id = NULL, "
                       "wicketkeeper2_person_id = NULL WHERE match_id = :m"), {"m": mid})
+    conn.execute(text("UPDATE match SET toss_winner_team_id = NULL WHERE id = :m"), {"m": mid})
     conn.execute(text("UPDATE match_team SET captain_person_id = :p WHERE match_id = :m AND is_home = true"),
                  {"p": p11, "m": mid})   # a human already fixed the home captain to a different player
 
     people_before = conn.execute(text("SELECT count(*) FROM person")).scalar_one()
-    out = imports.backfill_match_people(conn, wid, ACTOR)
-    assert out["sides_updated"] >= 2
+    out = imports.backfill_imported_match_details(conn, wid, ACTOR)
+    assert out["sides_updated"] >= 2 and out["toss_set"] == 1
     assert conn.execute(text("SELECT count(*) FROM person")).scalar_one() == people_before  # no duplicates
 
     home = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id FROM match_team "
@@ -159,7 +191,8 @@ def test_backfill_fills_missing_roles_without_overwriting_manual_entry(conn):
     away = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id FROM match_team "
                              "WHERE match_id = :m AND is_home = false"), {"m": mid}).mappings().one()
     assert away["captain_person_id"] == p20 and away["wicketkeeper_person_id"] == p21
+    assert matches.get_match(conn, mid)["toss_winner_team_id"] == home_team   # toss backfilled from source
 
     # idempotent: a second backfill changes nothing further
-    out2 = imports.backfill_match_people(conn, wid, ACTOR)
-    assert out2["sides_updated"] == 0
+    out2 = imports.backfill_imported_match_details(conn, wid, ACTOR)
+    assert out2["sides_updated"] == 0 and out2["toss_set"] == 0
