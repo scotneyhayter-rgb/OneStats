@@ -40,7 +40,10 @@ _COLS = (
     "revised_since_approval, notes, source_system, source_ref, created_at, updated_at"
 )
 
-APPROVAL_STATUSES = ("draft", "awaiting_approval", "approved", "rejected")
+APPROVAL_STATUSES = ("draft", "awaiting_approval", "approved", "rejected", "verified_partial", "disputed")
+# Verified states whose present data is authoritative for official statistics (Phase 7 'approved' plus
+# Phase 10 'verified_partial' — a known-incomplete but reviewer-verified record). 'disputed' is NOT here.
+VERIFIED_STATUSES = ("approved", "verified_partial")
 
 
 def get_match(conn: Connection, match_id: UUID) -> dict[str, Any] | None:
@@ -225,17 +228,17 @@ def set_approval(
         raise ValueError("match_not_found")
     if status not in APPROVAL_STATUSES:
         raise ValueError("invalid_approval_status")
-    approved = status == "approved"
-    # approving clears the revision flag (this version becomes the authoritative one)
+    verified = status in VERIFIED_STATUSES
+    # a verified decision (approved / verified_partial) clears the revision flag and records the reviewer
     conn.execute(
         text("UPDATE match SET approval_status = :s, approval_reason = :r, "
              "approved_by = :by, approved_at = :at, "
-             "revised_since_approval = (revised_since_approval AND NOT :approved), updated_at = now() "
+             "revised_since_approval = (revised_since_approval AND NOT :verified), updated_at = now() "
              "WHERE id = :id"),
-        {"s": status, "r": reason, "by": actor if approved else None,
-         "at": None, "approved": approved, "id": match_id},
+        {"s": status, "r": reason, "by": actor if verified else None,
+         "at": None, "verified": verified, "id": match_id},
     )
-    if approved:
+    if verified:
         conn.execute(text("UPDATE match SET approved_at = now() WHERE id = :id"), {"id": match_id})
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.approval", entity="match", entity_id=str(match_id),
@@ -259,9 +262,11 @@ def mark_revised_if_approved(conn: Connection, match_id: UUID) -> None:
 
 
 def official_for_stats(match: dict[str, Any]) -> bool:
-    """Whether a match's data may contribute to OFFICIAL statistics: it must be approved and flagged
-    for statistical inclusion. Used by the recalculation framework (Stage 7.8)."""
-    return match.get("approval_status") == "approved" and bool(match.get("include_in_statistics"))
+    """Whether a match's data may contribute to OFFICIAL statistics: it must be in a verified state
+    (approved, or Phase 10 verified_partial) and flagged for statistical inclusion. A verified_partial
+    record only ever contributes the data it actually has — nothing is inferred to fill gaps. 'disputed',
+    'draft', 'awaiting_approval' and 'rejected' never contribute. Used by the recalc framework (7.8)."""
+    return match.get("approval_status") in VERIFIED_STATUSES and bool(match.get("include_in_statistics"))
 
 
 def set_toss(

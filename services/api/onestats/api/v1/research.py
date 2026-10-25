@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
+from onestats.domain import matches as matches_domain
 from onestats.domain.research import (
     dashboard,
     extraction,
@@ -29,6 +30,16 @@ from onestats.domain.research import (
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
+VerifyCtx = Annotated[RequestContext, Depends(require_permission("research.verify"))]
+
+# Research verification decisions mapped onto the Phase 7 approval state machine (no parallel machine).
+_VERIFY_MAP = {
+    "approved": "approved",            # fully verified
+    "verified_partial": "verified_partial",  # verified as far as it goes (known-incomplete)
+    "disputed": "disputed",            # unresolved conflict — held out of official statistics
+    "rejected": "rejected",            # unsupported — returned
+    "reopen": "draft",                 # send back for further research
+}
 
 _ERRORS = {
     "title_required": status.HTTP_400_BAD_REQUEST,
@@ -314,6 +325,38 @@ def reconstruction_summary(workspace_id: UUID, match_id: UUID, settings: Setting
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
             return reconstruction.summary(conn, workspace_id, match_id)
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+class Verify(BaseModel):
+    decision: str = Field(pattern="^(approved|verified_partial|disputed|rejected|reopen)$")
+    reason: str | None = None
+
+
+@router.post("/matches/{match_id}/submit-for-review")
+def submit_for_review(workspace_id: UUID, match_id: UUID, body: Verify | None = None,
+                      *, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """A researcher submits a reconstruction for verification (draft -> awaiting_approval)."""
+    reason = body.reason if body else None
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(matches_domain.set_approval(conn, workspace_id, str(ctx.user["id"]), match_id,
+                                                  status="awaiting_approval", reason=reason))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/matches/{match_id}/verify")
+def verify_match(workspace_id: UUID, match_id: UUID, body: Verify, settings: SettingsDep,
+                 ctx: VerifyCtx) -> dict[str, Any]:
+    """An authorised reviewer records a verification decision. Maps to the Phase 7 approval machine;
+    only verified states feed official statistics, and a verified_partial record contributes only the
+    data it actually has. 'disputed' is held out of statistics until resolved."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(matches_domain.set_approval(conn, workspace_id, str(ctx.user["id"]), match_id,
+                                                  status=_VERIFY_MAP[body.decision], reason=body.reason))
         except ValueError as exc:
             raise _err(exc) from exc
 
