@@ -180,12 +180,26 @@ ranks by most wickets, then fewest runs; genuine ties preserved; runs never inve
   no captaincy credit to Captain2. **Not** an outstanding requirement or open decision. Ordinary captaincy
   reports, statistics, comparisons and history are unaffected.
 
+## Statistical-integrity corrections (2026-10-26)
+
+- **Career bowling economy across mixed over lengths — FIXED.** Economy is computed from the actual legal
+  balls bowled and **each match's own balls-per-over** (Law 17, from playing conditions — six-ball,
+  eight-ball or any configured value), summed across the career. It never assumes one over length. A match
+  whose over length is unrecorded is excluded from the economy and the figure is flagged
+  (`economy_incomplete`); strike rate (balls ÷ wickets) is unaffected. Stored as `overs`/`overs_known` per
+  bowling contribution in `recalc.py`; aggregated in `engine._bowl_row`. Covered by
+  `tests/test_integrity_economy_keepers.py` (a 6-ball + 8-ball career → 3.44, not 3.00 or 4.00). Existing
+  approved data should be recomputed (`/stats/recalc` backfill) to populate `overs`.
+- **Multiple wicketkeepers in one innings — FIXED.** Keeper catches and stumpings are attributed to the
+  **keeper who took them** (the recorded fielder), so where two players kept wicket in an innings each is
+  credited with only their own dismissals (primary and second keeper both handled). A keeper dismissal
+  whose fielder is unknown is **not** guessed or attributed to the primary keeper. Fixed in
+  `records_detail.most_wk_dismissals_in_innings`; the keeper leaderboards already attributed by fielder.
+  Covered by `tests/test_integrity_economy_keepers.py`.
+
 ## Remaining genuine limitations
 
 - Boundaries (4s/6s), balls faced, and some fielder/bowler attributions depend on the scorecard recording
   them; where unrecorded the figure is a **known-minimum**, never zero.
-- Career economy assumes a single over length; per-season/era figures are exact.
 - Consecutive-match streaks run over the team's **recorded played fixtures**; an undocumented missing
   fixture cannot be detected, and undated matches flag a **known-minimum** (never an assumed unbroken run).
-- Wicketkeeping-in-an-innings attributes to the primary recorded keeper; a rare second keeper (`wk2`) in
-  the same innings is not separately split.

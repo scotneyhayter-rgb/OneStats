@@ -107,7 +107,9 @@ than a flat table, included in the count once.)
 
 Boundaries counts, strike/economy rates, fielder/bowler attributions and partnership construction depend on
 the scorecard recording those fields. Where unrecorded, totals are a **known-minimum** (never zero) and the
-report flags it. Career economy assumes a single over length.
+report flags it. **Career economy is now computed from each match's own over length** (six/eight-ball etc.)
+and is flagged when a match's over length is unrecorded. **Wicketkeeping dismissals are attributed to the
+actual keeper** (including a second keeper in an innings); an unknown keeper is not invented.
 
 ## 7. Test results
 

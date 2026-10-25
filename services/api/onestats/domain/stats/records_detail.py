@@ -159,25 +159,29 @@ def most_ducks_inflicted(conn: Connection, f: dict[str, Any], *, limit: int = 50
 
 
 def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
-    """Most wicketkeeping dismissals (keeper catches + stumpings) in a single innings. Verified scorecard
-    data only; outfield catches are never counted, and catches/stumpings are not double-counted."""
+    """Most wicketkeeping dismissals (keeper catches + stumpings) in a single innings, attributed to the
+    **actual** keeper who took them (the recorded fielder), so where more than one player kept wicket in an
+    innings each keeper is credited only with their own dismissals. A dismissal counts as wicketkeeping
+    when it is a stumping, a caught-behind, or a catch by a recorded keeper of that side (primary OR second
+    keeper); outfield catches are never counted. A keeper dismissal whose fielder is unknown is NOT guessed
+    or attributed to the primary keeper — it is left out (unknown ≠ invented). No double counting."""
     where, params = _scope(f)
     params["lim"] = limit
     sql = (
-        "SELECT coalesce(p.merged_into_id, p.id) AS sid, m.match_date AS d, "
+        "SELECT coalesce(p.merged_into_id, p.id) AS sid, be.innings_id AS inn, m.match_date AS d, "
         "  count(*) FILTER (WHERE be.dismissal_type = 'stumped') AS st, "
-        "  count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind') "
-        "                   AND be.fielder_person_id = mt.wicketkeeper_person_id) AS ct "
+        "  count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind')) AS ct "
         "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
         "JOIN match_team mt ON mt.match_id = m.id AND mt.team_id = i.bowling_team_id "
-        "JOIN person p ON p.id = mt.wicketkeeper_person_id "
-        f"WHERE mt.wicketkeeper_person_id IS NOT NULL AND {where} "
+        "JOIN person p ON p.id = be.fielder_person_id "
+        "WHERE be.fielder_person_id IS NOT NULL AND ("
+        "  be.dismissal_type IN ('stumped','caught_behind') "
+        "  OR (be.dismissal_type = 'caught' AND be.fielder_person_id IN "
+        "        (mt.wicketkeeper_person_id, mt.wicketkeeper2_person_id))) "
+        f"AND {where} "
         "GROUP BY be.innings_id, coalesce(p.merged_into_id, p.id), m.match_date "
-        "HAVING count(*) FILTER (WHERE be.dismissal_type = 'stumped' OR "
-        "  (be.dismissal_type IN ('caught','caught_behind') AND be.fielder_person_id = mt.wicketkeeper_person_id)) > 0 "
         "ORDER BY (count(*) FILTER (WHERE be.dismissal_type = 'stumped') + "
-        "          count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind') "
-        "                           AND be.fielder_person_id = mt.wicketkeeper_person_id)) DESC LIMIT :lim")
+        "          count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind'))) DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
     out = []
     for r in conn.execute(text(sql), params).mappings():

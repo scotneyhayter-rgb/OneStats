@@ -167,8 +167,12 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
 
 def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
     """One bowling contribution per person in the match. Per-innings best bowling (BBI) and five-wicket
-    innings are derived here; ten-wicket-match is the per-match wicket total. Economy is computed by
-    callers from legal balls and the configured over length, never assuming six-ball overs."""
+    innings are derived here; ten-wicket-match is the per-match wicket total. **Overs** are stored for
+    this match using the match's own balls-per-over (Law 17, from playing conditions — six, eight or any
+    historically configured value), so career economy sums true overs across mixed-over-length eras and
+    never assumes one over length. ``overs_known`` is 0 when the over length is unrecorded (that match is
+    then excluded from the career economy and the figure is flagged)."""
+    bpo = (matches.effective_conditions(conn, match["id"]).get("conditions") or {}).get("balls_per_over")
     rows = conn.execute(
         text(
             "SELECT be.person_id AS pid, coalesce(be.legal_balls,0) AS balls, be.legal_balls AS balls_raw, "
@@ -205,8 +209,11 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
             a["bbi_w"], a["bbi_r"] = r["wickets"], r["runs"]
     out = []
     for pid, a in agg.items():
+        # overs for THIS match from its own balls-per-over (never a single assumed over length)
+        overs = round(a["balls"] / bpo, 4) if (bpo and a["balls"]) else 0
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"innings": a["innings"], "balls": a["balls"], "balls_known": a["balls_known"],
+                                "overs": overs, "overs_known": 1 if bpo else 0,
                                 "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
                                 "wickets_known": a["wickets_known"], "five_wkt_innings": a["five_wkt_innings"],
                                 "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],

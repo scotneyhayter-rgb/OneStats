@@ -168,6 +168,8 @@ defects before this programme. Add these quick confirmations:
 | A1 | A bowler whose matches used **eight-ball overs** → view Bowling economy | Economy uses the configured over length (not a fixed six) |
 | A2 | Open a **captain's** profile → Captaincy tab | Captaincy figures are populated (previously blank) |
 | A3 | Export a **player-profile PDF** | A4 **portrait**, cover shows the club name once (no duplication) |
+| A4 | A bowler with matches in **different over-length** competitions (6-ball and 8-ball) → view career Economy | Economy uses each match's real over length (true overs summed), not one assumed value; flagged when a match's over length is unrecorded |
+| A5 | An innings with **two wicketkeepers** → Fielding & WK + "WK dismissals in an innings" | Each keeper is credited only with their own catches/stumpings; an unknown-keeper dismissal is not attributed to anyone |
 
 ## Workflow
 

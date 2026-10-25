@@ -128,6 +128,10 @@ _BOWL_SELECT = (
     + ", " + _num("balls_known", "balls_known") + ", " + _num("maidens", "maidens") + ", "
     + _num("runs", "runs") + ", " + _num("wickets", "wickets") + ", " + _num("wickets_known", "wickets_known") + ", "
     + _num("five_wkt_innings", "five_wkt_innings") + ", " + _num("ten_wkt_match", "ten_wkt_match")
+    # true overs summed per match using each match's own balls-per-over (never one assumed over length)
+    + ", coalesce(sum((c.metrics->>'overs')::numeric),0) AS overs_sum"
+    + ", coalesce(sum((c.metrics->>'overs_known')::int),0) AS overs_known_matches"
+    + ", coalesce(sum(CASE WHEN (c.metrics->>'overs_known')::int = 1 THEN (c.metrics->>'runs')::int END),0) AS runs_known_over"
     + ", coalesce(max((c.metrics->>'match_wickets')::int),0) AS best_match_wickets"
     + ", count(*) AS contributions"
 )
@@ -135,17 +139,32 @@ _BOWL_SELECT = (
 
 def _bowl_row(r: dict[str, Any], over_length: int = 6) -> dict[str, Any]:
     runs, wickets, balls = int(r["runs"]), int(r["wickets"]), int(r["balls"])
-    overs = balls / over_length if over_length else 0
+    matches, innings = int(r["matches"]), int(r["innings"])
+    overs_sum = float(r.get("overs_sum") or 0)
+    overs_known_matches = int(r.get("overs_known_matches") or 0)
+    runs_known_over = int(r.get("runs_known_over") or 0)
+    # Economy from TRUE overs (each match's own over length), summed across eras. Only matches whose over
+    # length is recorded contribute; when none is recorded, fall back to the requested over length so a
+    # figure is still shown, flagged incomplete. Never assumes a single over length across a career.
+    if overs_sum > 0:
+        economy = round(runs_known_over / overs_sum, 2)
+        overs_display = round(overs_sum, 1)
+    else:
+        fallback_overs = balls / over_length if over_length else 0
+        economy = round(runs / fallback_overs, 2) if fallback_overs else None
+        overs_display = round(fallback_overs, 1)
     return {
-        "subject_id": str(r["subject_id"]), "matches": int(r["matches"]), "innings": int(r["innings"]),
-        "balls": balls, "overs": round(overs, 1), "maidens": int(r["maidens"]), "runs": runs,
+        "subject_id": str(r["subject_id"]), "matches": matches, "innings": innings,
+        "balls": balls, "overs": overs_display, "maidens": int(r["maidens"]), "runs": runs,
         "wickets": wickets, "five_wkt_innings": int(r["five_wkt_innings"]),
         "ten_wkt_match": int(r["ten_wkt_match"]), "best_match_wickets": int(r["best_match_wickets"]),
         "average": round(runs / wickets, 2) if wickets else None,
-        "economy": round(runs / overs, 2) if overs else None,
+        "economy": economy,
         "strike_rate": round(balls / wickets, 2) if wickets else None,
-        "balls_incomplete": int(r["balls_known"]) < int(r["innings"]),
-        "wickets_known_minimum": int(r["wickets_known"]) < int(r["innings"]),
+        "balls_incomplete": int(r["balls_known"]) < innings,
+        # economy is a known-minimum / approximate if some matches have no recorded over length
+        "economy_incomplete": overs_sum > 0 and overs_known_matches < matches,
+        "wickets_known_minimum": int(r["wickets_known"]) < innings,
     }
 
 
