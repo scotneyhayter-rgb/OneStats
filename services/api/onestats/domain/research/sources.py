@@ -110,6 +110,38 @@ def link_match(conn: Connection, workspace_id: UUID, actor: str, source_id: UUID
     return dict(r)
 
 
+def set_file(conn: Connection, workspace_id: UUID, actor: str, source_id: UUID, *, file_ref: str,
+             file_sha256: str, file_bytes: int, content_type: str) -> dict[str, Any]:
+    """Record a stored document file on a source and mark it pending OCR/transcription. Returns the
+    source plus ``duplicate_of`` (another source in the workspace with identical content), if any —
+    detection only; the researcher decides whether it is truly a duplicate."""
+    dup = conn.execute(
+        text("SELECT id FROM research_source WHERE workspace_id = :w AND file_sha256 = :h AND id <> :id "
+             "ORDER BY created_at LIMIT 1"),
+        {"w": workspace_id, "h": file_sha256, "id": source_id},
+    ).scalar_one_or_none()
+    conn.execute(
+        text("UPDATE research_source SET file_ref = :fr, file_sha256 = :h, file_bytes = :b, "
+             "content_type = :ct, ocr_status = 'pending', updated_at = now() WHERE id = :id"),
+        {"fr": file_ref, "h": file_sha256, "b": file_bytes, "ct": content_type, "id": source_id},
+    )
+    audit.write_audit(conn, workspace_id, actor, "research.source_file_stored", entity="research_source",
+                      entity_id=str(source_id), after={"file_sha256": file_sha256, "bytes": file_bytes})
+    out = get_source(conn, source_id)
+    out["duplicate_of"] = str(dup) if dup is not None else None
+    return out
+
+
+def list_editions(conn: Connection, workspace_id: UUID, publication: str) -> list[dict[str, Any]]:
+    """All sources from one publication (its multiple editions/issues), newest publication date first."""
+    rows = conn.execute(
+        text("SELECT * FROM research_source WHERE workspace_id = :w AND publication = :p "
+             "ORDER BY publication_date DESC NULLS LAST, created_at"),
+        {"w": workspace_id, "p": publication},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
 def list_sources_for_match(conn: Connection, workspace_id: UUID, match_id: UUID) -> list[dict[str, Any]]:
     rows = conn.execute(
         text("SELECT s.*, l.role AS link_role FROM research_source_match l "

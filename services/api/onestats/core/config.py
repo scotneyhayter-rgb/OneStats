@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     media_root: str = Field(default="media")
     max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
+    # Research source documents (newspaper scans, PDFs, photographs) — larger than logos.
+    max_source_bytes: int = Field(default=30_000_000)  # 30 MB
 
     # --- AutoSync connectors (Phase 9) — secrets from env/.env, never committed ---
     # PlayHQ public API key (a UUID "Client ID") and tenant short-name (e.g. 'ca' for cricket).

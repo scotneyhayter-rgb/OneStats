@@ -89,6 +89,25 @@ export function ResearchCentre() {
     }
   };
 
+  const uploadFile = async (sourceId: string, file: File) => {
+    setBusy(true);
+    setError(null);
+    setFlash(null);
+    try {
+      const r = await api.researchUploadSourceFile(workspaceId, sourceId, file);
+      setFlash(
+        r.duplicate_of
+          ? "Document uploaded — note: identical content already exists on another source."
+          : "Document uploaded.",
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const stat = (label: string, n: number | string) => (
     <div className="rounded-[var(--radius-app)] border border-border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -185,6 +204,23 @@ export function ResearchCentre() {
                     <span className="text-xs text-muted-foreground">pub. {s.publication_date}</span>
                   )}
                   {s.copyright_status && <Badge variant="outline">{s.copyright_status}</Badge>}
+                  <span className="ml-auto flex items-center gap-2">
+                    <Badge variant={s.ocr_status === "done" ? "success" : "muted"}>{s.ocr_status}</Badge>
+                    <label className="cursor-pointer text-xs text-brand">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={busy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void uploadFile(s.id, f);
+                          e.target.value = "";
+                        }}
+                      />
+                      {s.ocr_status === "none" ? "Upload document" : "Replace document"}
+                    </label>
+                  </span>
                 </div>
               ))}
               <AddSource busy={busy} onAdd={(body) => act(() => api.researchCreateSource(workspaceId, body), "Source added.")} />

@@ -10,13 +10,14 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.research import dashboard, projects, sources
+from onestats.domain.research import dashboard, projects, sources, storage
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
@@ -153,6 +154,44 @@ def get_source(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: 
         if src is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "source_not_found")
         return _s(src)
+
+
+@router.post("/sources/{source_id}/file", status_code=status.HTTP_201_CREATED)
+async def upload_source_file(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: Ctx,
+                             file: UploadFile) -> dict[str, Any]:
+    """Upload the original document for a source (image/PDF). Stored unaltered; integrity hash recorded;
+    duplicate-by-content is reported, not blocked."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        if sources.get_source(conn, source_id) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "source_not_found")
+    raw = await file.read()
+    try:
+        stored = storage.store_source_file(settings, workspace_id, raw, file.content_type or "")
+    except storage.SourceFileError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return _s(sources.set_file(conn, workspace_id, str(ctx.user["id"]), source_id,
+                                   file_ref=str(stored["file_ref"]), file_sha256=str(stored["file_sha256"]),
+                                   file_bytes=int(stored["file_bytes"]), content_type=str(stored["content_type"])))
+
+
+@router.get("/sources/{source_id}/file")
+def get_source_file(workspace_id: UUID, source_id: UUID, settings: SettingsDep, ctx: Ctx):
+    """Serve a source's original document (for the document viewer, Stage 10.5)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        src = sources.get_source(conn, source_id)
+    if src is None or not src.get("file_ref"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
+    path = storage.source_file_path(settings, workspace_id, src["file_ref"])
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
+    return FileResponse(str(path), media_type=src.get("content_type") or "application/octet-stream")
+
+
+@router.get("/publications/{publication}/editions")
+def list_editions(workspace_id: UUID, publication: str, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in sources.list_editions(conn, workspace_id, publication)]
 
 
 @router.post("/sources/{source_id}/link")

@@ -107,6 +107,28 @@ def test_source_links_to_one_canonical_match(conn):
     assert len(sources.list_sources_for_match(conn, wid, mid)) == 2
 
 
+def test_set_file_records_integrity_and_detects_duplicate(conn):
+    wid = _ws(conn, "RC FILE")
+    a = sources.create_source(conn, wid, ACTOR, title="scan A", source_type="scorebook")
+    b = sources.create_source(conn, wid, ACTOR, title="scan B (same image)", source_type="scorebook")
+    ra = sources.set_file(conn, wid, ACTOR, a["id"], file_ref="src-a.png", file_sha256="hash1",
+                          file_bytes=10, content_type="image/png")
+    assert ra["ocr_status"] == "pending" and ra["duplicate_of"] is None
+    rb = sources.set_file(conn, wid, ACTOR, b["id"], file_ref="src-b.png", file_sha256="hash1",
+                          file_bytes=10, content_type="image/png")
+    assert rb["duplicate_of"] == str(a["id"])   # same content detected, not blocked
+
+
+def test_multiple_editions_of_one_publication(conn):
+    wid = _ws(conn, "RC EDN")
+    sources.create_source(conn, wid, ACTOR, title="Mon", source_type="newspaper_edition",
+                          publication="The Argus", publication_date=dt.date(1931, 11, 2))
+    sources.create_source(conn, wid, ACTOR, title="Tue", source_type="newspaper_edition",
+                          publication="The Argus", publication_date=dt.date(1931, 11, 3))
+    edns = sources.list_editions(conn, wid, "The Argus")
+    assert [e["title"] for e in edns] == ["Tue", "Mon"]   # newest publication date first
+
+
 def test_dashboard_uses_real_db_counts(conn):
     wid = _ws(conn, "RC DASH")
     d0 = dashboard.dashboard_summary(conn, wid)

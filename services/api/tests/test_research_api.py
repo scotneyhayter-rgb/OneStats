@@ -19,7 +19,8 @@ def test_research_routes_registered(client):
     paths = set(client.app.openapi()["paths"].keys())
     base = "/api/v1/workspaces/{workspace_id}/research"
     for p in ("/dashboard", "/projects", "/projects/{project_id}", "/sources", "/sources/{source_id}",
-              "/sources/{source_id}/link", "/matches/{match_id}/sources"):
+              "/sources/{source_id}/file", "/sources/{source_id}/link", "/matches/{match_id}/sources",
+              "/publications/{publication}/editions"):
         assert f"{base}{p}" in paths, p
 
 

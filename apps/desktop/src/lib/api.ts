@@ -914,6 +914,14 @@ export const api = {
     request<ResearchSource[]>(`/api/v1/workspaces/${w}/research/sources${sourceType ? `?source_type=${sourceType}` : ""}`),
   researchCreateSource: (w: string, body: Record<string, unknown>) =>
     request<ResearchSource>(`/api/v1/workspaces/${w}/research/sources`, { method: "POST", body }),
+  researchUploadSourceFile: (w: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ResearchSource & { duplicate_of: string | null }>(
+      `/api/v1/workspaces/${w}/research/sources/${id}/file`, { method: "POST", form });
+  },
+  researchEditions: (w: string, publication: string) =>
+    request<ResearchSource[]>(`/api/v1/workspaces/${w}/research/publications/${encodeURIComponent(publication)}/editions`),
   researchLinkSource: (w: string, id: string, body: { match_id: string; role?: string }) =>
     request<unknown>(`/api/v1/workspaces/${w}/research/sources/${id}/link`, { method: "POST", body }),
 
