@@ -244,6 +244,10 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
       {!loading && err && <ErrorState message={err} onRetry={() => void load()} />}
       {!loading && person && (
         <div className="flex flex-col gap-5">
+          <a href={`#/people/${personId}`} onClick={(e) => { e.preventDefault(); window.location.hash = `#/people/${personId}`; onClose(); }}
+            className="inline-flex w-fit items-center gap-1 rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
+            View full career profile →
+          </a>
           <section>
             <Detail label="Status">{person.status}</Detail>
             <Detail label="Roles">{(view?.person?.roles ?? []).map((r: string) => humanise(r)).join(", ") || "—"}</Detail>

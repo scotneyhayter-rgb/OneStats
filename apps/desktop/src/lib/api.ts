@@ -91,6 +91,29 @@ export interface User {
   display_name: string | null;
   is_super_admin: boolean;
 }
+export interface PlayerFullProfile {
+  person_id: string;
+  career: {
+    matches: number;
+    batting: Record<string, number | null>;
+    bowling: Record<string, number | null>;
+    fielding: Record<string, number>;
+    captaincy: Record<string, number>;
+    derived_role: string | null;
+    has_batting: boolean;
+    has_bowling: boolean;
+    has_captaincy: boolean;
+    has_keeping: boolean;
+  };
+  seasons: Record<string, unknown>[];
+  clubs: { team_id: string; team: string; org_id: string; club: string }[];
+  records: { title: string; value: number | null; tied: boolean; known_minimum: boolean }[];
+  milestones: { metrics: Record<string, { label: string; total: number; known_minimum: boolean;
+    milestones: { threshold: number; state: string }[]; next: { threshold: number; to_go: number } | null }> };
+  badges: { calculated: { label: string; source: string; state: string }[];
+    awarded: { label: string; source: string; status?: string }[] };
+  honours: Record<string, unknown>[];
+}
 export interface RecordHolder {
   player: string;
   subject_id: string;
@@ -1005,8 +1028,33 @@ export const api = {
   // profiles (career view)
   getProfile: (w: string, id: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`),
+  // Phase 13 player profile (stats composed from the one engine)
+  profileFull: (w: string, id: string) =>
+    request<PlayerFullProfile>(`/api/v1/workspaces/${w}/people/${id}/full-profile`),
+  profileSeasons: (w: string, id: string) =>
+    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/seasons`),
+  profileMatches: (w: string, id: string) =>
+    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/matches`),
+  profilePdfUrl: async (w: string, id: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/people/${id}/profile.pdf`, { headers });
+    if (!resp.ok) throw new ApiError(`Profile PDF failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
   upsertProfile: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`, { method: "PUT", body }),
+  personPhotos: (w: string, id: string) =>
+    request<{ id: string; caption: string | null; public_visible: boolean }[]>(`/api/v1/workspaces/${w}/people/${id}/photos`),
+  personPhotoUrl: async (w: string, photoId: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/people/photos/${photoId}/file`, { headers });
+    if (!resp.ok) throw new ApiError(`photo ${resp.status}`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
   addPersonNumber: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/numbers`, { method: "POST", body }),
   addPersonLeadership: (w: string, id: string, body: Record<string, unknown>) =>

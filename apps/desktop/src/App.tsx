@@ -6,6 +6,7 @@ import { Ask, Settings } from "./features/sections";
 import { Statistics } from "./features/statistics/Statistics";
 import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
+import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
@@ -52,6 +53,7 @@ function AuthedApp() {
         <Route path="/manage/records" element={<Records />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
+        <Route path="/people/:personId" element={<PlayerProfile />} />
         <Route path="/statistics" element={<Statistics />} />
         <Route path="/ask" element={<Ask />} />
         <Route path="/settings" element={<Settings />} />
