@@ -14,7 +14,7 @@ from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import batting, bowling, competitions, matches, people, recalc
 from onestats.domain import innings as inn
-from onestats.domain.stats import engine
+from onestats.domain.stats import engine, reconciliation
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")
@@ -135,6 +135,25 @@ def test_classification_split_filters(conn):
     # grand-final split includes the match; home_away split excludes it
     assert len(engine.batting_leaders(conn, _f(wid, split="grand_final"))) > 0
     assert engine.batting_leaders(conn, _f(wid, split="home_away")) == []
+
+
+def test_run_out_reconciliation(conn):
+    wid = _ws(conn, "ENG RECON")
+    x = _build(conn, wid)
+    # 5 batters: not_out (no wicket), bowled, caught, run_out, stumped -> 3 bowler + 1 run out = 4 wickets
+    conn.execute(text("UPDATE innings SET official_wickets = 4 WHERE match_id = :m"), {"m": x["mid"]})
+    rep = reconciliation.reconcile_match(conn, wid, x["mid"])
+    inn0 = rep["innings"][0]
+    assert inn0["bowler_credited"] == 3 and inn0["run_outs"] == 1 and inn0["other_non_bowler_wickets"] == 0
+    assert inn0["wickets_from_dismissals"] == 4 and inn0["status"] == "reconciled"
+    assert rep["total_run_outs"] == 1 and rep["ok"] is True
+    # a mismatch is warned, never auto-corrected
+    conn.execute(text("UPDATE innings SET official_wickets = 6 WHERE match_id = :m"), {"m": x["mid"]})
+    rep2 = reconciliation.reconcile_match(conn, wid, x["mid"])
+    assert rep2["innings"][0]["status"] == "mismatch" and rep2["innings"][0]["warnings"]
+    # unrecorded wickets -> insufficient, not invented
+    conn.execute(text("UPDATE innings SET official_wickets = NULL WHERE match_id = :m"), {"m": x["mid"]})
+    assert reconciliation.reconcile_match(conn, wid, x["mid"])["innings"][0]["status"] == "insufficient"
 
 
 def test_participation_and_only_approved(conn):
