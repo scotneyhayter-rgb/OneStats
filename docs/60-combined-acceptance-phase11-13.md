@@ -107,6 +107,30 @@ Section: **Records & Achievements** (Club Management → Records & Achievements)
 
 ---
 
+## Phase 13 (continued) — Player Profiles (14 tests)
+
+Open from **People** (left sidebar) → open a person → **View full career profile →** (route
+`/people/<id>`). Profiles compose the one engine; nothing is fabricated; unknown is never shown as zero.
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| P1 | Profile appearance | Open a player's full profile | Professional header (avatar, name, role, badges), clean cards, light/dark |
+| P2 | Navigation | Click the tabs | Overview/Batting/Bowling/Fielding&WK/Captaincy/Seasons/Matches/Records&Milestones/Awards&Honours/Media switch without reload; "Directory" returns |
+| P3 | Career statistics | Overview + discipline tabs | Matches/runs/avg/wickets etc. match the Statistics section (one engine) |
+| P4 | Adaptive cards | A batting-only player | No misleading zero-wickets card; batting prominent |
+| P5 | Season-by-season | Seasons tab | One row per season; seasons not combined; expandable figures |
+| P6 | Match history | Matches tab | Match-by-match line; opens match; missing figures blank (not 0) |
+| P7 | Records & milestones | Records & Milestones tab | Records held + milestone states (reached / known-minimum / to-go) |
+| P8 | Achievement badges | Overview | Calculated badges with state; distinct from awarded honours |
+| P9 | Awards & Honours | Awards & Honours tab; add via `/records/honours` | Custom categories (Best & Fairest, …); recorded not inferred |
+| P10 | Life Membership | A Life Member | Life Member badge in the header; shown in Awards |
+| P11 | Photographs | Media tab | Thumbnails of the player's photos; placeholder when none; privacy respected |
+| P12 | Multi-club career | A player in >1 club | Clubs listed; **one** identity (no duplicate profiles) |
+| P13 | Unknown handling | A player with unknown figures | Known-minimum "min." indicators; never shown as zero |
+| P14 | Profile PDF export | Profile → Export PDF | A4, branding, cover page, career tables — same figures as screen |
+
+---
+
 ## Workflow
 
 Run each test, record Pass/Fail/Blocked and any defect reference. Fix defects found, rerun affected

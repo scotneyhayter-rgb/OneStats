@@ -34,6 +34,31 @@ Built **on top of** the Phase 12 statistics engine — no statistical formula is
 - **API** — `/records` (all-time), `/records/seasonal`, `/records/milestones/{person}`,
   `/records/upcoming`, `/records/badges/{person}`, `/records/honours` (+ create/patch), `/records/book/pdf`.
 
+## Player Profiles (added to Phase 13, 2026-10-26)
+
+A complete professional **Player Profile** was audited and built on the existing one person identity,
+the Phase 12 engine and Phase 13 records/honours/media — no second identity or engine.
+
+- **Backend** `domain/records/player_profile.py`: career totals (all disciplines, merge-aware), season-
+  by-season (not combined), match-by-match (missing figures null, never zero), clubs/teams, records held,
+  milestones, badges, honours — in one `full-profile` call. Career scope is explicit.
+- **Awards**: `honour.award_category` (migration 0051) enables custom award categories (Best & Fairest,
+  Batting Award, Coach's Award, representative honours, …) alongside Life/Honorary Membership — recorded
+  and authorised, never inferred.
+- **Frontend** `/people/:personId`: professional header (avatar, role, Captain / Life Member / record-
+  holder badges, clubs), adaptive career-summary cards (no misleading zero cards), and tabs for Overview,
+  Batting, Bowling, Fielding & WK, Captaincy, Seasons, Matches, Records & Milestones, Awards & Honours and
+  Media (photo thumbnails). Known-minimum indicators throughout; light/dark; opened from the People
+  directory.
+- **Profile PDF** (`reports/player_pdf.py`, `/people/{id}/profile.pdf`): a full career profile via the
+  one shared framework (cover page, branding, career/season/records/milestones/awards) — same figures as
+  on screen; private details excluded. A representative profile PDF was generated and provided for review.
+- **A real bug was found and fixed**: the engine's per-person aggregate grouped by `subject_id`, so a
+  **merged** player's totals (contributions under more than one identity) were undercounted to a single
+  identity. Now it aggregates the whole merge-aware set.
+- The combined acceptance programme ([60](60-combined-acceptance-phase11-13.md)) gains a **14-test Player
+  Profiles section** (now 84 tests total; tests were added, not trimmed).
+
 ## Automated test results
 
 Backend **≈543 passing, 2 skipped**; desktop **60 passing**; `tsc` + `ruff` clean. New Phase 13 suites:
