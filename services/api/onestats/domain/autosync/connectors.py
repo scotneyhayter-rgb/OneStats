@@ -153,3 +153,15 @@ SAMPLE_UPDATED = [
 catalog.register(FixtureConnector("onestats_sample", SAMPLE_ROWS, updated_rows=SAMPLE_UPDATED,
                                   countries=["AU"], formats=["One-Day", "T20"],
                                   provider="OneStats sample (fixture)"))
+
+# A second clearly-labelled sample source (a "newspaper" fixture) reporting the SAME first fixture
+# with a different result — to demonstrate possible-duplicate detection and multiple-sources-per-match
+# (R1) with a conflict. Deterministic fixture data, NOT a live source.
+SAMPLE_NEWS_ROWS = [
+    {"Date": "2023-11-04", "HomeTeam": "Sandbox Swifts", "AwayTeam": "Sandbox Saints",
+     "Competition": "Sandbox Saturday League", "Grade": "A Grade", "Venue": "Sample Oval",
+     "Result": "Tie", "Format": "One-Day", "Round": "1"},
+]
+catalog.register(FixtureConnector("onestats_sample_news", SAMPLE_NEWS_ROWS,
+                                  countries=["AU"], formats=["One-Day"],
+                                  provider="OneStats sample newspaper (fixture)"))
