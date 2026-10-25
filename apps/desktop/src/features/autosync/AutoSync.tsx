@@ -68,6 +68,10 @@ export function AutoSync() {
     act(() => api.autosyncSyncNow(workspaceId, { source_system, kind: "manual" }), "Sync run.");
   const checkUpdates = (source_system: string) =>
     act(() => api.autosyncSyncNow(workspaceId, { source_system, kind: "updated" }), "Checked for scorecard updates.");
+  const discoverHistory = (source_system: string) =>
+    act(() => api.autosyncDiscoverHistory(workspaceId, { source_system,
+      scopes: [{ key: "season:2022/23" }, { key: "season:2023/24" }, { key: "season:2024/25" }] }),
+      "Historical discovery run across seasons.");
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const bulk = (action: "accept" | "reject") =>
     act(() => api.autosyncBulk(workspaceId, { item_ids: [...selected], action }), `Bulk ${action} done.`);
@@ -117,6 +121,7 @@ export function AutoSync() {
               <div className="ml-auto flex gap-1">
                 <Button size="sm" disabled={busy || !s.enabled} onClick={() => void syncNow(s.connector_id)}><PlayCircle className="h-4 w-4" aria-hidden /> Sync Now</Button>
                 <Button size="sm" variant="outline" disabled={busy || !s.enabled} onClick={() => void checkUpdates(s.connector_id)}>Check updates</Button>
+                <Button size="sm" variant="outline" disabled={busy || !s.enabled} onClick={() => void discoverHistory(s.connector_id)}>Discover History</Button>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => api.autosyncSetSourceEnabled(workspaceId, s.id, !s.enabled), "Source updated.")}>{s.enabled ? "Disable" : "Enable"}</Button>
               </div>
             </div>

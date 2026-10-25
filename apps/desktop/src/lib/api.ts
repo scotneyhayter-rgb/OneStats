@@ -851,6 +851,8 @@ export const api = {
     request<SyncSource>(`/api/v1/workspaces/${w}/autosync/sources/${id}?enabled=${enabled}`, { method: "PATCH" }),
   autosyncSyncNow: (w: string, body: { source_system: string; kind?: string }) =>
     request<{ ran: boolean; job: SyncJob }>(`/api/v1/workspaces/${w}/autosync/sync-now`, { method: "POST", body }),
+  autosyncDiscoverHistory: (w: string, body: { source_system: string; scopes: { key: string }[] }) =>
+    request<{ job_id: string }>(`/api/v1/workspaces/${w}/autosync/discover-history`, { method: "POST", body }),
   autosyncReview: (w: string) => request<DiscoveryItem[]>(`/api/v1/workspaces/${w}/autosync/review`),
   autosyncAccept: (w: string, id: string) =>
     request<DiscoveryItem>(`/api/v1/workspaces/${w}/autosync/review/${id}/accept`, { method: "POST" }),
