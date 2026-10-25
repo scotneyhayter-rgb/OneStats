@@ -170,9 +170,10 @@ def update_project(workspace_id: UUID, project_id: UUID, body: ProjectUpdate,
 
 @router.get("/sources")
 def list_sources(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
-                 source_type: str | None = None) -> list[dict[str, Any]]:
+                 source_type: str | None = None, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return [_s(r) for r in sources.list_sources(conn, workspace_id, source_type=source_type)]
+        return [_s(r) for r in sources.list_sources(conn, workspace_id, source_type=source_type,
+                                                    limit=limit, offset=offset)]
 
 
 @router.post("/sources", status_code=status.HTTP_201_CREATED)

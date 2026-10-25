@@ -81,16 +81,19 @@ def get_source(conn: Connection, source_id: UUID) -> dict[str, Any] | None:
 
 
 def list_sources(conn: Connection, workspace_id: UUID, *, source_type: str | None = None,
-                 limit: int | None = None) -> list[dict[str, Any]]:
+                 limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
+    """List sources, newest first. ``limit``/``offset`` paginate for large collections (Stage 10.19) so
+    the UI never loads an entire archive at once."""
     sql = "SELECT * FROM research_source WHERE workspace_id = :w"
     params: dict[str, Any] = {"w": workspace_id}
     if source_type is not None:
         sql += " AND source_type = :st"
         params["st"] = source_type
-    sql += " ORDER BY created_at DESC"
+    sql += " ORDER BY created_at DESC, id"
     if limit is not None:
-        sql += " LIMIT :lim"
+        sql += " LIMIT :lim OFFSET :off"
         params["lim"] = limit
+        params["off"] = offset
     return [dict(r) for r in conn.execute(text(sql), params).mappings().all()]
 
 
