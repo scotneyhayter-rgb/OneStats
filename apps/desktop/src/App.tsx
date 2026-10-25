@@ -4,6 +4,7 @@ import { EmptyState, LoadingState } from "./components/states/States";
 import { Dashboard } from "./features/Dashboard";
 import { Ask, Settings } from "./features/sections";
 import { Statistics } from "./features/statistics/Statistics";
+import { ReportCatalogue } from "./features/statistics/ReportCatalogue";
 import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
 import { PlayerProfile } from "./features/people/PlayerProfile";
@@ -55,6 +56,7 @@ function AuthedApp() {
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />
         <Route path="/statistics" element={<Statistics />} />
+        <Route path="/statistics/catalogue" element={<ReportCatalogue />} />
         <Route path="/ask" element={<Ask />} />
         <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

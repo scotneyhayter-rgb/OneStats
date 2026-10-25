@@ -234,8 +234,23 @@ def delete_saved(workspace_id: UUID, report_id: UUID, settings: SettingsDep, ctx
 
 @router.get("/reports")
 def list_reports(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
-    """The report catalogue (same engine behind each)."""
+    """The report base types (same engine behind each). See /catalogue for the full library."""
     return [{"report": k, "title": v["title"]} for k, v in catalogue.REPORTS.items()]
+
+
+@router.get("/catalogue")
+def report_catalogue(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """The full, categorised Report Catalogue (every report uses the one engine; scope is a filter)."""
+    return catalogue.catalogue_metadata()
+
+
+@router.get("/catalogue/index.pdf")
+def catalogue_index(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> Response:
+    """A printable catalogue index: every report, grouped by category, with its description."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        pdf = catalogue.catalogue_index_pdf(conn, settings, workspace_id)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="report-catalogue.pdf"'})
 
 
 @router.get("/reports/{report}")
@@ -243,7 +258,8 @@ def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: Vie
                 season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
                 team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
                 format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
-                min_wickets: int | None = None, over_length: int = 6, min_eligible: int = 20) -> dict[str, Any]:
+                min_wickets: int | None = None, over_length: int | None = None,
+                min_eligible: int | None = None) -> dict[str, Any]:
     """On-screen report data (columns + rows) from the one engine — matches the PDF export exactly."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
@@ -260,7 +276,7 @@ def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: V
                   season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
                   team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
                   format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
-                  min_wickets: int | None = None, over_length: int = 6, min_eligible: int = 20,
+                  min_wickets: int | None = None, over_length: int | None = None, min_eligible: int | None = None,
                   period: str | None = None, cover: bool = False) -> Response:
     """Export the report as a print-ready, branded A4 PDF (same figures as on-screen)."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
@@ -276,6 +292,26 @@ def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: V
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{report}.pdf"'})
+
+
+@router.get("/reports/{report}/csv")
+def report_csv_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
+                      season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
+                      team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
+                      format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
+                      min_wickets: int | None = None, over_length: int | None = None,
+                      min_eligible: int | None = None) -> Response:
+    """Export a tabular report as CSV (same columns/figures as the on-screen report)."""
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
+    kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
+                            "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            data = catalogue.report_csv(conn, workspace_id, report, f, **kw)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return Response(content=data, media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{report}.csv"'})
 
 
 @router.get("/ladder/pdf")

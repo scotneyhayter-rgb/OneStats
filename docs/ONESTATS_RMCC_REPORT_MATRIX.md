@@ -1,0 +1,172 @@
+# OneStats — RMCC Requirements-to-Implementation Matrix
+
+Reconciles every report in the original specifications — [22-statistics-engine.md](22-statistics-engine.md),
+[23-rmcc-report-catalogue.md](23-rmcc-report-catalogue.md), [24-captaincy-calculation.md](24-captaincy-calculation.md),
+[25-partnership-calculation.md](25-partnership-calculation.md), [27-report-builder.md](27-report-builder.md) —
+against what is implemented in the Report Catalogue (Phase 12 expansion). Produced 2026-10-26.
+
+**Status key:** **✅ Implemented & tested** (automated coverage) · **🟢 Implemented** (opens & exports;
+covered by the "every entry opens" loop test, no dedicated reference assertion) · **🟡 Partial**
+(available but with a documented limitation or via a filter rather than a dedicated breakdown) ·
+**🔴 Outstanding** (not yet implemented — scheduled).
+
+All reports use the ONE deterministic engine (deliverable 22). Scope — season, grade, competition, team,
+date, format, venue, and the Home&Away / Finals / Grand Final split (§23.10) — is a **filter**, never a
+separate report. RMCC qualification thresholds (§21) are applied only to the averages/rates/% reports and
+are configurable. The catalogue holds **73** distinct reports; CSV + PDF export on tabular reports.
+
+## §23.1 Player careers
+
+| Report | Format | Calc | Status | Catalogue id |
+|---|---|---|---|---|
+| Most Matches | Top list | distinct matches played | 🟢 | `part_most_matches` |
+| Most Consecutive Matches | Top list | longest run over the team's match sequence | 🔴 | — (needs player-vs-team-fixture sequencing) |
+| Most Wins | Top list | matches played, team won | 🟢 | `part_most_wins` |
+| Longest Serving | Top list | span first→last appearance; seasons & years | 🟢 | `part_longest_serving` |
+| Most Matches Played Together | Pair list | matches both played (unordered pair) | ✅ | `part_matches_together` |
+
+## §23.2 Team streaks
+
+| Report | Calc | Status | Catalogue id |
+|---|---|---|---|
+| Most Consecutive Wins | longest win run (chronological) | ✅ | `team_consec_wins` |
+| Most Consecutive Losses | longest loss run | 🟢 | `team_consec_losses` |
+| Most Consecutive Without a Loss | unbeaten run | 🟢 | `team_unbeaten` |
+| Most Consecutive Without a Win | winless run | 🟢 | `team_winless` |
+
+Outcome handling per §23.2: no-results/abandoned skipped; **unknown breaks the known sequence and flags a
+known-minimum**; never assumed win/loss. Missing historical *fixtures* can't be detected from recorded
+matches, so streaks are over recorded approved matches and flagged known-minimum when the sequence has
+unknowns or undated matches.
+
+## §23.3 Batting
+
+| Report | Format | Status | Catalogue id |
+|---|---|---|---|
+| Top Run Aggregates | Top list | 🟢 | `bat_most_runs` |
+| Most Runs in a Season | All-time list of (player, season) | ✅ | `bat_most_runs_season` |
+| Top Run Scores | Individual innings list (No.1 + list) | ✅ | `bat_top_scores` |
+| Most Runs in a Match | Individual match list | 🟢 | `bat_most_runs_match` |
+| Top Batting Averages (min 500) | Top list, qualified | 🟢 | `bat_highest_average` |
+| Most Boundaries | Top list | ✅ | `bat_most_boundaries` |
+| Most Sixes | Top list | 🟢 | `bat_most_sixes` |
+| Most Fours | Top list | 🟢 | `bat_most_fours` |
+| Most 90s | Top list | ✅ | `bat_most_90s` |
+| Most 40s | Top list | ✅ | `bat_most_40s` |
+| Most Centuries | Top list | 🟢 | `bat_most_centuries` |
+| Most Half-Centuries | Top list | 🟢 | `bat_most_fifties` |
+| Top Batting Strike Rates (min 100) | Top list, qualified | 🟢 | `bat_best_strike_rate` |
+| Most Ducks | Top list | 🟢 | `bat_most_ducks` |
+| Most Consecutive Scores Without a Duck | Top list | 🔴 | — (needs per-innings batting streak) |
+
+## §23.4 Batting partnerships
+
+| Report | Status | Catalogue id |
+|---|---|---|
+| Top Partnerships by Wicket | 🟢 | `part_by_wicket` |
+| Top Partnerships | 🟢 | `part_highest` |
+| Top Partnership Aggregates (pair) | 🟢 | `part_aggregates` |
+
+## §23.5 Bowling partnerships (D12)
+
+| Report | Status | Catalogue id |
+|---|---|---|
+| 2-player combinations | 🟢 | `bowl_pairs` |
+| 3-player combinations | 🟢 | `bowl_trios` |
+| 4-player combinations | 🟢 | `bowl_quartets` |
+
+## §23.6 Bowling
+
+| Report | Status | Catalogue id | Note |
+|---|---|---|---|
+| Top Wicket Takers | 🟢 | `bowl_most_wickets` | |
+| Top Bowling Averages (min 50) | 🟢 | `bowl_best_average` | |
+| Most Wickets in a Season | 🟢 | `bowl_most_wickets_season` | |
+| Best Bowling in a Match | 🟡 | `bowl_best_match` | ranks by wickets; runs not yet a tie-break (OBS-1) |
+| Top Economy Rates (min 50) | 🟢 | `bowl_best_economy` | configured over length |
+| Top Bowling Strike Rates (min 50) | 🟢 | `bowl_best_strike_rate` | |
+| Most Expensive Bowling in an Innings | ✅ | `bowl_most_expensive` | |
+| Most 5-Wicket Innings | 🟢 | `bowl_most_five_fors` | |
+| Most Ducks Inflicted | ✅ | `bowl_most_ducks_inflicted` | |
+
+## §23.7 Fielding & wicketkeeping
+
+| Report | Status | Catalogue id |
+|---|---|---|
+| Top Fielder–Bowler Combinations | ✅ | `field_bowler_combos` |
+| Top Catches (fielding, excl. keeping) | 🟢 | `field_most_outfield` |
+| Top Wicketkeeper Catches | 🟢 | `wk_most_catches` |
+| Top Wicketkeeper Stumpings | 🟢 | `wk_most_stumpings` |
+| Top Wicketkeeper Dismissals (total) | 🟢 | `wk_most_dismissals` |
+| Top Wicketkeeping in an Innings | 🔴 | — (per-innings keeper tally not yet stored) |
+| Combined Catches (field + keeper) | 🟢 | `field_most_catches` |
+| Top Run Outs | 🟢 | `field_most_run_outs` |
+
+## §23.8 / 24.3 Captaincy
+
+Uses **actual match captaincy records** (acting captain if recorded, else captain); never infers that the
+season captain led every match; no match double-credited (§24.1).
+
+| Report | Status | Catalogue id | Note |
+|---|---|---|---|
+| Most Matches Captained | ✅ | `capt_most_matches` | W/L/D/T/NR columns included |
+| Most Wins as Captain | 🟢 | `capt_most_wins` | |
+| Best Winning % (min 20, configurable) | 🟢 | `capt_best_win_pct` | wins ÷ eligible (NR excluded) |
+| Most Grand Finals Captained | 🟢 | `capt_most_gf` | |
+| Most Grand Final Wins as Captain | 🟢 | `capt_most_gf_wins` | |
+| Most Consecutive Wins as Captain | ✅ | `capt_consec_wins` | |
+| Captaincy Unbeaten Streak | 🟢 | `capt_unbeaten` | |
+| Captaincy Winless Streak | 🟢 | `capt_winless` | |
+| Win/Loss/Draw/Tie Record | 🟢 | `capt_most_matches` | the W/L/D/T columns |
+| Captaincy by Season | 🟡 | via season filter | no all-seasons breakdown report yet |
+| Captaincy by Club / Competition / Grade | 🟡 | via scope filters | |
+| Most Consecutive Matches Captained | 🔴 | — | needs player-vs-team-fixture sequencing |
+| Complete Individual Captaincy Record | 🟢 | Player Profile → Captaincy | per-player breakdown on the profile |
+| Captaincy Comparison Reports | 🔴 | — | multi-captain side-by-side not yet built |
+
+## §23.9 Other records
+
+| Report | Status | Catalogue id |
+|---|---|---|
+| Annual leading run scorers | 🟢 | `seasonal_leaders` |
+| Annual leading wicket takers | 🟢 | `seasonal_leaders` |
+| Best single-season run totals | 🟢 | `rec_best_season_runs` |
+| Best single-season wicket totals | 🟢 | `rec_best_season_wkts` |
+| Highest innings & match performances | ✅ | `bat_top_scores`, `rec_highest_scores`, `bat_most_runs_match` |
+| Highest partnerships by wicket | 🟢 | `part_by_wicket` |
+| Grand Final records | 🟢 | `gf_batting`, `gf_bowling`, + the split on every match report |
+| Player milestones | 🟢 | `milestones_upcoming` (+ profile) |
+| Career achievements | 🟢 | `honours_all` (+ profile badges) |
+
+## Report-format distinctions (preserved, per the mandatory addition)
+
+- **All-Time Top-10 / leaderboards** — the ranked lists (e.g. `bat_most_runs`), No.1 prominent, full ranking below.
+- **Annual No.1 leaders** — `seasonal_leaders` (one leader per season; seasons never combined).
+- **Individual No.1 match / innings records** — `bat_top_scores`, `bat_most_runs_match`, `bowl_most_expensive`
+  (the single best performance is the No.1 of the list; not forced into a fixed Top-10 shape).
+- **Partnership records** — `part_highest`, `part_by_wicket`, `part_aggregates`, bowling combinations.
+
+## Outstanding items (explicitly not complete)
+
+1. **Most Consecutive Matches** (player) and **Most Consecutive Matches Captained** — require sequencing a
+   person against their team's full fixture list (streaks currently run over the person's own recorded
+   matches). 🔴
+2. **Most Consecutive Scores Without a Duck** — a per-innings batting streak (batting streaks module not
+   yet built). 🔴
+3. **Top Wicketkeeping in an Innings** — per-innings keeper-dismissal tally is not stored in the ledger. 🔴
+4. **Captaincy Comparison Reports** — multi-captain side-by-side view. 🔴
+5. **Captaincy by Season / Grade as a dedicated breakdown** — currently via scope filters, not an
+   all-at-once breakdown report. 🟡
+6. **Best Bowling in a Match runs tie-break** — ranks by wickets only (OBS-1). 🟡
+
+The Report Catalogue is **not** declared complete: items 1–6 above are the remaining original requirements,
+identified as outstanding per instruction. Everything else is implemented, and the reports marked ✅ carry
+dedicated automated reference tests.
+
+## Data dependencies & unavailable calculations
+
+- Boundaries (4s/6s), balls faced, and some fielder/bowler attributions depend on the scorecard recording
+  them; where unrecorded the figure is a **known-minimum**, never zero.
+- Career economy assumes a single over length; per-season/era figures are exact.
+- Forfeit treatment (§24.2a) and Cricket-Statz "Captain2" (§24.1) remain **open user decisions** and are
+  not finalised; current behaviour follows the documented defaults.

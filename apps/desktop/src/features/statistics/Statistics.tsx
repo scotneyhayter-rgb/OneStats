@@ -172,6 +172,14 @@ export function Statistics() {
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
 
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">Core leaderboards with full filters. For the complete library of reports, open the catalogue.</p>
+          <a href="#/statistics/catalogue"
+            className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
+            Report Catalogue →
+          </a>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           {REPORTS.map((r) => (
             <button key={r.key} type="button" onClick={() => { setReport(r.key); setSortKey(null); }}

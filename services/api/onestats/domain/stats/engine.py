@@ -98,7 +98,8 @@ def _bat_row(r: dict[str, Any]) -> dict[str, Any]:
     d = {
         "subject_id": str(r["subject_id"]), "matches": int(r["matches"]), "innings": innings,
         "runs": runs, "not_outs": int(r["not_out"]), "dismissed": dismissed, "balls": balls,
-        "fours": int(r["fours"]), "sixes": int(r["sixes"]), "fifties": int(r["fifties"]),
+        "fours": int(r["fours"]), "sixes": int(r["sixes"]), "boundaries": int(r["fours"]) + int(r["sixes"]),
+        "fifties": int(r["fifties"]),
         "hundreds": int(r["hundreds"]), "ducks": int(r["ducks"]), "highest_score": int(r["highest_score"]),
         "most_runs_in_match": int(r["most_runs_in_match"]),
         "average": round(runs / dismissed, 2) if dismissed else None,

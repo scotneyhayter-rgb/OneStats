@@ -133,6 +133,28 @@ Open from **People** (left sidebar) → open a person → **View full career pro
 
 ---
 
+## Phase 12 (continued) — Report Catalogue (12 tests)
+
+Open from **Statistics → Report Catalogue** (`/statistics/catalogue`). 73 reports over the one engine; see
+[ONESTATS_RMCC_REPORT_MATRIX.md](ONESTATS_RMCC_REPORT_MATRIX.md) for every report's status.
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| RC1 | Catalogue loads | Open Report Catalogue | Categorised, searchable list; report count shown |
+| RC2 | Search | Type part of a report name | List filters by name/description/category |
+| RC3 | Browse by category | Click a category chip | Only that category's reports shown |
+| RC4 | Open a report | View report on any entry | A working table opens (columns + rows), no dead links |
+| RC5 | Favourites | Star a report | It appears under ★ Favourites; persists after restart |
+| RC6 | Recently used | Open a few reports | They appear under Recently used; persists after restart |
+| RC7 | Split filter | In the viewer, choose Grand Finals | Figures restrict to grand finals (same engine) |
+| RC8 | PDF export | Export PDF from a report | Branded A4 PDF, same figures as screen |
+| RC9 | CSV export | Export CSV from a tabular report | CSV with the same columns/figures |
+| RC10 | Printable index | Printable index button | A PDF listing every report by category |
+| RC11 | Streak & record reports | Open team/captaincy streaks, single-season, highest innings | Correct consecutive/record values; known-minimum flagged where data is incomplete |
+| RC12 | Qualification & empty states | Open an averages report and a report with no data | Qualified players only (configurable threshold); clean empty state, never a crash |
+
+**Visually inspect** a representative report PDF and the catalogue index.
+
 ## Pre-acceptance audit spot-checks (added 2026-10-26)
 
 The full system audit ([ONESTATS_FULL_SYSTEM_AUDIT.md](ONESTATS_FULL_SYSTEM_AUDIT.md)) fixed four

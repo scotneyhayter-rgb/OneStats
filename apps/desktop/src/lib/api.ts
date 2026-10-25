@@ -153,6 +153,22 @@ export interface StatReport {
   columns: StatColumn[];
   rows: Record<string, unknown>[];
 }
+export interface CatalogueReport {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  filters: string[];
+  qualification: string | null;
+  limitations: string | null;
+  split_default: string | null;
+  csv: boolean;
+  pdf: boolean;
+}
+export interface ReportCatalogue {
+  categories: { category: string; reports: CatalogueReport[] }[];
+  count: number;
+}
 export interface StatLadderRow {
   position: number;
   team_id: string;
@@ -1283,6 +1299,27 @@ export const api = {
     if (t) headers["Authorization"] = `Bearer ${t}`;
     const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/pdf${qs2 ? `?${qs2}` : ""}`, { headers });
     if (!resp.ok) throw new ApiError(`PDF export failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
+  // --- Report Catalogue (the full categorised library over the one engine) ---
+  statsCatalogue: (w: string) =>
+    request<ReportCatalogue>(`/api/v1/workspaces/${w}/stats/catalogue`),
+  statsReportCsvUrl: async (w: string, report: string, q: Record<string, string | number | undefined> = {}): Promise<string> => {
+    const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/csv${qs2 ? `?${qs2}` : ""}`, { headers });
+    if (!resp.ok) throw new ApiError(`CSV export failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
+  statsCatalogueIndexUrl: async (w: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/catalogue/index.pdf`, { headers });
+    if (!resp.ok) throw new ApiError(`Catalogue index failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
 
