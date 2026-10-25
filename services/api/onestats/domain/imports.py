@@ -36,6 +36,7 @@ from onestats.domain import (
     bowling,
     competitions,
     innings,
+    match_sources,
     matches,
     organisations,
     partnerships,
@@ -663,6 +664,11 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["match"] += 1
+            # R1: record THIS source against the already-existing match as additional evidence —
+            # never overwriting the approved scorecard; conflicts are surfaced for admin review.
+            match_sources.attach_source(conn, workspace_id, actor, existing, source_system=ss,
+                                        source_ref=rec["source_ref"], recorded_fields=norm,
+                                        filename=batch.get("source_filename"), sha256=batch.get("source_sha256"))
             continue
 
         def _resolve(table: str, fk: str, key: str, _norm: dict[str, Any] = norm, _ss: str = ss) -> UUID | None:
@@ -717,6 +723,10 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
                            won_by_team_id=won_by, result_raw=None if result is None else str(result),
                            result_source="recorded" if norm.get("result_status") == "known" else "unknown")
         # classification is intentionally NOT set here — the round is a hint only (user rule).
+        # R1: record this source as the match's first source (its own provenance for conflict review).
+        match_sources.attach_source(conn, workspace_id, actor, mid, source_system=ss,
+                                    source_ref=rec["source_ref"], recorded_fields=norm,
+                                    filename=batch.get("source_filename"), sha256=batch.get("source_sha256"))
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
         created["match"] += 1
 
