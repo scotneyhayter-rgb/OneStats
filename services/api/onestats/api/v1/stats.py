@@ -16,7 +16,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import recalc
-from onestats.domain.stats import engine, partnerships, reconciliation
+from onestats.domain.stats import competition_points, engine, partnerships, reconciliation
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
 
@@ -147,6 +147,15 @@ def bowling_groups(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, size
             return partnerships.bowling_groups(conn, f, size=size, limit=limit)
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+
+@router.get("/ladder")
+def ladder(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+           season_id: UUID | None = None, grade_id: UUID | None = None) -> dict[str, Any]:
+    """Competition ladder using the configured points scheme (approved matches only)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return competition_points.ladder(conn, workspace_id, competition_id=competition_id,
+                                         season_id=season_id, grade_id=grade_id)
 
 
 @router.get("/matches/{match_id}/reconciliation")
