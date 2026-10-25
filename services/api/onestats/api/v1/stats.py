@@ -10,13 +10,14 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import recalc
 from onestats.domain.stats import competition_points, engine, partnerships, reconciliation
+from onestats.reports import catalogue
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
 
@@ -156,6 +157,61 @@ def ladder(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return competition_points.ladder(conn, workspace_id, competition_id=competition_id,
                                          season_id=season_id, grade_id=grade_id)
+
+
+@router.get("/reports")
+def list_reports(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
+    """The report catalogue (same engine behind each)."""
+    return [{"report": k, "title": v["title"]} for k, v in catalogue.REPORTS.items()]
+
+
+@router.get("/reports/{report}")
+def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
+                season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
+                team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
+                format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
+                min_wickets: int | None = None, over_length: int = 6, min_eligible: int = 20) -> dict[str, Any]:
+    """On-screen report data (columns + rows) from the one engine — matches the PDF export exactly."""
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
+    kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
+                            "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return catalogue.report_rows(conn, workspace_id, report, f, **kw)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.get("/reports/{report}/pdf")
+def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
+                  season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
+                  team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
+                  format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
+                  min_wickets: int | None = None, over_length: int = 6, min_eligible: int = 20,
+                  period: str | None = None, cover: bool = False) -> Response:
+    """Export the report as a print-ready, branded A4 PDF (same figures as on-screen)."""
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
+    kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
+                            "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
+    labels = [lbl for lbl in (f"Split: {split}" if split else None, f"Venue: {venue}" if venue else None,
+                              f"Format: {format}" if format else None) if lbl]
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            pdf = catalogue.report_pdf(conn, settings, workspace_id, report, f, period=period,
+                                       filter_labels=labels, cover=cover, **kw)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{report}.pdf"'})
+
+
+@router.get("/ladder/pdf")
+def ladder_export(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                  season_id: UUID | None = None, grade_id: UUID | None = None) -> Response:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        pdf = catalogue.ladder_pdf(conn, settings, workspace_id, competition_id, season_id=season_id, grade_id=grade_id)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="ladder.pdf"'})
 
 
 @router.get("/matches/{match_id}/reconciliation")
