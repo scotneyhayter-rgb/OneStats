@@ -16,7 +16,13 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import recalc
-from onestats.domain.stats import competition_points, engine, integrity, partnerships, reconciliation
+from onestats.domain.stats import (
+    competition_points,
+    engine,
+    integrity,
+    partnerships,
+    reconciliation,
+)
 from onestats.reports import catalogue
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
