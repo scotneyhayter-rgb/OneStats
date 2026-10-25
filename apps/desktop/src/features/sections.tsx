@@ -8,7 +8,9 @@ import { api, ApiError, type MatchFormat } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { canManage } from "../lib/permissions";
 import { getUserScoreFormat, setUserScoreFormat } from "../lib/score-format";
+import { APP_VERSION } from "../lib/version";
 import { useWorkspace } from "../lib/workspace-context";
+import { ConnectionSettings } from "./settings/ConnectionSettings";
 import { Placeholder } from "./Placeholder";
 
 // Matches and People now have full feature screens (features/scorecard, features/people);
@@ -76,6 +78,14 @@ export function Settings() {
         </CardContent></Card>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
         {admin && <RecalcStatsSettings workspaceId={current?.id ?? null} />}
+        <Card><CardContent className="flex flex-col gap-4">
+          <ConnectionSettings />
+        </CardContent></Card>
+        <Card><CardContent className="flex items-center justify-between gap-2">
+          <div><h3 className="text-sm font-semibold">About</h3>
+            <p className="text-xs text-muted-foreground">OneStats — Cricket Statistics Made Simple</p></div>
+          <span className="text-xs text-muted-foreground">Version {APP_VERSION}</span>
+        </CardContent></Card>
       </div>
     </AppShell>
   );

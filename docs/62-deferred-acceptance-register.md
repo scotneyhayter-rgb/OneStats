@@ -82,13 +82,25 @@ Automated coverage: `tests/test_publishing.py::test_mobile_portal_lists_publishe
 Reachability shares the **Phase 15 hosting decision**. Authenticated member view + Ask-on-portal + mobile
 media upload are follow-ups (see 65).
 
-## Phase 17 — Windows Install, Website & Mobile Release (added as built)
+## Phase 17 — Windows Install, Website & Mobile Release (IMPLEMENTED 2026-10-26 — see [67](67-phase17-report.md))
 
-Planned manual tests (deliverable 31 §31.6): clean install on a supported Windows machine; install **from
-USB**; **additional-client** install against an existing server; **upgrade** preserving user data; **repair**
-and **uninstall**; dependency management (no manual Python/PostgreSQL/Node install); guided first-run
-(paths A/B/C); secure server-connection config; installer **checksums** verified; release notes present;
-**never** overwrites an existing database without an explicit, verified, recoverable migration.
+App-level release engineering is built & tested; the installer build/sign/USB tests are manual/hardware.
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| INS1 | Connection config | Settings → Server Connection (or first-run) | Choose standalone vs server; test; save & reconnect |
+| INS2 | Version/About | Settings → About / Sidebar | Shows version 1.0.0-beta.1 |
+| INS3 | Clean install | Install on a supported Windows PC | App + bundled components; shortcuts; no manual Python/PG/Node *(manual/hardware)* |
+| INS4 | USB install | Install from a USB drive (offline) | Installs offline *(manual/hardware)* |
+| INS5 | Additional client | Install, choose Connect to a server | Connects to the existing server *(manual/hardware)* |
+| INS6 | Upgrade | Install a newer version over an old one | Data preserved; backup taken first; no DB overwrite *(manual/hardware)* |
+| INS7 | Repair / uninstall | Installer repair + Windows uninstall | Repairs app files; uninstall keeps data unless confirmed *(manual/hardware)* |
+| INS8 | Checksums | Run compute-installer-checksums.ps1 | SHA256SUMS.txt matches the installers |
+| INS9 | Signing | Inspect installer signature | **Pending the code-signing certificate decision (paid)** |
+
+Automated coverage: `features/settings/connection-settings.test.tsx`; `tauri.conf.json` validity + version
+sync. **Decisions required:** public hosting (static vs central) and code-signing certificate (both paid;
+no cost without approval).
 
 ## Post-Phase-17 consolidated acceptance programme (to assemble)
 

@@ -4,8 +4,28 @@
  * in localStorage and sent as a Bearer header. No secrets beyond the session token.
  */
 
-const BASE_URL: string =
+// The backend base URL is runtime-configurable (Phase 17): a saved override (standalone-local, or a
+// shared server a client connects to) takes precedence over the build-time default. This lets one build
+// serve the standalone, server and additional-client install paths without rebuilding.
+const DEFAULT_BASE: string =
   import.meta.env.VITE_ONESTATS_API_URL ?? "http://localhost:8000";
+const API_URL_KEY = "onestats.apiUrl";
+
+export function getApiBase(): string {
+  try {
+    return (localStorage.getItem(API_URL_KEY) || "").trim() || DEFAULT_BASE;
+  } catch {
+    return DEFAULT_BASE;
+  }
+}
+export function setApiBase(url: string | null): void {
+  try {
+    if (url && url.trim()) localStorage.setItem(API_URL_KEY, url.trim().replace(/\/+$/, ""));
+    else localStorage.removeItem(API_URL_KEY);
+  } catch {
+    /* storage may be unavailable */
+  }
+}
 
 const TOKEN_KEY = "onestats.session";
 
@@ -54,9 +74,9 @@ async function request<T>(
   }
   let resp: Response;
   try {
-    resp = await fetch(`${BASE_URL}${path}`, { method: opts.method ?? "GET", headers, body });
+    resp = await fetch(`${getApiBase()}${path}`, { method: opts.method ?? "GET", headers, body });
   } catch {
-    throw new ApiError(`Cannot reach the OneStats backend at ${BASE_URL}. Is it running?`);
+    throw new ApiError(`Cannot reach the OneStats backend at ${getApiBase()}. Is it running?`);
   }
   if (resp.status === 204) return undefined as T;
   let data: unknown = null;
@@ -906,7 +926,7 @@ export interface Warnings {
 }
 
 export const api = {
-  baseUrl: BASE_URL,
+  baseUrl: getApiBase(),
   health: () => request<{ status: string; version: string; env: string }>("/api/v1/health", { auth: false }),
 
   // auth / setup
@@ -965,7 +985,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${workspaceId}/branding/logo`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${workspaceId}/branding/logo`, { headers });
     if (!resp.ok) return null;
     return URL.createObjectURL(await resp.blob());
   },
@@ -1113,7 +1133,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/people/${id}/profile.pdf`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/people/${id}/profile.pdf`, { headers });
     if (!resp.ok) throw new ApiError(`Profile PDF failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1125,7 +1145,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/people/photos/${photoId}/file`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/people/photos/${photoId}/file`, { headers });
     if (!resp.ok) throw new ApiError(`photo ${resp.status}`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1280,7 +1300,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/research/sources/${id}/file`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/research/sources/${id}/file`, { headers });
     if (!resp.ok) throw new ApiError(`Could not load document (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1314,7 +1334,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/media/assets/${id}/thumbnail`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/media/assets/${id}/thumbnail`, { headers });
     if (!resp.ok) throw new ApiError(`thumbnail ${resp.status}`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1343,7 +1363,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/pdf${qs2 ? `?${qs2}` : ""}`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/stats/reports/${report}/pdf${qs2 ? `?${qs2}` : ""}`, { headers });
     if (!resp.ok) throw new ApiError(`PDF export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1356,7 +1376,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/reports/${report}/csv${qs2 ? `?${qs2}` : ""}`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/stats/reports/${report}/csv${qs2 ? `?${qs2}` : ""}`, { headers });
     if (!resp.ok) throw new ApiError(`CSV export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1375,14 +1395,14 @@ export const api = {
     request<{ refreshed: number }>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
   publicationExport: (w: string, id: string) =>
     request<{ files: Record<string, string> }>(`/api/v1/workspaces/${w}/publications/${id}/export`),
-  publicPreviewUrl: (path: string) => `${BASE_URL}${path}`,
+  publicPreviewUrl: (path: string) => `${getApiBase()}${path}`,
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),
   statsCatalogueIndexUrl: async (w: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/stats/catalogue/index.pdf`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/stats/catalogue/index.pdf`, { headers });
     if (!resp.ok) throw new ApiError(`Catalogue index failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
@@ -1405,7 +1425,7 @@ export const api = {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${BASE_URL}/api/v1/workspaces/${w}/records/book/pdf`, { headers });
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/records/book/pdf`, { headers });
     if (!resp.ok) throw new ApiError(`Record book export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },

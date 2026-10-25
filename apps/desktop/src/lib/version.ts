@@ -1,3 +1,7 @@
-/** Application version for display. Kept in sync with package.json / tauri.conf.json. */
-export const APP_VERSION = "0.1.0";
-export const PHASE = "Phase 2 — Foundation";
+/**
+ * Single source of the application version shown in-app (About / Sidebar), matched to the Tauri bundle
+ * version (`src-tauri/tauri.conf.json`) and `package.json`. Bump all three together on a release; record
+ * the change in docs/RELEASE_NOTES.md.
+ */
+export const APP_VERSION = "1.0.0-beta.1";
+export const PHASE = "Phase 17 — Release";

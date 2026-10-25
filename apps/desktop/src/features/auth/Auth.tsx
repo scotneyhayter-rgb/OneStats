@@ -6,6 +6,7 @@ import { useAuth } from "../../lib/auth";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { ErrorState } from "../../components/states/States";
+import { ConnectionSettings } from "../settings/ConnectionSettings";
 
 function AuthShell({ title, subtitle, icon, children }: {
   title: string; subtitle: string; icon: ReactNode; children: ReactNode;
@@ -138,8 +139,11 @@ export function BackendDown({ message }: { message: string }) {
   const { refresh } = useAuth();
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-3">
         <ErrorState message={message} onRetry={() => void refresh()} />
+        <Card><CardContent className="py-4">
+          <ConnectionSettings />
+        </CardContent></Card>
       </div>
     </div>
   );
