@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
     # Research source documents (newspaper scans, PDFs, photographs) — larger than logos.
     max_source_bytes: int = Field(default=30_000_000)  # 30 MB
+    # Media archive originals (Phase 11) — preserved at original quality.
+    max_media_bytes: int = Field(default=60_000_000)  # 60 MB
+    # --- OneVault integration (Phase 11) — OPTIONAL. OneStats runs fully without it. ---
+    # The adapter stays interface-only (reports unavailable) unless a REAL OneVault API is configured
+    # AND explicitly marked verified. No OneVault API is assumed; the separate OneVault app is untouched.
+    onevault_api_url: str | None = Field(default=None)
+    onevault_verified: bool = Field(default=False)
 
     # --- AutoSync connectors (Phase 9) — secrets from env/.env, never committed ---
     # PlayHQ public API key (a UUID "Client ID") and tenant short-name (e.g. 'ca' for cricket).
