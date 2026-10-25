@@ -513,24 +513,32 @@ def preview_batch(conn: Connection, batch_id: UUID) -> dict[str, Any]:
 # --------------------------------------------------------------------------- promote
 
 
-def _find_canonical_by_source(conn: Connection, table: str, fk_col: str, source_ref: str) -> UUID | None:
-    """Existing canonical id for a CS source_ref via the entity's source-identity table."""
+def _find_canonical_by_source(
+    conn: Connection, table: str, fk_col: str, source_ref: str, source_system: str = SOURCE_SYSTEM
+) -> UUID | None:
+    """Existing canonical id for a source_ref via the entity's source-identity table, scoped to the
+    batch's ``source_system`` (so each source resolves against its own identities)."""
     return conn.execute(
         text(
             f"SELECT {fk_col} FROM {table} WHERE source_system = :ss AND source_ref = :sr LIMIT 1"
         ),
-        {"ss": SOURCE_SYSTEM, "sr": source_ref},
+        {"ss": source_system, "sr": source_ref},
     ).scalar_one_or_none()
 
 
-def _get_or_create_import_competition(conn: Connection, workspace_id: UUID, actor: str) -> UUID:
-    existing = _find_canonical_by_source(conn, "competition_source_identity", "competition_id", _IMPORT_COMP_REF)
+def _get_or_create_import_competition(
+    conn: Connection, workspace_id: UUID, actor: str, source_system: str = SOURCE_SYSTEM,
+) -> UUID:
+    existing = _find_canonical_by_source(
+        conn, "competition_source_identity", "competition_id", _IMPORT_COMP_REF, source_system)
     if existing is not None:
         return existing
+    # the per-source container that holds grades imported from this source's divisions
+    label = "Cricket Statz Import" if source_system == SOURCE_SYSTEM else f"{source_system} Import"
     return competitions.create_competition(
-        conn, workspace_id, actor, name="Cricket Statz Import",
-        notes="Container for grades imported from Cricket Statz divisions.",
-        source_system=SOURCE_SYSTEM, source_ref=_IMPORT_COMP_REF,
+        conn, workspace_id, actor, name=label,
+        notes=f"Container for grades imported from {source_system}.",
+        source_system=source_system, source_ref=_IMPORT_COMP_REF,
     )
 
 
@@ -554,6 +562,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         raise ValueError("batch_not_found")
     if batch["status"] in ("cancelled", "promoted"):
         raise ValueError(f"batch_{batch['status']}")
+    ss = batch.get("source_system") or SOURCE_SYSTEM   # resolve identities against THIS source
 
     _SCORE = ("innings", "batting_entry", "bowling_entry", "fall_of_wicket", "partnership")
     created = {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **{k: 0 for k in _SCORE}}
@@ -567,14 +576,14 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # clubs -> organisation
     for rec in promotable("club"):
         norm = rec["normalised"] or {}
-        existing = _find_canonical_by_source(conn, "organisation_source_identity", "organisation_id", rec["source_ref"])
+        existing = _find_canonical_by_source(conn, "organisation_source_identity", "organisation_id", rec["source_ref"], ss)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["club"] += 1
             continue
         oid = organisations.create_organisation(
             conn, workspace_id, actor, name=norm.get("name") or "(unnamed club)", kind="club",
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=ss, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=oid)
         created["club"] += 1
@@ -582,14 +591,14 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # venues
     for rec in promotable("venue"):
         norm = rec["normalised"] or {}
-        existing = _find_canonical_by_source(conn, "venue_source_identity", "venue_id", rec["source_ref"])
+        existing = _find_canonical_by_source(conn, "venue_source_identity", "venue_id", rec["source_ref"], ss)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["venue"] += 1
             continue
         vid = venues.create_venue(
             conn, workspace_id, actor, name=norm.get("name") or "Unknown venue",
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=ss, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=vid)
         created["venue"] += 1
@@ -598,7 +607,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     comp_id: UUID | None = None
     confident_divs = promotable("division")
     if confident_divs:
-        comp_id = _get_or_create_import_competition(conn, workspace_id, actor)
+        comp_id = _get_or_create_import_competition(conn, workspace_id, actor, ss)
     for rec in confident_divs:
         norm = rec["normalised"] or {}
         existing = conn.execute(
@@ -611,7 +620,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
             continue
         gid = competitions.create_grade(
             conn, workspace_id, actor, comp_id, name=norm.get("name") or "(grade)",
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=ss, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=gid)
         created["division"] += 1
@@ -619,19 +628,19 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # teams -> team (needs its club promoted/matched first)
     for rec in promotable("team"):
         norm = rec["normalised"] or {}
-        existing = _find_canonical_by_source(conn, "team_source_identity", "team_id", rec["source_ref"])
+        existing = _find_canonical_by_source(conn, "team_source_identity", "team_id", rec["source_ref"], ss)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["team"] += 1
             continue
         club_ref = norm.get("club_source_ref")
-        org_id = _find_canonical_by_source(conn, "organisation_source_identity", "organisation_id", club_ref) if club_ref else None
+        org_id = _find_canonical_by_source(conn, "organisation_source_identity", "organisation_id", club_ref, ss) if club_ref else None
         if org_id is None:
             _flag(conn, rec["id"], "club_not_promoted: team left staged")
             continue
         tid = teams.create_team(
             conn, workspace_id, actor, organisation_id=org_id, name=norm.get("name") or "(team)",
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=ss, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=tid)
         created["team"] += 1
@@ -644,21 +653,21 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # label NEVER classifies the match: classification stays 'unclassified'/unverified for admin.
     promotable_matches = promotable("match")
     if promotable_matches and comp_id is None:
-        comp_id = _get_or_create_import_competition(conn, workspace_id, actor)
+        comp_id = _get_or_create_import_competition(conn, workspace_id, actor, ss)
     for rec in promotable_matches:
         norm = rec["normalised"] or {}
         existing = conn.execute(
             text("SELECT id FROM match WHERE source_system = :ss AND source_ref = :sr"),
-            {"ss": SOURCE_SYSTEM, "sr": rec["source_ref"]},
+            {"ss": ss, "sr": rec["source_ref"]},
         ).scalar_one_or_none()
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["match"] += 1
             continue
 
-        def _resolve(table: str, fk: str, key: str, _norm: dict[str, Any] = norm) -> UUID | None:
+        def _resolve(table: str, fk: str, key: str, _norm: dict[str, Any] = norm, _ss: str = ss) -> UUID | None:
             ref = _norm.get(key)
-            return _find_canonical_by_source(conn, table, fk, ref) if ref else None
+            return _find_canonical_by_source(conn, table, fk, ref, _ss) if ref else None
 
         home_id = _resolve("team_source_identity", "team_id", "home_team_source_ref")
         away_id = _resolve("team_source_identity", "team_id", "away_team_source_ref")
@@ -670,16 +679,16 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
             conn, workspace_id, actor, competition_id=comp_id, grade_id=grade_id, venue_id=venue_id,
             match_date=match_date, date_precision="exact" if match_date else "unknown",
             round=norm.get("round"), matchtype=norm.get("matchtype_label"),
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=ss, source_ref=rec["source_ref"],
         )
         # Resolve match-specific captains/keepers to people (0/absent → unset; never invented).
         # A single player named as both captain and keeper keeps both roles distinctly.
-        home_captain = _person_by_source(conn, norm.get("home_captain_source_ref"))
-        home_keeper = _person_by_source(conn, norm.get("home_keeper_source_ref"))
-        home_keeper2 = _person_by_source(conn, norm.get("home_keeper2_source_ref"))
-        away_captain = _person_by_source(conn, norm.get("away_captain_source_ref"))
-        away_keeper = _person_by_source(conn, norm.get("away_keeper_source_ref"))
-        away_keeper2 = _person_by_source(conn, norm.get("away_keeper2_source_ref"))
+        home_captain = _person_by_source(conn, norm.get("home_captain_source_ref"), ss)
+        home_keeper = _person_by_source(conn, norm.get("home_keeper_source_ref"), ss)
+        home_keeper2 = _person_by_source(conn, norm.get("home_keeper2_source_ref"), ss)
+        away_captain = _person_by_source(conn, norm.get("away_captain_source_ref"), ss)
+        away_keeper = _person_by_source(conn, norm.get("away_keeper_source_ref"), ss)
+        away_keeper2 = _person_by_source(conn, norm.get("away_keeper2_source_ref"), ss)
         # link the sides that resolved; a missing team leaves that side unset and is flagged
         if home_id is not None:
             matches.set_team(conn, workspace_id, actor, mid, team_id=home_id, is_home=True,
@@ -711,7 +720,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
         created["match"] += 1
 
-    _promote_scorecards(conn, workspace_id, actor, batch_id, created, matched)
+    _promote_scorecards(conn, workspace_id, actor, batch_id, created, matched, ss)
 
     remaining_unresolved = conn.execute(
         text("SELECT count(*) FROM import_staging_record WHERE batch_id = :b AND status IN ('staged','unresolved')"),
@@ -746,13 +755,14 @@ def cancel_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUI
     return {"batch_id": str(batch_id), "status": "cancelled"}
 
 
-def _person_by_source(conn: Connection, ref: str | None) -> UUID | None:
-    """OneStats person_id for a CricketStatz PlayerID (via the people import's source identity)."""
+def _person_by_source(conn: Connection, ref: str | None, source_system: str = SOURCE_SYSTEM) -> UUID | None:
+    """OneStats person_id for a source PlayerID (via the people import's source identity), scoped to
+    the batch's source system."""
     if ref is None:
         return None
     return conn.execute(
         text("SELECT person_id FROM person_source_identity WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),
-        {"ss": SOURCE_SYSTEM, "sr": ref},
+        {"ss": source_system, "sr": ref},
     ).scalar_one_or_none()
 
 
@@ -825,16 +835,16 @@ def backfill_imported_match_details(conn: Connection, workspace_id: UUID, actor:
     return {"sides_updated": sides_updated, "roles_filled": roles_filled, "toss_set": toss_set}
 
 
-def _canonical_by_source(conn: Connection, table: str, ref: str) -> UUID | None:
+def _canonical_by_source(conn: Connection, table: str, ref: str, source_system: str = SOURCE_SYSTEM) -> UUID | None:
     return conn.execute(
         text(f"SELECT id FROM {table} WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),
-        {"ss": SOURCE_SYSTEM, "sr": ref},
+        {"ss": source_system, "sr": ref},
     ).scalar_one_or_none()
 
 
 def _promote_scorecards(
     conn: Connection, wid: UUID, actor: str, batch_id: UUID,
-    created: dict[str, int], matched: dict[str, int],
+    created: dict[str, int], matched: dict[str, int], source_system: str = SOURCE_SYSTEM,
 ) -> None:
     """Promote the staged scorecard body into the existing innings/batting/bowling/FOW models.
 
@@ -852,24 +862,24 @@ def _promote_scorecards(
     # innings -> innings (needs its match promoted/matched; sides linked where teams resolved)
     for rec in staged("innings"):
         norm = rec["normalised"] or {}
-        existing = _canonical_by_source(conn, "innings", rec["source_ref"])
+        existing = _canonical_by_source(conn, "innings", rec["source_ref"], source_system)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["innings"] += 1
             touched_innings.add(existing)
             continue
-        match_id = _canonical_by_source(conn, "match", norm.get("match_source_ref")) if norm.get("match_source_ref") else None
+        match_id = _canonical_by_source(conn, "match", norm.get("match_source_ref"), source_system) if norm.get("match_source_ref") else None
         if match_id is None:
             _flag(conn, rec["id"], "match_unresolved: innings left staged")
             continue
-        bat_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["batting_team_source_ref"]) if norm.get("batting_team_source_ref") else None
-        bowl_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["bowling_team_source_ref"]) if norm.get("bowling_team_source_ref") else None
+        bat_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["batting_team_source_ref"], source_system) if norm.get("batting_team_source_ref") else None
+        bowl_team = _find_canonical_by_source(conn, "team_source_identity", "team_id", norm["bowling_team_source_ref"], source_system) if norm.get("bowling_team_source_ref") else None
         iid = innings.create_innings(
             conn, wid, actor, match_id=match_id, inns_number=norm.get("inns_number") or 1,
             batting_team_id=bat_team, bowling_team_id=bowl_team,
             byes=norm.get("byes"), legbyes=norm.get("legbyes"), wides=norm.get("wides"),
             noballs=norm.get("noballs"), iresult_raw=norm.get("iresult_raw"),
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=source_system, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=iid)
         created["innings"] += 1
@@ -878,27 +888,30 @@ def _promote_scorecards(
     # batting entries -> batting_entry (dismissal TYPE unresolved; raw Howout preserved)
     for rec in staged("batting_entry"):
         norm = rec["normalised"] or {}
-        existing = _canonical_by_source(conn, "batting_entry", rec["source_ref"])
+        existing = _canonical_by_source(conn, "batting_entry", rec["source_ref"], source_system)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["batting_entry"] += 1
             continue
-        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref"), source_system) if norm.get("innings_source_ref") else None
         if inns_id is None:
             _flag(conn, rec["id"], "innings_unresolved: batting entry left staged")
             continue
         eid = batting.create_entry(
             conn, wid, actor, innings_id=inns_id,
-            person_id=_person_by_source(conn, norm.get("batter_source_ref")),
+            person_id=_person_by_source(conn, norm.get("batter_source_ref"), source_system),
             batting_position=norm.get("batting_position"), runs=norm.get("runs"),
             balls_faced=norm.get("balls_faced"), fours=norm.get("fours"), sixes=norm.get("sixes"),
             minutes=norm.get("minutes"),
-            # verified CricketStatz legend; an unmapped code stays NULL (unresolved), raw code kept
-            dismissal_type=map_howout(norm.get("howout_code")),
-            dismissal_source_code=_s(norm.get("howout_code")),
-            bowler_person_id=_person_by_source(conn, norm.get("bowler_source_ref")),
-            fielder_person_id=_person_by_source(conn, norm.get("fielder_source_ref")),
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            # an adapter may pre-map the type (generic sources); else the verified CricketStatz legend
+            # maps the raw code, and an unmapped code stays NULL (unresolved) with the raw code kept.
+            dismissal_type=norm.get("dismissal_type") if norm.get("dismissal_type") is not None
+                            else map_howout(norm.get("howout_code")),
+            dismissal_source_code=_s(norm.get("dismissal_source_code") if norm.get("dismissal_source_code") is not None
+                                     else norm.get("howout_code")),
+            bowler_person_id=_person_by_source(conn, norm.get("bowler_source_ref"), source_system),
+            fielder_person_id=_person_by_source(conn, norm.get("fielder_source_ref"), source_system),
+            source_system=source_system, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=eid)
         created["batting_entry"] += 1
@@ -906,22 +919,22 @@ def _promote_scorecards(
     # bowling entries -> bowling_entry
     for rec in staged("bowling_entry"):
         norm = rec["normalised"] or {}
-        existing = _canonical_by_source(conn, "bowling_entry", rec["source_ref"])
+        existing = _canonical_by_source(conn, "bowling_entry", rec["source_ref"], source_system)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["bowling_entry"] += 1
             continue
-        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref"), source_system) if norm.get("innings_source_ref") else None
         if inns_id is None:
             _flag(conn, rec["id"], "innings_unresolved: bowling entry left staged")
             continue
         eid = bowling.create_entry(
             conn, wid, actor, innings_id=inns_id,
-            person_id=_person_by_source(conn, norm.get("bowler_source_ref")),
+            person_id=_person_by_source(conn, norm.get("bowler_source_ref"), source_system),
             bowling_order=norm.get("bowling_order"), overs_text=norm.get("overs_text"),
             maidens=norm.get("maidens"), runs_conceded=norm.get("runs_conceded"),
             wickets=norm.get("wickets"), wides=norm.get("wides"), noballs=norm.get("noballs"),
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=source_system, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=eid)
         created["bowling_entry"] += 1
@@ -929,21 +942,21 @@ def _promote_scorecards(
     # fall of wickets -> fall_of_wicket (factual; dismissed batter resolved where known)
     for rec in staged("fall_of_wicket"):
         norm = rec["normalised"] or {}
-        existing = _canonical_by_source(conn, "fall_of_wicket", rec["source_ref"])
+        existing = _canonical_by_source(conn, "fall_of_wicket", rec["source_ref"], source_system)
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["fall_of_wicket"] += 1
             continue
-        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref")) if norm.get("innings_source_ref") else None
+        inns_id = _canonical_by_source(conn, "innings", norm.get("innings_source_ref"), source_system) if norm.get("innings_source_ref") else None
         if inns_id is None:
             _flag(conn, rec["id"], "innings_unresolved: fall of wicket left staged")
             continue
         fid = partnerships.create_fow(
             conn, wid, actor, innings_id=inns_id, wicket_number=norm.get("wicket_number"),
             team_score=norm.get("team_score"),
-            dismissed_person_id=_person_by_source(conn, norm.get("dismissed_source_ref")),
+            dismissed_person_id=_person_by_source(conn, norm.get("dismissed_source_ref"), source_system),
             overs_text=norm.get("overs_text"),
-            source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
+            source_system=source_system, source_ref=rec["source_ref"],
         )
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=fid)
         created["fall_of_wicket"] += 1
