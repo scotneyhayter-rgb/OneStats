@@ -9,13 +9,14 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain.records import badges, honours, milestones, records
+from onestats.reports import record_book
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/records", tags=["records"])
 ViewCtx = Annotated[RequestContext, Depends(require_permission("match.view"))]
@@ -77,6 +78,18 @@ def person_milestones(workspace_id: UUID, person_id: UUID, settings: SettingsDep
 def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int = 10) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return milestones.upcoming_for_workspace(conn, workspace_id, window=window)
+
+
+@router.get("/book/pdf")
+def record_book_export(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, sections: str | None = None,
+                       competition_id: UUID | None = None, season_id: UUID | None = None) -> Response:
+    """Club Record Book as a professional multi-section PDF (shared framework; cover page + numbering)."""
+    secs = sections.split(",") if sections else None
+    filters = {k: v for k, v in {"competition_id": competition_id, "season_id": season_id}.items() if v}
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        pdf = record_book.record_book_pdf(conn, settings, workspace_id, sections=secs, filters=filters)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="club-record-book.pdf"'})
 
 
 @router.get("/badges/{person_id}")
