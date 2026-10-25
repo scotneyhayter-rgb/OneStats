@@ -70,7 +70,7 @@ def create_job(
              "max_attempts, progress, created_by) "
              "VALUES (:w, :ss, :k, :sch, :nra, :ma, CAST(:p AS jsonb), :by) RETURNING id"),
         {"w": workspace_id, "ss": source_system, "k": kind, "sch": schedule, "nra": next_run_at,
-         "ma": max_attempts, "p": json.dumps(progress) if progress is not None else None, "by": actor},
+         "ma": max_attempts, "p": json.dumps(progress, default=str) if progress is not None else None, "by": actor},
     ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "autosync.job_created", entity="sync_job",
                       entity_id=str(jid), after={"source_system": source_system, "kind": kind})
@@ -116,7 +116,7 @@ def save_checkpoint(conn: Connection, job_id: UUID, checkpoint: dict[str, Any], 
     conn.execute(
         text("UPDATE sync_job SET checkpoint = CAST(:c AS jsonb), "
              "progress = COALESCE(CAST(:p AS jsonb), progress), updated_at = now() WHERE id = :id"),
-        {"c": json.dumps(checkpoint), "p": json.dumps(progress) if progress is not None else None, "id": job_id},
+        {"c": json.dumps(checkpoint, default=str), "p": json.dumps(progress, default=str) if progress is not None else None, "id": job_id},
     )
 
 
@@ -126,7 +126,7 @@ def complete_job(conn: Connection, workspace_id: UUID, actor: str, job_id: UUID,
         text("UPDATE sync_job SET status = 'succeeded', finished_at = now(), lease_owner = NULL, "
              "lease_expires_at = NULL, progress = COALESCE(CAST(:p AS jsonb), progress), updated_at = now() "
              "WHERE id = :id"),
-        {"p": json.dumps(progress) if progress is not None else None, "id": job_id},
+        {"p": json.dumps(progress, default=str) if progress is not None else None, "id": job_id},
     )
     audit.write_audit(conn, workspace_id, actor, "autosync.job_succeeded", entity="sync_job", entity_id=str(job_id))
     return _row(conn, job_id)
