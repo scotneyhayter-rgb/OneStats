@@ -8,7 +8,7 @@
  */
 
 import {
-  AlertTriangle, ChevronLeft, ClipboardCheck, ClipboardList, Coins, Info, Layers, ListOrdered,
+  AlertTriangle, Check, ChevronLeft, ClipboardCheck, ClipboardList, Coins, Info, Layers, ListOrdered,
   Maximize2, Minimize2, Save, Target, TrendingDown, Trophy, Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -834,7 +834,7 @@ function ExtrasRow({ innings, canManage, onCommit }: { innings: Innings; canMana
   );
 }
 
-function TotalsBar({ totals, innings, canManage, onOfficial }: {
+export function TotalsBar({ totals, innings, canManage, onOfficial }: {
   totals: InningsTotals | null; innings: Innings; canManage: boolean;
   onOfficial: (total: number | null, wickets: number | null, reason: string) => void;
 }) {
@@ -842,23 +842,50 @@ function TotalsBar({ totals, innings, canManage, onOfficial }: {
   const [total, setTotal] = useState("");
   const [wkts, setWkts] = useState("");
   const [reason, setReason] = useState("");
+  const calcTotal = totals?.derived_total ?? null;
+  const calcWkts = totals?.derived_wickets ?? null;
+  const officialSet = innings.official_total !== null;
+  // the common case: the scorecard adds up, so confirm it in one click rather than re-typing it
+  const matchesCalc = officialSet && calcTotal !== null && innings.official_total === calcTotal
+    && (innings.official_wickets ?? null) === (calcWkts ?? null);
+  const openOverride = () => {
+    // prefill the override with the calculated figures so even a correction is minimal typing
+    setTotal(calcTotal !== null ? String(calcTotal) : (officialSet ? String(innings.official_total) : ""));
+    setWkts(calcWkts !== null ? String(calcWkts) : (innings.official_wickets !== null ? String(innings.official_wickets) : ""));
+    setReason("");
+    setOpen(true);
+  };
   return (
     <div className="flex flex-col gap-2">
       <SubtleBar>
         <span className="text-muted-foreground">Extras: <span className="text-foreground tabular-nums">{showNum(totals?.extras_total ?? null)}</span></span>
         <span className="text-muted-foreground">Batting runs: <span className="text-foreground tabular-nums">{showNum(totals?.batting_runs ?? null)}</span></span>
-        <span className="text-muted-foreground">Calculated total: <span className="text-brand tabular-nums">{showNum(totals?.derived_total ?? null)}</span></span>
-        <span className="text-muted-foreground">Calculated wkts: <span className="text-brand tabular-nums">{showNum(totals?.derived_wickets ?? null)}</span></span>
-        <span className="text-muted-foreground">Official: <span className={`tabular-nums ${innings.official_total !== null ? "text-success" : "italic text-muted-foreground"}`}>
-          {innings.official_total !== null ? `${innings.official_total}/${showNum(innings.official_wickets)}` : "—"}</span></span>
-        {canManage && <button className="ml-auto text-xs font-medium text-brand hover:underline" onClick={() => setOpen((v) => !v)}>{open ? "Cancel" : "Record official total"}</button>}
+        <span className="text-muted-foreground">Calculated total: <span className="text-brand tabular-nums">{showNum(calcTotal)}</span></span>
+        <span className="text-muted-foreground">Calculated wkts: <span className="text-brand tabular-nums">{showNum(calcWkts)}</span></span>
+        <span className="text-muted-foreground">Official: <span className={`tabular-nums ${officialSet ? "text-success" : "italic text-muted-foreground"}`}>
+          {officialSet ? `${innings.official_total}/${showNum(innings.official_wickets)}` : "—"}</span></span>
+        {canManage && (
+          <div className="ml-auto flex items-center gap-3">
+            {matchesCalc ? (
+              <span className="flex items-center gap-1 text-xs text-success"><Check className="h-3.5 w-3.5" aria-hidden /> Confirmed from scorecard</span>
+            ) : calcTotal !== null && (
+              <Button size="sm" onClick={() => onOfficial(calcTotal, calcWkts, "Confirmed from scorecard")}>
+                <Check className="h-4 w-4" aria-hidden /> Confirm total {calcTotal}/{showNum(calcWkts)}
+              </Button>
+            )}
+            <button className="text-xs font-medium text-brand hover:underline" onClick={() => (open ? setOpen(false) : openOverride())}>
+              {open ? "Cancel" : calcTotal !== null ? "Different total" : "Record official total"}
+            </button>
+          </div>
+        )}
       </SubtleBar>
       {open && canManage && (
         <div className="flex flex-wrap items-end gap-2 rounded-[var(--radius-app)] border border-border bg-card p-3">
+          <p className="w-full text-xs text-muted-foreground">Use this only when the scoresheet's official total differs from the card (e.g. an incomplete or amended card). It is kept as the authoritative total alongside the calculated one.</p>
           <label className="flex flex-col gap-1 text-xs">Total<input value={total} onChange={(e) => setTotal(e.target.value)} className="w-20 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
           <label className="flex flex-col gap-1 text-xs">Wickets<input value={wkts} onChange={(e) => setWkts(e.target.value)} className="w-20 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
           <label className="flex flex-col gap-1 text-xs">Reason / evidence<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. RMCC scorebook p.4" className="w-56 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm" /></label>
-          <Button size="sm" onClick={() => { const t = /^\d+$/.test(total.trim()) ? Number(total) : null; const wv = /^\d+$/.test(wkts.trim()) ? Number(wkts) : null; onOfficial(t, wv, reason); setOpen(false); }}>
+          <Button size="sm" onClick={() => { const t = /^\d+$/.test(total.trim()) ? Number(total) : null; const wv = /^\d+$/.test(wkts.trim()) ? Number(wkts) : null; onOfficial(t, wv, reason || "Entered from scoresheet"); setOpen(false); }}>
             <Save className="h-4 w-4" aria-hidden /> Save official
           </Button>
         </div>
