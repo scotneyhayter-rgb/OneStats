@@ -8,10 +8,31 @@ _Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0033
 ## Verified test evidence (last run)
 | Suite | Result | Command |
 |---|---|---|
-| Backend (pytest) | **355 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
-| Desktop (vitest) | **42 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+| Backend (pytest) | **360 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
+| Desktop (vitest) | **52 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
 
-## Phase 7 — Validation, Integrity & Automatic Scorecard Intelligence (in progress)
+The 2 skipped backend tests are `test_auth_service.py::test_bootstrap_creates_super_admin_with_valid_token`
+and `::test_bootstrap_rejects_bad_token` — they exercise first-super-admin bootstrap, which only runs
+when no super-admin exists. The dev DB already has one (`setup_required()` is False), so they skip by
+design; the logic runs and is covered on a fresh DB (e.g. CI). Not a gap.
+
+## Phase 7 — Validation, Integrity & Automatic Scorecard Intelligence — ✅ ACCEPTED (UAT complete 2026-10-25)
+
+Manual acceptance (12-test checklist, [46](46-phase7-acceptance.md)) completed in the Sandbox: Tests
+1–11 confirmed by the user; Test 12 (workspace isolation) is enforced by FORCE RLS and covered by
+automated isolation tests. Defects found during acceptance were fixed and re-tested:
+
+| Fix | Commit |
+|---|---|
+| Import CricketStatz captains & wicketkeepers (per match; both-roles; backfill) | `1955540` |
+| Import CricketStatz toss winner (home/away code; decision left unknown) | `a1e8afd` |
+| FOW/partnership batter selectors always offer this innings' batters (fill-ins); inline advisory highlights (decreasing FOW score, duplicate wicket, out-of-order/duplicate batter) | `dbe0479` |
+| One-click "Confirm total" on the official-total bar (override preserved) | `deb0b3e` |
+| Sentence-case the match Result dropdown options | `6169875` |
+| Match date field no longer flashes/resets while editing (commit on blur) | `b6f7563` |
+| Setting a competition's season rule back-fills existing matches' seasons | `54fa97e` |
+
+## Phase 7 — stage implementation (all ✅ done)
 | Stage | Status |
 |---|---|
 | 7.2 Automatic partnership generation (no button; on FOW/order/import change) | ✅ done |
@@ -23,11 +44,11 @@ _Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0033
 | 7.1 Validation aggregation + Scorecard Approval workflow (draft/awaiting/approved/rejected) | ✅ done |
 | 7.8 Automatic recalculation framework (approved-only, idempotent ledger) | ✅ done |
 | 7.9 Import integrity (end-to-end preservation test) | ✅ done |
-| 7.10 Comprehensive tests (355 backend + 42 desktop across all stages) | ✅ done |
-| 7.11 Manual acceptance checklist ([46](46-phase7-acceptance.md)) | ✅ ready for your UAT |
+| 7.10 Comprehensive tests (360 backend + 52 desktop across all stages) | ✅ done |
+| 7.11 Manual acceptance checklist ([46](46-phase7-acceptance.md)) | ✅ accepted (UAT complete) |
 | Player-selector **club scoping** (fill-in discoverable) | ✅ done |
 
-**Phase 7: implementation + automated tests complete — awaiting user acceptance testing.**
+**Phase 7: implementation, automated tests AND user acceptance complete.**
 
 **Known limitations (deferred to later phases, by scope):**
 - Competition **points/ladders** architecture exists (`playing_conditions`); the user-friendly
@@ -45,8 +66,10 @@ _Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0033
 | 3 | Workspaces, Onboarding & Permissions | ✅ Complete |
 | 4 | Clubs, Associations & Competitions | ✅ Complete |
 | 5 | People & Profiles | ✅ Complete |
-| **6** | **Matches & Scorecard Entry** | **🔄 In progress — Stage 7 under testing (NOT approved); Stage 8 not begun** |
-| 7–18 | Validation → … → RMCC Trial | ⏳ Future |
+| **6** | **Matches & Scorecard Entry** | **✅ Complete (manual entry + CricketStatz import accepted)** |
+| **7** | **Validation, Integrity & Automatic Scorecard Intelligence** | **✅ Complete — user-accepted 2026-10-25** |
+| **8** | **Universal Third-Party Import Framework** | **🔄 In progress — design ([47](47-phase8-import-framework.md)); authorised 2026-10-25** |
+| 9–18 | AutoSync → … → RMCC Trial | ⏳ Future |
 
 ## Phase 6 stage detail
 | Stage | Scope | Status |

@@ -1,5 +1,13 @@
 # Phase 7 — Manual Acceptance Checklist (Stage 7.11)
 
+> **Status: ACCEPTED — 2026-10-25.** Walked through in the OneStats Sandbox. Tests 1–11 confirmed by
+> the user; Test 12 (workspace isolation) is enforced by FORCE RLS and covered by automated isolation
+> tests. Defects found during acceptance were fixed and re-tested (captains/keepers import; toss
+> import; FOW batter scoping + inline advisory highlights; one-click confirm-total; Result dropdown
+> capitalisation; match-date field flashing; season back-fill on rule change). See the Development
+> Dashboard for the commit list. Final suites green: 360 backend / 52 desktop.
+
+
 For a non-technical reviewer, in the **OneStats Sandbox** workspace. No production or other
 workspace records are modified. Start the app and backend (see below), sign in, open the Sandbox.
 
