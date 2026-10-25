@@ -19,6 +19,7 @@ from typing import Any
 from onestats.domain.importing.adapter import SourceAdapter, register_adapter
 from onestats.domain.importing.mapping import FieldRule, MappingTemplate, slugify
 from onestats.domain.importing.model import (
+    CanonicalClub,
     CanonicalCompetition,
     CanonicalDataset,
     CanonicalGrade,
@@ -88,6 +89,7 @@ class CsvScorecardAdapter(SourceAdapter):
         overrides = mapping or {}
         ds = CanonicalDataset(provenance=SourceProvenance(source_system=self.format_id))
         teams: dict[str, CanonicalTeam] = {}
+        clubs: dict[str, CanonicalClub] = {}
         comps: dict[str, CanonicalCompetition] = {}
         grades: dict[str, CanonicalGrade] = {}
         venues: dict[str, CanonicalVenue] = {}
@@ -98,10 +100,19 @@ class CsvScorecardAdapter(SourceAdapter):
                 bucket[ref] = make(ref, name)
             return ref
 
+        def _team_ref(name: str | None) -> str | None:
+            # a match-summary CSV has no clubs; treat each team's name as its own club so the team can
+            # be promoted (club cricket: the team and its club share a name). No identity is invented.
+            ref = slugify(name)
+            if ref and ref not in teams:
+                clubs.setdefault(ref, CanonicalClub(source_ref=ref, name=name))
+                teams[ref] = CanonicalTeam(source_ref=ref, name=name, club_ref=ref, source_display_name=name)
+            return ref
+
         for row in raw:
             v = MATCH_SUMMARY.apply(row, overrides=overrides)
-            home_ref = _ref(teams, v["home_team"], lambda r, n: CanonicalTeam(source_ref=r, name=n, source_display_name=n))
-            away_ref = _ref(teams, v["away_team"], lambda r, n: CanonicalTeam(source_ref=r, name=n, source_display_name=n))
+            home_ref = _team_ref(v["home_team"])
+            away_ref = _team_ref(v["away_team"])
             comp_ref = _ref(comps, v["competition"], lambda r, n: CanonicalCompetition(source_ref=r, name=n))
             grade_ref = _ref(grades, v["grade"], lambda r, n: CanonicalGrade(source_ref=r, name=n))
             venue_ref = _ref(venues, v["venue"], lambda r, n: CanonicalVenue(source_ref=r, name=n))
@@ -119,6 +130,7 @@ class CsvScorecardAdapter(SourceAdapter):
                 result_type=_result(result_raw),
                 result_status="known" if _result(result_raw) else "unresolved",
             ))
+        ds.clubs = list(clubs.values())
         ds.teams = list(teams.values())
         ds.competitions = list(comps.values())
         ds.grades = list(grades.values())
