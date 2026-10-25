@@ -336,6 +336,68 @@ export interface CricketStatzImportResult {
   people: { detected?: { matched: number; possible_existing: number; new: number }; promoted?: { created: Record<string, number>; linked: Record<string, number> } };
   promoted?: { created: Record<string, number>; matched: Record<string, number>; status: string };
 }
+export interface AutoSyncDashboard {
+  sources: number;
+  pending_review: number;
+  new_matches: number;
+  possible_duplicates: number;
+  updated_scorecards: number;
+  jobs_running: number;
+  jobs_failed: number;
+  coverage: Record<string, number>;
+  last_success_at: string | null;
+}
+export interface AutoSyncConnector {
+  connector_id: string;
+  provider: string;
+  status: string;
+  access_method: string | null;
+  countries: string[];
+  formats: string[];
+  coverage: string | null;
+  auth_required: boolean;
+  version: string;
+  notes: string | null;
+}
+export interface SyncSource {
+  id: string;
+  connector_id: string;
+  name: string;
+  provider: string | null;
+  access_method: string | null;
+  reliability: string;
+  enabled: boolean;
+  last_success_at: string | null;
+  auth_required: boolean;
+}
+export interface SyncJob {
+  id: string;
+  source_system: string;
+  kind: string;
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+}
+export interface DiscoveryItem {
+  id: string;
+  source_system: string;
+  source_ref: string;
+  kind: string;
+  classification: string;
+  status: string;
+  confidence: number | null;
+  match_id: string | null;
+  candidate: Record<string, unknown> | null;
+  proposed_changes: Record<string, unknown> | null;
+}
+export interface DiscoveryCoverage {
+  id: string;
+  scope_key: string;
+  status: string;
+  matches_found: number;
+  searched_at: string | null;
+}
 export interface MatchSource {
   id: string;
   source_system: string;
@@ -778,6 +840,25 @@ export const api = {
     w: string,
     body: { content?: string; content_base64?: string; filename?: string; format_id?: string; commit: boolean },
   ) => request<GenericImportResult>(`/api/v1/workspaces/${w}/imports/generic`, { method: "POST", body }),
+
+  // --- Phase 9: AutoSync ---
+  autosyncDashboard: (w: string) => request<AutoSyncDashboard>(`/api/v1/workspaces/${w}/autosync/dashboard`),
+  autosyncConnectors: (w: string) => request<AutoSyncConnector[]>(`/api/v1/workspaces/${w}/autosync/connectors`),
+  autosyncSources: (w: string) => request<SyncSource[]>(`/api/v1/workspaces/${w}/autosync/sources`),
+  autosyncAddSource: (w: string, body: Record<string, unknown>) =>
+    request<SyncSource>(`/api/v1/workspaces/${w}/autosync/sources`, { method: "POST", body }),
+  autosyncSetSourceEnabled: (w: string, id: string, enabled: boolean) =>
+    request<SyncSource>(`/api/v1/workspaces/${w}/autosync/sources/${id}?enabled=${enabled}`, { method: "PATCH" }),
+  autosyncSyncNow: (w: string, body: { source_system: string; kind?: string }) =>
+    request<{ ran: boolean; job: SyncJob }>(`/api/v1/workspaces/${w}/autosync/sync-now`, { method: "POST", body }),
+  autosyncReview: (w: string) => request<DiscoveryItem[]>(`/api/v1/workspaces/${w}/autosync/review`),
+  autosyncAccept: (w: string, id: string) =>
+    request<DiscoveryItem>(`/api/v1/workspaces/${w}/autosync/review/${id}/accept`, { method: "POST" }),
+  autosyncReject: (w: string, id: string) =>
+    request<DiscoveryItem>(`/api/v1/workspaces/${w}/autosync/review/${id}/reject`, { method: "POST" }),
+  autosyncBulk: (w: string, body: { item_ids: string[]; action: "accept" | "reject" }) =>
+    request<{ action: string; count: number }>(`/api/v1/workspaces/${w}/autosync/review/bulk`, { method: "POST", body }),
+  autosyncCoverage: (w: string) => request<DiscoveryCoverage[]>(`/api/v1/workspaces/${w}/autosync/coverage`),
 
   // --- Phase 6: matches ---
   listMatches: (

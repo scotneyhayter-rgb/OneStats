@@ -14,6 +14,7 @@ import { Competitions } from "./features/manage/Competitions";
 import { PlayingConditions } from "./features/manage/PlayingConditions";
 import { OrgHistory } from "./features/manage/OrgHistory";
 import { ImportWizard } from "./features/import/ImportWizard";
+import { AutoSync } from "./features/autosync/AutoSync";
 import { useAuth } from "./lib/auth";
 import { LayoutProvider } from "./lib/layout";
 import { WorkspaceProvider } from "./lib/workspace-context";
@@ -41,6 +42,7 @@ function AuthedApp() {
         <Route path="/manage/conditions" element={<PlayingConditions />} />
         <Route path="/manage/history" element={<OrgHistory />} />
         <Route path="/manage/import" element={<ImportWizard />} />
+        <Route path="/manage/autosync" element={<AutoSync />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/statistics" element={<Statistics />} />

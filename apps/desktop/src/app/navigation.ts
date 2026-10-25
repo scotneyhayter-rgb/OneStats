@@ -5,6 +5,7 @@ import {
   GitBranch,
   LayoutDashboard,
   MessageCircleQuestion,
+  RefreshCw,
   Settings,
   SlidersHorizontal,
   Trophy,
@@ -112,5 +113,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/import",
     icon: DatabaseBackup,
     blurb: "Import matches and scorecards from CricketStatz and other sources.",
+  },
+  {
+    key: "autosync",
+    label: "AutoSync",
+    path: "/manage/autosync",
+    icon: RefreshCw,
+    blurb: "Automatically discover new and historical matches and scorecard updates.",
   },
 ];

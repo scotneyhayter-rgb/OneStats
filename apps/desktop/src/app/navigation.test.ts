@@ -38,6 +38,7 @@ describe("club-management navigation (Phase 4, Stage 7)", () => {
       "Playing Conditions",
       "Organisation History",
       "Import Data",
+      "AutoSync",
     ]);
     for (const s of MANAGEMENT_SECTIONS) {
       expect(s.path.startsWith("/manage/")).toBe(true);
