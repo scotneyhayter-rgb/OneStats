@@ -61,7 +61,7 @@ Section: **Statistics** (left sidebar). Each report is one engine; the PDF match
 | 17 | Qualification thresholds | Batting → Min runs (e.g. 500) | `qualified` flag applies; unqualified kept, not deleted |
 | 18 | Approved-only statistics | Create a draft match | It does **not** appear in any statistic |
 | 19 | Report filtering | Apply competition/split/venue | Table updates consistently |
-| 20 | Report Builder | Statistics page (report + filters + sort + export) | Build and export a report (saved configs are a noted follow-up) |
+| 20 | Report Builder | Statistics → Save / open a saved report | Save a report config; reopen it (applies filters); shared vs private; owner-only delete |
 | 21 | On-screen readability | Any report | Right-aligned numerics, fixed decimals, sticky header, sortable |
 | 22 | Portrait PDF export | Batting → Export PDF | A4 portrait, logo/title/date, Page X of Y |
 | 23 | Landscape PDF export | A wide report → Export PDF | Auto-landscape; no clipped columns |

@@ -49,15 +49,12 @@ records + milestones + badges + honours + record book. No critical defects outst
 ## Known limitations & external dependencies
 
 - **OneVault** (Phase 11) — no verified API; the adapter is capability-detected and reports unavailable
-  (not operational). The single external dependency; does not block any independently-testable feature.
-- **Report Builder saved configurations** (Phase 12 §12.17) — the Statistics/Report experience is
-  functional; persisting/reopening/sharing saved report definitions is a noted follow-up.
-- **Association-scale performance** (Phase 12 §12.20) — correctness is served by the pre-aggregated
-  ledger; large-dataset load testing is not yet exercised.
-- **Multi-day first-innings/outright points** — the ladder honours any configured scheme keys; mapping a
-  result into first-innings vs outright categories needs that detail on the result (documented extension).
-- **Visual PDF inspection** — PDFs are asserted to be real multi-page vector documents; a reviewer should
-  visually inspect representative portrait and landscape PDFs during combined acceptance.
+  (not operational). This is the **single** external dependency; it does not block any independently
+  testable feature.
+- The previously-noted Phase 12 follow-ups are now **complete and tested**: saved Report Builder
+  configurations (§12.17, migration 0049), association-scale performance (§12.20, with a real
+  conditional-join optimisation), multi-day first-innings + outright points (§12.12, migration 0050),
+  and representative PDF generation + visual review (provided to the user).
 
 ## Professional report & PDF verification
 

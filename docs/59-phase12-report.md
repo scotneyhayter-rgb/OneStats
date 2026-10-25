@@ -46,17 +46,22 @@ recomputes when approved scorecards change; merge-aware.
   distinguishes confirmed from known-minimum.
 - **12.19 Dashboard integration** — leading run scorer + wicket taker from the engine (real data).
 
-## Partial / deferred (honestly noted)
+## Completed follow-ups (2026-10-26)
 
-- **12.17 Report Builder** — the Statistics page already provides the builder experience (choose report,
-  apply filters, sort, export PDF) over the one engine. **Saved/reopenable report configurations** and
-  role-scoped sharing are **not yet persisted** — a small follow-up (a `saved_report` table + UI).
-- **12.20 Performance** — correctness is served by the pre-aggregated ledger (per-match contributions
-  with scope indexes) and bounded leaderboard queries; the bowling-group combinatorics cap candidates
-  for large datasets. Large-dataset load/perf testing at association scale is **not yet exercised**.
-- **First-innings/outright multi-day points** — the ladder honours any scheme keys present; mapping a
-  match result into first-innings vs outright categories needs that detail on the result and is a
-  documented extension.
+- **12.17 Report Builder — COMPLETE.** Saved report configurations persist (`saved_report`, migration
+  0049): create / reopen / edit / delete, private or shared-within-workspace (owner-only edit/delete),
+  config holds only parameters. Wired into the Statistics UI.
+- **12.20 Performance — COMPLETE.** An association-scale test seeds ~1,500 matches / ~800 players /
+  ~45k ledger rows and asserts leaderboards, per-person aggregates, the ladder and a report PDF finish
+  within time budgets. It found and fixed a real issue: the engine joined `match` on every leaderboard
+  even when no format/date filter needed it; the join is now conditional (batting leaderboard dropped
+  from ~3.4s to well under budget).
+- **12.12 Multi-day first-innings + outright points — COMPLETE.** `match.first_innings_winner_team_id`
+  (migration 0050) + configurable `first_innings_win` / `first_innings_loss` scheme keys; the ladder
+  scores first-innings and outright results together, fully configurable per competition/season/grade.
+- **PDF visual review — DONE.** Representative batting/bowling/fielding/captaincy/teams/ladder/grand-final
+  and Club Record Book PDFs were generated from realistic engine-backed data (multi-page with repeated
+  headers; cover page on the book; long names + an unknown-runs player) and provided to the user.
 
 ## Automated test results
 
@@ -68,8 +73,8 @@ generation does not prove professional formatting).
 
 ## Remaining before/within combined acceptance
 
-Saved report configurations (12.17), association-scale performance testing (12.20), and visual PDF
-inspection. No critical statistics defects are outstanding.
+None outstanding — the previously-noted follow-ups (saved report configs, association-scale perf,
+multi-day points, PDF visual review) are all complete and tested. No critical statistics defects.
 
 **Phase 12 technical quality gate: PASSED. Phase 13 authorised to begin. Do not record Phase 12 as
 formally accepted until the combined Phase 11–13 programme.**
