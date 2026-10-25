@@ -16,7 +16,7 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import recalc
-from onestats.domain.stats import competition_points, engine, partnerships, reconciliation
+from onestats.domain.stats import competition_points, engine, integrity, partnerships, reconciliation
 from onestats.reports import catalogue
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/stats", tags=["stats"])
@@ -212,6 +212,13 @@ def ladder_export(workspace_id: UUID, competition_id: UUID, settings: SettingsDe
         pdf = catalogue.ladder_pdf(conn, settings, workspace_id, competition_id, season_id=season_id, grade_id=grade_id)
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="ladder.pdf"'})
+
+
+@router.get("/integrity")
+def data_integrity(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """Data-integrity summary: reconciliation issues across approved matches + unknown-data counts."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return integrity.workspace_integrity(conn, workspace_id)
 
 
 @router.get("/matches/{match_id}/reconciliation")

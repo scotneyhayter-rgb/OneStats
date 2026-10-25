@@ -14,7 +14,7 @@ from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import batting, bowling, competitions, matches, people, recalc
 from onestats.domain import innings as inn
-from onestats.domain.stats import engine, reconciliation
+from onestats.domain.stats import engine, integrity, reconciliation
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")
@@ -154,6 +154,16 @@ def test_run_out_reconciliation(conn):
     # unrecorded wickets -> insufficient, not invented
     conn.execute(text("UPDATE innings SET official_wickets = NULL WHERE match_id = :m"), {"m": x["mid"]})
     assert reconciliation.reconcile_match(conn, wid, x["mid"])["innings"][0]["status"] == "insufficient"
+
+
+def test_data_integrity_report(conn):
+    wid = _ws(conn, "ENG INTEG")
+    x = _build(conn, wid)
+    conn.execute(text("UPDATE innings SET official_wickets = 6 WHERE match_id = :m"), {"m": x["mid"]})  # mismatch (4 real)
+    rep = integrity.workspace_integrity(conn, wid)
+    assert rep["approved_matches"] == 1 and rep["reconciliation_mismatches"] == 1 and rep["ok"] is False
+    # bat2 had unknown balls faced -> flagged as unknown-data, never zero
+    assert rep["contributions_with_unknown_batting_balls"] >= 1
 
 
 def test_participation_and_only_approved(conn):
