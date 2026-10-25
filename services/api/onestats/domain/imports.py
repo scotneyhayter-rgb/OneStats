@@ -269,6 +269,18 @@ def parse_and_stage(
             "classification_status": "unresolved",
             "home_points": row.get("homebpoints"),
             "away_points": row.get("awaybpoints"),
+            # Match-specific captains / wicketkeepers (CricketStatz PlayerIDs; 0 = none, never
+            # inferred). Preserved verbatim so promotion can link them to the correct people and so
+            # provenance survives. A player set as both captain and keeper keeps both roles.
+            "home_captain_source_ref": _ref0(row.get("homecaptain1")),
+            "home_keeper_source_ref": _ref0(row.get("homekeeper1")),
+            "home_keeper2_source_ref": _ref0(row.get("homekeeper2")),
+            "away_captain_source_ref": _ref0(row.get("awaycaptain1")),
+            "away_keeper_source_ref": _ref0(row.get("awaykeeper1")),
+            "away_keeper2_source_ref": _ref0(row.get("awaykeeper2")),
+            # Toss winner is a PlayerID in this schema and is absent (0) across the known export;
+            # captured verbatim for provenance, resolved only if a real reference is present.
+            "toss_won_by_source_ref": _ref0(row.get("tosswonby")),
         }
         # Matches are staged structurally only; never promoted in Stage 6 (no canonical match table).
         _insert_record(conn, workspace_id, batch_id, "match", ref, row, norm,
@@ -648,13 +660,25 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
             round=norm.get("round"), matchtype=norm.get("matchtype_label"),
             source_system=SOURCE_SYSTEM, source_ref=rec["source_ref"],
         )
+        # Resolve match-specific captains/keepers to people (0/absent → unset; never invented).
+        # A single player named as both captain and keeper keeps both roles distinctly.
+        home_captain = _person_by_source(conn, norm.get("home_captain_source_ref"))
+        home_keeper = _person_by_source(conn, norm.get("home_keeper_source_ref"))
+        home_keeper2 = _person_by_source(conn, norm.get("home_keeper2_source_ref"))
+        away_captain = _person_by_source(conn, norm.get("away_captain_source_ref"))
+        away_keeper = _person_by_source(conn, norm.get("away_keeper_source_ref"))
+        away_keeper2 = _person_by_source(conn, norm.get("away_keeper2_source_ref"))
         # link the sides that resolved; a missing team leaves that side unset and is flagged
         if home_id is not None:
-            matches.set_team(conn, workspace_id, actor, mid, team_id=home_id, is_home=True)
+            matches.set_team(conn, workspace_id, actor, mid, team_id=home_id, is_home=True,
+                             captain_person_id=home_captain, wicketkeeper_person_id=home_keeper,
+                             wicketkeeper2_person_id=home_keeper2)
         else:
             _flag(conn, rec["id"], "home_team_unresolved: match imported without home side")
         if away_id is not None:
-            matches.set_team(conn, workspace_id, actor, mid, team_id=away_id, is_home=False)
+            matches.set_team(conn, workspace_id, actor, mid, team_id=away_id, is_home=False,
+                             captain_person_id=away_captain, wicketkeeper_person_id=away_keeper,
+                             wicketkeeper2_person_id=away_keeper2)
         else:
             _flag(conn, rec["id"], "away_team_unresolved: match imported without away side")
         # preserve the raw CricketStatz result code; set a known winner only where evidence-verified
@@ -713,6 +737,58 @@ def _person_by_source(conn: Connection, ref: str | None) -> UUID | None:
         text("SELECT person_id FROM person_source_identity WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),
         {"ss": SOURCE_SYSTEM, "sr": ref},
     ).scalar_one_or_none()
+
+
+def backfill_match_people(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, int]:
+    """Fill captains/wicketkeepers on already-imported CricketStatz matches from their staged source
+    rows, WITHOUT re-importing and WITHOUT creating or duplicating any people.
+
+    Non-destructive and safe to re-run: a role is set only where the match side currently has it
+    unset (COALESCE), so any manual correction already made by a user is preserved. Source refs of
+    0/absent are left unset — nothing is inferred. A player named as both captain and keeper keeps
+    both roles. Returns how many match sides were updated and how many roles were filled.
+    """
+    rows = conn.execute(
+        text("SELECT r.raw, r.matched_canonical_id AS canonical_id FROM import_staging_record r "
+             "JOIN match m ON m.id = r.matched_canonical_id "
+             "WHERE r.entity_type = 'match' AND r.matched_canonical_id IS NOT NULL "
+             "AND m.source_system = :ss"),
+        {"ss": SOURCE_SYSTEM},
+    ).mappings().all()
+    sides_updated = 0
+    roles_filled = 0
+    for row in rows:
+        raw = row["raw"] or {}
+        mid = row["canonical_id"]
+        for is_home, cap_key, wk_key, wk2_key in (
+            (True, "homecaptain1", "homekeeper1", "homekeeper2"),
+            (False, "awaycaptain1", "awaykeeper1", "awaykeeper2"),
+        ):
+            cap = _person_by_source(conn, _ref0(raw.get(cap_key)))
+            wk = _person_by_source(conn, _ref0(raw.get(wk_key)))
+            wk2 = _person_by_source(conn, _ref0(raw.get(wk2_key)))
+            if cap is None and wk is None and wk2 is None:
+                continue
+            # Only touch a side where a currently-unset role has a resolved person to fill it, so
+            # the operation is genuinely idempotent and never rewrites a value that is already set.
+            res = conn.execute(
+                text("UPDATE match_team SET "
+                     "captain_person_id = COALESCE(captain_person_id, CAST(:cap AS uuid)), "
+                     "wicketkeeper_person_id = COALESCE(wicketkeeper_person_id, CAST(:wk AS uuid)), "
+                     "wicketkeeper2_person_id = COALESCE(wicketkeeper2_person_id, CAST(:wk2 AS uuid)) "
+                     "WHERE match_id = :m AND is_home = :h AND ("
+                     "   (captain_person_id IS NULL AND CAST(:cap AS uuid) IS NOT NULL) "
+                     "OR (wicketkeeper_person_id IS NULL AND CAST(:wk AS uuid) IS NOT NULL) "
+                     "OR (wicketkeeper2_person_id IS NULL AND CAST(:wk2 AS uuid) IS NOT NULL))"),
+                {"cap": cap, "wk": wk, "wk2": wk2, "m": mid, "h": is_home},
+            )
+            if res.rowcount:
+                sides_updated += res.rowcount
+                roles_filled += sum(1 for v in (cap, wk, wk2) if v is not None)
+    audit.write_audit(conn, workspace_id, actor, "import.backfill_match_people", entity="workspace",
+                      entity_id=str(workspace_id),
+                      after={"sides_updated": sides_updated, "roles_filled": roles_filled})
+    return {"sides_updated": sides_updated, "roles_filled": roles_filled}
 
 
 def _canonical_by_source(conn: Connection, table: str, ref: str) -> UUID | None:

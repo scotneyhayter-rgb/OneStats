@@ -25,7 +25,10 @@ PAYLOAD = {
     "venues": [{"GroundID": 10, "Name": "Alpha Oval"}],
     "divisions": [{"GradeID": 50, "Name": "B Grade"}],
     "matches": [{"MatchID": 500, "HomeTeam": 100, "AwayTeam": 200, "DatePlayed": "2024-01-06",
-                 "Ground": 10, "Grade": 50, "Result": 1, "round": "1", "matchtype": 1}],
+                 "Ground": 10, "Grade": 50, "Result": 1, "round": "1", "matchtype": 1,
+                 # home: player 10 is BOTH captain and keeper; away: captain 20, keeper 21
+                 "homecaptain1": 10, "homekeeper1": 10, "homekeeper2": 0,
+                 "awaycaptain1": 20, "awaykeeper1": 21, "awaykeeper2": 0, "tosswonby": 0}],
     "innings": [{"MatchID": 500, "cricket_Innings": [
         {"InningsID": 700, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 200, "iresult": 1,
          "Byes": 4, "Legbyes": 2, "Noballs": 1, "Wides": 3}]}],
@@ -104,3 +107,59 @@ def test_import_preserves_everything_and_feeds_official_stats(conn):
     after = {t: conn.execute(text(f"SELECT count(*) FROM {t}")).scalar_one()
              for t in ("match", "innings", "batting_entry", "bowling_entry", "fall_of_wicket")}
     assert after == before
+
+
+def _person(conn, src_ref):
+    return conn.execute(text("SELECT person_id FROM person_source_identity WHERE source_ref = :r"),
+                        {"r": src_ref}).scalar_one()
+
+
+def test_import_links_captains_and_keepers_per_match(conn):
+    """Captains/wicketkeepers in the source are linked to the correct people and sides, the
+    captain-vs-keeper-vs-both distinction is preserved, and nothing is invented."""
+    wid = _ws(conn, "CAPKEEP")
+    imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=PEOPLE, commit=True)
+    mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '500'")).scalar_one()
+    p10, p20, p21 = _person(conn, "10"), _person(conn, "20"), _person(conn, "21")
+
+    home = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id, wicketkeeper2_person_id "
+                             "FROM match_team WHERE match_id = :m AND is_home = true"), {"m": mid}).mappings().one()
+    # home player 10 is BOTH captain and keeper — both roles kept distinctly, not collapsed
+    assert home["captain_person_id"] == p10 and home["wicketkeeper_person_id"] == p10
+    assert home["wicketkeeper2_person_id"] is None            # 0 in source → unset, never invented
+
+    away = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id FROM match_team "
+                             "WHERE match_id = :m AND is_home = false"), {"m": mid}).mappings().one()
+    assert away["captain_person_id"] == p20 and away["wicketkeeper_person_id"] == p21
+
+
+def test_backfill_fills_missing_roles_without_overwriting_manual_entry(conn):
+    """Already-imported matches gain captains/keepers from their staged source rows without
+    re-importing or duplicating people, and a manual correction is preserved."""
+    wid = _ws(conn, "BACKFILL")
+    imports.controlled_import(conn, wid, ACTOR, data=PAYLOAD, people=PEOPLE, commit=True)
+    mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '500'")).scalar_one()
+    p10, p11, p20, p21 = _person(conn, "10"), _person(conn, "11"), _person(conn, "20"), _person(conn, "21")
+
+    # simulate a pre-fix import (roles never linked) plus one manual correction on the home captain
+    conn.execute(text("UPDATE match_team SET captain_person_id = NULL, wicketkeeper_person_id = NULL, "
+                      "wicketkeeper2_person_id = NULL WHERE match_id = :m"), {"m": mid})
+    conn.execute(text("UPDATE match_team SET captain_person_id = :p WHERE match_id = :m AND is_home = true"),
+                 {"p": p11, "m": mid})   # a human already fixed the home captain to a different player
+
+    people_before = conn.execute(text("SELECT count(*) FROM person")).scalar_one()
+    out = imports.backfill_match_people(conn, wid, ACTOR)
+    assert out["sides_updated"] >= 2
+    assert conn.execute(text("SELECT count(*) FROM person")).scalar_one() == people_before  # no duplicates
+
+    home = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id FROM match_team "
+                             "WHERE match_id = :m AND is_home = true"), {"m": mid}).mappings().one()
+    assert home["captain_person_id"] == p11            # manual correction preserved, not overwritten
+    assert home["wicketkeeper_person_id"] == p10       # missing keeper filled from source
+    away = conn.execute(text("SELECT captain_person_id, wicketkeeper_person_id FROM match_team "
+                             "WHERE match_id = :m AND is_home = false"), {"m": mid}).mappings().one()
+    assert away["captain_person_id"] == p20 and away["wicketkeeper_person_id"] == p21
+
+    # idempotent: a second backfill changes nothing further
+    out2 = imports.backfill_match_people(conn, wid, ACTOR)
+    assert out2["sides_updated"] == 0
