@@ -373,7 +373,10 @@ function MatchDetailsSection({
           </Select>
         </Field>
         <Field label="Date" hint="Leave blank if unknown — never guessed.">
-          <Input type="date" value={match.match_date ?? ""} disabled={!canManage} onChange={(e) => onPatch({ match_date: e.target.value || null })} />
+          {/* commit on blur (not on every change) so the reload never re-renders mid-edit and
+              closes the date picker; keyed to the match so switching matches refreshes the value */}
+          <Input key={match.id} type="date" defaultValue={match.match_date ?? ""} disabled={!canManage}
+            onBlur={(e) => { if ((e.target.value || null) !== match.match_date) onPatch({ match_date: e.target.value || null }); }} />
         </Field>
         <Field label="Format" hint="Playing format only — separate from the statistical classification. Configure the list in Settings.">
           <Select value={match.format ?? ""} disabled={!canManage}
