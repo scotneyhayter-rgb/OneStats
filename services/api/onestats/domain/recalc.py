@@ -39,58 +39,294 @@ def _match_scope(match: dict[str, Any]) -> dict[str, Any]:
             "competition_id": match.get("competition_id")}
 
 
+# --- match context shared by all calculators (home/away, classification, per-team result, keepers) ---
+
+def _home_away(conn: Connection, match_id: UUID) -> tuple[Any, Any]:
+    """(home_team_id, away_team_id) for the match, or (None, None) when not recorded."""
+    rows = conn.execute(
+        text("SELECT team_id, is_home FROM match_team WHERE match_id = :m"), {"m": match_id}
+    ).mappings().all()
+    home = next((r["team_id"] for r in rows if r["is_home"] is True), None)
+    away = next((r["team_id"] for r in rows if r["is_home"] is False), None)
+    return home, away
+
+
+def _team_result(match: dict[str, Any], team_id: Any, home_id: Any) -> str:
+    """This team's result in the match: win|loss|tie|draw|no_result|unknown. A defined-winner forfeit
+    counts as win/loss (per the documented default); abandoned/washout/no_result are no_result; unknown
+    stays unknown (never assumed)."""
+    rt = match.get("result_type")
+    won_by = match.get("won_by_team_id")
+    if rt in ("home_win", "away_win", "forfeit"):
+        if won_by is None:
+            return "unknown"
+        return "win" if str(team_id) == str(won_by) else "loss"
+    if rt == "tie":
+        return "tie"
+    if rt == "draw":
+        return "draw"
+    if rt in ("no_result", "abandoned", "washout"):
+        return "no_result"
+    return "unknown"
+
+
+def _is_grand_final(match: dict[str, Any]) -> bool:
+    return match.get("classification") == "grand_final" or match.get("finals_stage") == "grand_final"
+
+
+def _keepers_by_team(conn: Connection, match_id: UUID) -> dict[str, set]:
+    """Wicketkeeper person ids per team for the match (for keeper-catch classification)."""
+    out: dict[str, set] = {}
+    for r in conn.execute(
+        text("SELECT team_id, wicketkeeper_person_id, wicketkeeper2_person_id FROM match_team WHERE match_id = :m"),
+        {"m": match_id},
+    ).mappings().all():
+        keepers = {str(r[k]) for k in ("wicketkeeper_person_id", "wicketkeeper2_person_id") if r[k] is not None}
+        out[str(r["team_id"])] = keepers
+    return out
+
+
 def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
-    """One batting contribution per person in the match (aggregated across that match's innings)."""
+    """One batting contribution per person in the match. Per-innings figures (highest score, fifties,
+    hundreds, ducks) are derived here so career/season aggregates can sum them without re-reading raw
+    scorecards. ``balls`` is summed only where recorded (a missing balls-faced is unknown, not zero —
+    callers compute strike rate only over recorded balls)."""
     rows = conn.execute(
         text(
-            "SELECT be.person_id, "
-            " count(*) FILTER (WHERE be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent')) AS innings, "
-            " coalesce(sum(be.runs), 0) AS runs, coalesce(sum(be.balls_faced), 0) AS balls, "
-            " coalesce(sum(be.fours), 0) AS fours, coalesce(sum(be.sixes), 0) AS sixes, "
-            f" count(*) FILTER (WHERE be.dismissal_type IS NOT NULL AND be.dismissal_type NOT IN ({_NON_WICKET})) AS dismissed, "
-            " count(*) FILTER (WHERE be.dismissal_type IN ('not_out','retired_not_out')) AS not_out, "
-            " min(i.batting_team_id::text) AS team_id "
+            "SELECT be.person_id AS pid, be.runs AS runs, be.balls_faced AS balls, "
+            " coalesce(be.fours,0) AS fours, coalesce(be.sixes,0) AS sixes, be.dismissal_type AS dt, "
+            " i.batting_team_id AS team_id "
             "FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
             "WHERE i.match_id = :m AND be.person_id IS NOT NULL "
-            "GROUP BY be.person_id"
+            "  AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))"
         ),
         {"m": match["id"]},
     ).mappings().all()
-    out = []
+    home, _ = _home_away(conn, match["id"])
+    gf = _is_grand_final(match)
+    cls = match.get("classification")
+    agg: dict[Any, dict[str, Any]] = {}
     for r in rows:
-        if r["innings"] == 0:  # the person only has did-not-bat rows — not a batting innings
+        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "runs": 0, "balls": 0,
+                                      "balls_known": 0, "fours": 0, "sixes": 0, "dismissed": 0,
+                                      "not_out": 0, "hs": None, "fifties": 0, "hundreds": 0, "ducks": 0})
+        runs = r["runs"] or 0
+        dismissed = r["dt"] is not None and r["dt"] not in NON_WICKET_STATUSES
+        a["innings"] += 1
+        a["runs"] += runs
+        a["fours"] += r["fours"]
+        a["sixes"] += r["sixes"]
+        if r["balls"] is not None:
+            a["balls"] += r["balls"]
+            a["balls_known"] += 1
+        if dismissed:
+            a["dismissed"] += 1
+        if r["dt"] in ("not_out", "retired_not_out"):
+            a["not_out"] += 1
+        if r["runs"] is not None:
+            a["hs"] = runs if a["hs"] is None else max(a["hs"], runs)
+            if runs >= 100:
+                a["hundreds"] += 1
+            elif runs >= 50:
+                a["fifties"] += 1
+            if runs == 0 and dismissed:
+                a["ducks"] += 1
+    out = []
+    for pid, a in agg.items():
+        if a["innings"] == 0:
             continue
-        out.append({"subject_kind": "person", "subject_id": r["person_id"],
-                    "team_id": r["team_id"], **_match_scope(match),
-                    "metrics": {"innings": r["innings"], "runs": r["runs"], "balls": r["balls"],
-                                "fours": r["fours"], "sixes": r["sixes"],
-                                "dismissed": r["dismissed"], "not_out": r["not_out"]}})
+        out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
+                    "metrics": {"innings": a["innings"], "runs": a["runs"], "balls": a["balls"],
+                                "balls_known": a["balls_known"], "fours": a["fours"], "sixes": a["sixes"],
+                                "dismissed": a["dismissed"], "not_out": a["not_out"], "hs": a["hs"],
+                                "fifties": a["fifties"], "hundreds": a["hundreds"], "ducks": a["ducks"],
+                                "match_runs": a["runs"],
+                                "is_home": str(a["team_id"]) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf}})
     return out
 
 
 def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
-    """One bowling contribution per person in the match (aggregated across that match's innings)."""
+    """One bowling contribution per person in the match. Per-innings best bowling (BBI) and five-wicket
+    innings are derived here; ten-wicket-match is the per-match wicket total. Economy is computed by
+    callers from legal balls and the configured over length, never assuming six-ball overs."""
     rows = conn.execute(
         text(
-            "SELECT be.person_id, count(*) AS innings, coalesce(sum(be.legal_balls), 0) AS balls, "
-            " coalesce(sum(be.maidens), 0) AS maidens, coalesce(sum(be.runs_conceded), 0) AS runs, "
-            " coalesce(sum(be.wickets), 0) AS wickets, min(i.bowling_team_id::text) AS team_id "
+            "SELECT be.person_id AS pid, coalesce(be.legal_balls,0) AS balls, be.legal_balls AS balls_raw, "
+            " coalesce(be.maidens,0) AS maidens, coalesce(be.runs_conceded,0) AS runs, "
+            " be.runs_conceded AS runs_raw, coalesce(be.wickets,0) AS wickets, i.bowling_team_id AS team_id "
             "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id "
-            "WHERE i.match_id = :m AND be.person_id IS NOT NULL "
-            "GROUP BY be.person_id"
+            "WHERE i.match_id = :m AND be.person_id IS NOT NULL"
         ),
         {"m": match["id"]},
     ).mappings().all()
-    return [{"subject_kind": "person", "subject_id": r["person_id"], "team_id": r["team_id"],
-             **_match_scope(match),
-             "metrics": {"innings": r["innings"], "balls": r["balls"], "maidens": r["maidens"],
-                         "runs": r["runs"], "wickets": r["wickets"]}} for r in rows]
+    home, _ = _home_away(conn, match["id"])
+    gf = _is_grand_final(match)
+    cls = match.get("classification")
+    agg: dict[Any, dict[str, Any]] = {}
+    for r in rows:
+        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "balls_known": 0,
+                                      "maidens": 0, "runs": 0, "wickets": 0, "five_wkt_innings": 0,
+                                      "bbi_w": -1, "bbi_r": None})
+        a["innings"] += 1
+        a["balls"] += r["balls"]
+        if r["balls_raw"] is not None:
+            a["balls_known"] += 1
+        a["maidens"] += r["maidens"]
+        a["runs"] += r["runs"]
+        a["wickets"] += r["wickets"]
+        if r["wickets"] >= 5:
+            a["five_wkt_innings"] += 1
+        # best bowling in an innings: most wickets, then fewest runs
+        if r["wickets"] > a["bbi_w"] or (r["wickets"] == a["bbi_w"] and a["bbi_r"] is not None
+                                         and r["runs"] < a["bbi_r"]):
+            a["bbi_w"], a["bbi_r"] = r["wickets"], r["runs"]
+    out = []
+    for pid, a in agg.items():
+        out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
+                    "metrics": {"innings": a["innings"], "balls": a["balls"], "balls_known": a["balls_known"],
+                                "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
+                                "five_wkt_innings": a["five_wkt_innings"],
+                                "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],
+                                "ten_wkt_match": 1 if a["wickets"] >= 10 else 0, "match_wickets": a["wickets"],
+                                "is_home": str(a["team_id"]) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf}})
+    return out
 
 
-# registry — future statistical modules append their calculators here (the integration point)
+def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
+    """Fielding/wicketkeeping credits per person from dismissal fielder attribution. A wicketkeeper
+    catch (caught_behind, or a catch where the fielder is the side's keeper) and a stumping are kept
+    as distinct wicketkeeping classifications; run outs are counted separately and never as bowler
+    wickets. Unknown fielders are not credited."""
+    keepers = _keepers_by_team(conn, match["id"])
+    rows = conn.execute(
+        text("SELECT be.fielder_person_id AS pid, be.dismissal_type AS dt, i.bowling_team_id AS team_id "
+             "FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
+             "WHERE i.match_id = :m AND be.fielder_person_id IS NOT NULL "
+             "AND be.dismissal_type IN ('caught','caught_and_bowled','caught_behind','stumped','run_out')"),
+        {"m": match["id"]},
+    ).mappings().all()
+    home, _ = _home_away(conn, match["id"])
+    cls = match.get("classification")
+    gf = _is_grand_final(match)
+    agg: dict[Any, dict[str, Any]] = {}
+    for r in rows:
+        pid, dt, team = r["pid"], r["dt"], r["team_id"]
+        a = agg.setdefault(pid, {"team_id": team, "field_catches": 0, "keeper_catches": 0,
+                                 "stumpings": 0, "run_outs": 0})
+        is_keeper = str(pid) in keepers.get(str(team), set())
+        if dt == "stumped":
+            a["stumpings"] += 1
+        elif dt == "caught_behind" or (dt == "caught" and is_keeper):
+            a["keeper_catches"] += 1
+        elif dt in ("caught", "caught_and_bowled"):
+            a["field_catches"] += 1
+        elif dt == "run_out":
+            a["run_outs"] += 1
+    out = []
+    for pid, a in agg.items():
+        out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
+                    "metrics": {"field_catches": a["field_catches"], "keeper_catches": a["keeper_catches"],
+                                "stumpings": a["stumpings"], "run_outs": a["run_outs"],
+                                # total catches include keeper catches; keeper dismissals kept separate
+                                "catches": a["field_catches"] + a["keeper_catches"],
+                                "keeper_dismissals": a["keeper_catches"] + a["stumpings"],
+                                "is_home": str(a["team_id"]) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf}})
+    return out
+
+
+def _calc_player_captaincy(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
+    """One contribution per credited captain (acting captain if recorded, else captain). Never
+    double-credits a match to two captains for one side; unknown captains are excluded."""
+    home, _ = _home_away(conn, match["id"])
+    cls = match.get("classification")
+    gf = _is_grand_final(match)
+    rows = conn.execute(
+        text("SELECT team_id, captain_person_id, acting_captain_person_id FROM match_team WHERE match_id = :m"),
+        {"m": match["id"]},
+    ).mappings().all()
+    out = []
+    for r in rows:
+        cap = r["acting_captain_person_id"] or r["captain_person_id"]
+        if cap is None:
+            continue  # unknown captain — excluded, never attributed
+        res = _team_result(match, r["team_id"], home)
+        out.append({"subject_kind": "person", "subject_id": cap, "team_id": r["team_id"], **_match_scope(match),
+                    "metrics": {"captained": 1, "win": int(res == "win"), "loss": int(res == "loss"),
+                                "draw": int(res == "draw"), "tie": int(res == "tie"),
+                                "no_result": int(res == "no_result"), "unknown_result": int(res == "unknown"),
+                                "gf_captained": int(gf), "gf_win": int(gf and res == "win"),
+                                "is_home": str(r["team_id"]) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf, "result": res}})
+    return out
+
+
+def _calc_team_result(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
+    """One contribution per team in the match (subject = team): played + result, for team records and
+    streaks. Uses the match date for chronological ordering downstream."""
+    home, _ = _home_away(conn, match["id"])
+    cls = match.get("classification")
+    gf = _is_grand_final(match)
+    rows = conn.execute(text("SELECT team_id FROM match_team WHERE match_id = :m"), {"m": match["id"]}).mappings().all()
+    out = []
+    for r in rows:
+        res = _team_result(match, r["team_id"], home)
+        out.append({"subject_kind": "team", "subject_id": r["team_id"], "team_id": r["team_id"], **_match_scope(match),
+                    "metrics": {"played": 1, "win": int(res == "win"), "loss": int(res == "loss"),
+                                "draw": int(res == "draw"), "tie": int(res == "tie"),
+                                "no_result": int(res == "no_result"), "unknown_result": int(res == "unknown"),
+                                "is_home": str(r["team_id"]) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf, "result": res}})
+    return out
+
+
+def _calc_player_appearance(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
+    """One appearance per person who participated in the match — derived from batting, bowling, fielding
+    credits or being a recorded captain/keeper (no separate participation table). Each person once."""
+    home, _ = _home_away(conn, match["id"])
+    cls = match.get("classification")
+    gf = _is_grand_final(match)
+    rows = conn.execute(
+        text(
+            "SELECT DISTINCT pid, team_id FROM ("
+            " SELECT be.person_id AS pid, i.batting_team_id AS team_id FROM batting_entry be "
+            "   JOIN innings i ON i.id = be.innings_id WHERE i.match_id = :m AND be.person_id IS NOT NULL "
+            "     AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))"
+            " UNION SELECT bo.person_id, i.bowling_team_id FROM bowling_entry bo "
+            "   JOIN innings i ON i.id = bo.innings_id WHERE i.match_id = :m AND bo.person_id IS NOT NULL "
+            " UNION SELECT be.fielder_person_id, i.bowling_team_id FROM batting_entry be "
+            "   JOIN innings i ON i.id = be.innings_id WHERE i.match_id = :m AND be.fielder_person_id IS NOT NULL "
+            " UNION SELECT mt.captain_person_id, mt.team_id FROM match_team mt WHERE mt.match_id = :m AND mt.captain_person_id IS NOT NULL "
+            " UNION SELECT mt.wicketkeeper_person_id, mt.team_id FROM match_team mt WHERE mt.match_id = :m AND mt.wicketkeeper_person_id IS NOT NULL "
+            ") s"
+        ),
+        {"m": match["id"]},
+    ).mappings().all()
+    res_by_team: dict[str, str] = {}
+    out = []
+    for r in rows:
+        team = r["team_id"]
+        key = str(team)
+        if key not in res_by_team:
+            res_by_team[key] = _team_result(match, team, home)
+        res = res_by_team[key]
+        out.append({"subject_kind": "person", "subject_id": r["pid"], "team_id": team, **_match_scope(match),
+                    "metrics": {"matches": 1, "win": int(res == "win"), "loss": int(res == "loss"),
+                                "is_home": str(team) == str(home) if home else None,
+                                "classification": cls, "grand_final": gf, "result": res}})
+    return out
+
+
+# registry — statistical modules append their calculators here (the integration point)
 CALCULATORS: dict[str, Callable[[Connection, dict[str, Any]], list[dict[str, Any]]]] = {
     "player_batting": _calc_player_batting,
     "player_bowling": _calc_player_bowling,
+    "player_fielding": _calc_player_fielding,
+    "player_captaincy": _calc_player_captaincy,
+    "player_appearance": _calc_player_appearance,
+    "team_result": _calc_team_result,
 }
 
 
