@@ -92,6 +92,27 @@ def most_runs_in_a_match(conn: Connection, f: dict[str, Any], *, limit: int = 50
             for r in conn.execute(text(sql), params).mappings()]
 
 
+def best_bowling_in_match(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
+    """Best bowling in a match, ranked by most wickets then FEWEST runs conceded (runs tie-break). Uses
+    verified match-level bowling aggregates; runs are never invented when incomplete. Genuine ties (equal
+    wickets AND runs) are preserved by stable ordering."""
+    where, params = _scope(f)
+    params["lim"] = limit
+    # one row per (player, match): match wickets and match runs conceded (both summed across the match)
+    sql = (f"SELECT {_CANON} AS sid, c.match_id AS mid, "
+           "       max((c.metrics->>'match_wickets')::int) AS wkts, "
+           "       sum((c.metrics->>'runs')::int) AS runs, m.match_date AS d "
+           "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
+           f"WHERE c.calculator = 'player_bowling' AND {where} "
+           f"GROUP BY {_CANON}, c.match_id, m.match_date "
+           "ORDER BY wkts DESC NULLS LAST, runs ASC NULLS LAST LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+             "wickets": int(r["wkts"] or 0), "runs": int(r["runs"]) if r["runs"] is not None else None,
+             "match_date": r["d"].isoformat() if r["d"] else None}
+            for r in conn.execute(text(sql), params).mappings()]
+
+
 def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     where, params = _scope(f)
     params["lim"] = limit
@@ -135,6 +156,86 @@ def most_ducks_inflicted(conn: Connection, f: dict[str, Any], *, limit: int = 50
     names = _names(conn, f["workspace_id"])
     return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"), "count": int(r["n"])}
             for r in conn.execute(text(sql), params).mappings()]
+
+
+def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
+    """Most wicketkeeping dismissals (keeper catches + stumpings) in a single innings. Verified scorecard
+    data only; outfield catches are never counted, and catches/stumpings are not double-counted."""
+    where, params = _scope(f)
+    params["lim"] = limit
+    sql = (
+        "SELECT coalesce(p.merged_into_id, p.id) AS sid, m.match_date AS d, "
+        "  count(*) FILTER (WHERE be.dismissal_type = 'stumped') AS st, "
+        "  count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind') "
+        "                   AND be.fielder_person_id = mt.wicketkeeper_person_id) AS ct "
+        "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+        "JOIN match_team mt ON mt.match_id = m.id AND mt.team_id = i.bowling_team_id "
+        "JOIN person p ON p.id = mt.wicketkeeper_person_id "
+        f"WHERE mt.wicketkeeper_person_id IS NOT NULL AND {where} "
+        "GROUP BY be.innings_id, coalesce(p.merged_into_id, p.id), m.match_date "
+        "HAVING count(*) FILTER (WHERE be.dismissal_type = 'stumped' OR "
+        "  (be.dismissal_type IN ('caught','caught_behind') AND be.fielder_person_id = mt.wicketkeeper_person_id)) > 0 "
+        "ORDER BY (count(*) FILTER (WHERE be.dismissal_type = 'stumped') + "
+        "          count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind') "
+        "                           AND be.fielder_person_id = mt.wicketkeeper_person_id)) DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out = []
+    for r in conn.execute(text(sql), params).mappings():
+        ct, st = int(r["ct"]), int(r["st"])
+        out.append({"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "catches": ct, "stumpings": st, "total": ct + st,
+                    "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
+def captaincy_by_season(conn: Connection, f: dict[str, Any], *, limit: int = 500) -> list[dict[str, Any]]:
+    """Per-season captaincy breakdown (one row per season × captain): results, win %, finals and grand
+    finals, and premierships (grand finals won as captain — verified). From the captaincy ledger."""
+    where, params = _scope({k: v for k, v in f.items() if k != "season_id"})
+    params["lim"] = limit
+    sql = (f"SELECT {_CANON} AS sid, s.label AS season, s.start_date AS sd, "
+           "  sum((c.metrics->>'captained')::int) AS captained, sum((c.metrics->>'win')::int) AS wins, "
+           "  sum((c.metrics->>'loss')::int) AS losses, sum((c.metrics->>'draw')::int) AS draws, "
+           "  sum((c.metrics->>'tie')::int) AS ties, sum((c.metrics->>'no_result')::int) AS no_results, "
+           "  sum((c.metrics->>'gf_captained')::int) AS gf_captained, sum((c.metrics->>'gf_win')::int) AS gf_wins "
+           "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id "
+           "JOIN person p ON p.id = c.subject_id JOIN season s ON s.id = c.season_id "
+           f"WHERE c.calculator = 'player_captaincy' AND {where} "
+           f"GROUP BY {_CANON}, s.label, s.start_date ORDER BY s.start_date NULLS LAST, captained DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out = []
+    for r in conn.execute(text(sql), params).mappings():
+        captained, wins = int(r["captained"] or 0), int(r["wins"] or 0)
+        no_res = int(r["no_results"] or 0)
+        eligible = captained - no_res
+        out.append({"subject_id": str(r["sid"]), "season": r["season"],
+                    "player": names.get(str(r["sid"]), "Unknown"), "captained": captained, "wins": wins,
+                    "losses": int(r["losses"] or 0), "draws": int(r["draws"] or 0), "ties": int(r["ties"] or 0),
+                    "no_results": no_res, "win_pct": round(wins * 100 / eligible, 1) if eligible else None,
+                    "gf_captained": int(r["gf_captained"] or 0), "premierships": int(r["gf_wins"] or 0)})
+    return out
+
+
+def captaincy_comparison(conn: Connection, workspace_id: UUID, person_ids: list[UUID]) -> list[dict[str, Any]]:
+    """Side-by-side captaincy figures for the selected captains (same scope for all), from the one engine.
+    Includes consecutive-wins streak so the comparison matches the catalogue reports."""
+    from onestats.domain.stats import engine, streaks
+    f = {"workspace_id": workspace_id}
+    names = _names(conn, workspace_id)
+    streak_by = {r["subject_id"]: r["streak"]
+                 for r in streaks.streak_leaders(conn, "player_captaincy", "wins", f)}
+    out = []
+    for pid in person_ids:
+        c = engine.person_captaincy(conn, f, pid)
+        captained, wins, no_res = c["captained"], c["wins"], c["no_results"]
+        eligible = captained - no_res
+        out.append({"subject_id": str(pid), "player": names.get(str(pid), "Unknown"),
+                    "captained": captained, "wins": wins, "losses": c["losses"], "draws": c["draws"],
+                    "ties": c["ties"], "no_results": no_res,
+                    "win_pct": round(wins * 100 / eligible, 1) if eligible else None,
+                    "gf_captained": c["gf_captained"], "gf_wins": c["gf_wins"],
+                    "consecutive_wins": streak_by.get(str(pid), 0)})
+    return out
 
 
 def fielder_bowler_combinations(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:

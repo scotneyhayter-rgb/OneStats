@@ -202,6 +202,40 @@ REPORTS: dict[str, dict[str, Any]] = {
         _C("rank", "#", "right"), _C("player", "Player"), _C("seasons", "Seasons", "right"),
         _C("span_years", "Years", "right", 1), _C("first", "First"), _C("last", "Last")],
         "fn": lambda conn, f, **kw: records_detail.longest_serving(conn, f)},
+    # --- consecutive matches (over the team's played-fixture sequence) ---
+    "player_streak": {"title": "Most Consecutive Matches Played", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("team_name", "Team"), _C("streak", "Streak", "right"),
+        _C("start_season", "From"), _C("end_season", "To"), _C("start_date", "Start"), _C("end_date", "End"),
+        _C("known_minimum", "Known min.")],
+        "fn": lambda conn, f, **kw: streaks.player_match_streaks(conn, f, "played")},
+    "captain_match_streak": {"title": "Most Consecutive Matches Captained", "columns": [
+        _C("rank", "#", "right"), _C("player", "Captain"), _C("team_name", "Team"), _C("streak", "Streak", "right"),
+        _C("start_season", "From"), _C("end_season", "To"), _C("start_date", "Start"), _C("end_date", "End"),
+        _C("known_minimum", "Known min.")],
+        "fn": lambda conn, f, **kw: streaks.player_match_streaks(conn, f, "captained")},
+    "without_duck": {"title": "Most Consecutive Scores Without a Duck", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("streak", "Innings", "right"), _C("known_minimum", "Known min.")],
+        "fn": lambda conn, f, **kw: streaks.without_duck_streaks(conn, f)},
+    # --- wicketkeeping in an innings & best bowling in a match (runs tie-break) ---
+    "wk_innings": {"title": "Most Wicketkeeping Dismissals in an Innings", "columns": [
+        _C("rank", "#", "right"), _C("player", "Wicketkeeper"), _C("catches", "Ct", "right"),
+        _C("stumpings", "St", "right"), _C("total", "Total", "right"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: records_detail.most_wk_dismissals_in_innings(conn, f)},
+    "best_bowling_match": {"title": "Best Bowling in a Match", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("wickets", "Wkts", "right"),
+        _C("runs", "Runs", "right"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: records_detail.best_bowling_in_match(conn, f)},
+    # --- captaincy by season & comparison ---
+    "captaincy_season": {"title": "Captaincy by Season", "columns": [
+        _C("season", "Season"), _C("player", "Captain"), _C("captained", "M", "right"), _C("wins", "W", "right"),
+        _C("losses", "L", "right"), _C("draws", "D", "right"), _C("ties", "T", "right"),
+        _C("no_results", "NR", "right"), _C("win_pct", "Win %", "right", 1), _C("gf_captained", "GF", "right"),
+        _C("premierships", "Prem", "right")],
+        "fn": lambda conn, f, **kw: records_detail.captaincy_by_season(conn, f)},
+    "captaincy_compare": {"title": "Captaincy Comparison", "columns": [
+        _C("player", "Captain"), _C("captained", "M", "right"), _C("wins", "W", "right"),
+        _C("losses", "L", "right"), _C("win_pct", "Win %", "right", 1), _C("consecutive_wins", "Streak", "right")],
+        "fn": lambda conn, f, **kw: []},  # interactive: see the Captaincy Comparison tool / compare endpoint
 }
 
 
@@ -257,6 +291,10 @@ CATALOGUE: list[CatEntry] = [
              "batting", {"order_by": "not_outs"}, _SCOPE),
     CatEntry("bat_most_ducks", "Most Ducks", "Batting", "Most dismissals for nought.",
              "batting", {"order_by": "ducks"}, _SCOPE),
+    CatEntry("bat_consec_no_duck", "Most Consecutive Scores Without a Duck", "Batting",
+             "Longest run of completed innings without a duck (a not-out is not a duck; DNB excluded).",
+             "without_duck", {}, ("season", "grade", "competition"),
+             limitations="Unknown-run innings break the known run and flag a known-minimum."),
     CatEntry("bat_most_innings", "Most Innings Batted", "Batting", "Most innings batted.",
              "batting", {"order_by": "innings"}, _SCOPE),
     CatEntry("bat_most_boundaries", "Most Boundaries", "Batting", "Most boundaries (fours + sixes), where recorded.",
@@ -294,8 +332,9 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("bowl_most_five_fors", "Most Five-Wicket Innings", "Bowling", "Most five-wicket innings.",
              "bowling", {"order_by": "five_wkt_innings"}, _SCOPE),
     CatEntry("bowl_best_match", "Best Bowling in a Match", "Bowling",
-             "Most wickets in a match (by bowler-credited wickets).", "bowling", {"order_by": "best_match_wickets"},
-             _SCOPE, limitations="Ranked by wickets; runs conceded are not used as a tie-break."),
+             "Best bowling figures in a match — most wickets, then fewest runs conceded (runs tie-break).",
+             "best_bowling_match", {}, ("season", "grade", "competition", "split"),
+             limitations="Runs are never invented when incomplete; genuine ties (equal wickets and runs) are preserved."),
     CatEntry("bowl_most_maidens", "Most Maidens", "Bowling", "Most maiden overs bowled.",
              "bowling", {"order_by": "maidens"}, _SCOPE),
     CatEntry("bowl_most_overs", "Most Overs Bowled", "Bowling", "Most deliveries bowled (by balls).",
@@ -329,6 +368,9 @@ CATALOGUE: list[CatEntry] = [
              "fielding", {"order_by": "keeper_catches"}, _SCOPE_NO_VENUE),
     CatEntry("wk_most_stumpings", "Most Stumpings", "Wicketkeeping", "Most stumpings.",
              "fielding", {"order_by": "stumpings"}, _SCOPE_NO_VENUE),
+    CatEntry("wk_best_innings", "Most Wicketkeeping Dismissals in an Innings", "Wicketkeeping",
+             "Most keeper dismissals (catches + stumpings) in a single innings; outfield catches excluded.",
+             "wk_innings", {}, ("season", "grade", "competition", "split")),
     # ---- Captaincy ----
     CatEntry("capt_most_matches", "Most Matches Captained", "Captaincy", "Most matches as credited captain.",
              "captaincy", {"order_by": "captained", "min_eligible": 0}, _SCOPE_NO_VENUE),
@@ -353,6 +395,16 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("capt_winless", "Longest Captaincy Winless Streak", "Captaincy",
              "Longest run of captained matches without a win.", "streak_captaincy", {"kind": "winless"},
              _SCOPE_NO_VENUE),
+    CatEntry("capt_consec_matches", "Most Consecutive Matches Captained", "Captaincy",
+             "Longest run of consecutive team matches the person captained (actual recorded captaincy).",
+             "captain_match_streak", {}, ("season", "grade", "competition"),
+             limitations="Over the team's played fixtures; no-play forfeits are skipped; undated matches flag a known-minimum."),
+    CatEntry("capt_by_season", "Captaincy by Season", "Captaincy",
+             "Per-season captaincy breakdown: results, win %, finals, grand finals and premierships as captain.",
+             "captaincy_season", {}, ("competition", "grade")),
+    CatEntry("capt_compare", "Captaincy Comparison", "Captaincy",
+             "Compare two or more captains side by side (matches, W/L/D/T, win %, streaks, finals).",
+             "captaincy_compare", {}, ("season", "grade", "competition")),
     # ---- Player Participation ----
     CatEntry("part_most_matches", "Most Appearances", "Player Participation", "Most matches played.",
              "participation", {"order_by": "matches"}, _SCOPE_NO_VENUE),
@@ -364,6 +416,10 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("part_matches_together", "Most Matches Played Together", "Player Participation",
              "Pairs of players who appeared in the most matches together (unordered pair; no double counting).",
              "matches_together", {}, ("season", "grade", "competition", "split")),
+    CatEntry("part_consec_matches", "Most Consecutive Matches Played", "Player Participation",
+             "Longest run of consecutive team matches a player appeared in (individual appearance streak).",
+             "player_streak", {}, ("season", "grade", "competition"),
+             limitations="Over the team's played fixtures; a missed recorded match breaks the run; undated matches flag a known-minimum."),
     # ---- Teams ----
     CatEntry("team_most_wins", "Most Wins (team)", "Teams", "Teams by total wins.",
              "teams", {"order_by": "wins"}, ("season", "grade", "competition", "split")),

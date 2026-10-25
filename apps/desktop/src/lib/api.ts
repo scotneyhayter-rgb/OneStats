@@ -169,6 +169,20 @@ export interface ReportCatalogue {
   categories: { category: string; reports: CatalogueReport[] }[];
   count: number;
 }
+export interface CaptaincyCompareRow {
+  subject_id: string;
+  player: string;
+  captained: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  ties: number;
+  no_results: number;
+  win_pct: number | null;
+  gf_captained: number;
+  gf_wins: number;
+  consecutive_wins: number;
+}
 export interface StatLadderRow {
   position: number;
   team_id: string;
@@ -1314,6 +1328,8 @@ export const api = {
     if (!resp.ok) throw new ApiError(`CSV export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+  statsCaptaincyCompare: (w: string, personIds: string[]) =>
+    request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),
   statsCatalogueIndexUrl: async (w: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();

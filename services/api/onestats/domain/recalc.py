@@ -74,6 +74,23 @@ def _is_grand_final(match: dict[str, Any]) -> bool:
     return match.get("classification") == "grand_final" or match.get("finals_stage") == "grand_final"
 
 
+def _forfeit_no_play(conn: Connection, match: dict[str, Any]) -> bool:
+    """A forfeit/awarded match in which no cricket was played — detected by the absence of any batting or
+    bowling entries (approved forfeit policy, deliverable 24 §24.2a). Such a match still yields a TEAM
+    result (and competition points) but must NOT create individual player or captaincy appearances, nor
+    inflate wins/losses/streaks/winning-percentage. A partly-played match that was later awarded keeps its
+    recorded entries, so it is not treated as no-play."""
+    if match.get("result_type") != "forfeit":
+        return False
+    played = conn.execute(
+        text("SELECT 1 FROM innings i WHERE i.match_id = :m AND ("
+             "  EXISTS (SELECT 1 FROM batting_entry be WHERE be.innings_id = i.id) OR "
+             "  EXISTS (SELECT 1 FROM bowling_entry bo WHERE bo.innings_id = i.id)) LIMIT 1"),
+        {"m": match["id"]},
+    ).first()
+    return played is None
+
+
 def _keepers_by_team(conn: Connection, match_id: UUID) -> dict[str, set]:
     """Wicketkeeper person ids per team for the match (for keeper-catch classification)."""
     out: dict[str, set] = {}
@@ -244,7 +261,10 @@ def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[
 
 def _calc_player_captaincy(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
     """One contribution per credited captain (acting captain if recorded, else captain). Never
-    double-credits a match to two captains for one side; unknown captains are excluded."""
+    double-credits a match to two captains for one side; unknown captains are excluded. A forfeit with no
+    play creates NO captaincy appearance (approved forfeit policy)."""
+    if _forfeit_no_play(conn, match):
+        return []
     home, _ = _home_away(conn, match["id"])
     cls = match.get("classification")
     gf = _is_grand_final(match)
@@ -289,7 +309,11 @@ def _calc_team_result(conn: Connection, match: dict[str, Any]) -> list[dict[str,
 
 def _calc_player_appearance(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
     """One appearance per person who participated in the match — derived from batting, bowling, fielding
-    credits or being a recorded captain/keeper (no separate participation table). Each person once."""
+    credits or being a recorded captain/keeper (no separate participation table). Each person once. A
+    forfeit with no play creates NO player appearances (approved forfeit policy); the team still gets its
+    result via ``_calc_team_result``."""
+    if _forfeit_no_play(conn, match):
+        return []
     home, _ = _home_away(conn, match["id"])
     cls = match.get("classification")
     gf = _is_grand_final(match)

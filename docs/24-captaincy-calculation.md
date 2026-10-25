@@ -15,13 +15,12 @@ unknown-aware (deliverable 22).
   never double-credit the same match to two captains.
 - Matches with an **unknown** captain are excluded from captaincy counts (unknown ≠ zero),
   not attributed to anyone.
-- **Cricket Statz "Captain2"** (`match_team.captain2_person_id`): the CS UI exposes a
-  second captain field per side, but it is **not present in the JSON export** and its
-  meaning (joint captain? assistant? deputy?) is **unresolved** (deliverable 16a.9).
-  OneStats stores it when a richer source provides it but **assigns no captaincy credit to
-  Captain2 until its meaning is confirmed** — and a single match is **never double-credited**
-  to two captains regardless (§24.1). This is an open question for the user (deliverable 37
-  §37.3).
+- **Cricket Statz "Captain2":** **EXCLUDED BY USER DECISION (2026-10-26) — NOT REQUIRED.** The user has
+  decided OneStats will not implement a Captain2 report or any equivalent Captain2 captaincy feature. The
+  nullable `match_team.captain2_person_id` column may remain for raw import fidelity, but **no captaincy
+  credit is ever assigned to Captain2**, and a single match is **never double-credited** to two captains
+  (§24.1). This is **no longer an open question** and is not an outstanding requirement. All ordinary
+  captaincy reports, statistics, comparisons and history are unaffected.
 
 ## 24.2 Winning percentage (§20 exact rule)
 

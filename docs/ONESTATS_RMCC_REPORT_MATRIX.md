@@ -13,14 +13,19 @@ covered by the "every entry opens" loop test, no dedicated reference assertion) 
 All reports use the ONE deterministic engine (deliverable 22). Scope — season, grade, competition, team,
 date, format, venue, and the Home&Away / Finals / Grand Final split (§23.10) — is a **filter**, never a
 separate report. RMCC qualification thresholds (§21) are applied only to the averages/rates/% reports and
-are configurable. The catalogue holds **73** distinct reports; CSV + PDF export on tabular reports.
+are configurable. The catalogue holds **79** distinct reports; CSV + PDF export on tabular reports.
+
+**Update 2026-10-26:** all six previously-outstanding reports are now implemented and tested, the
+best-bowling-in-a-match runs tie-break is corrected, the **approved forfeit policy** is applied
+throughout, and **Cricket Statz "Captain2" is EXCLUDED BY USER DECISION — NOT REQUIRED** (not an open
+item).
 
 ## §23.1 Player careers
 
 | Report | Format | Calc | Status | Catalogue id |
 |---|---|---|---|---|
 | Most Matches | Top list | distinct matches played | 🟢 | `part_most_matches` |
-| Most Consecutive Matches | Top list | longest run over the team's match sequence | 🔴 | — (needs player-vs-team-fixture sequencing) |
+| Most Consecutive Matches | Top list | longest run over the team's played-fixture sequence | ✅ | `part_consec_matches` |
 | Most Wins | Top list | matches played, team won | 🟢 | `part_most_wins` |
 | Longest Serving | Top list | span first→last appearance; seasons & years | 🟢 | `part_longest_serving` |
 | Most Matches Played Together | Pair list | matches both played (unordered pair) | ✅ | `part_matches_together` |
@@ -57,7 +62,7 @@ unknowns or undated matches.
 | Most Half-Centuries | Top list | 🟢 | `bat_most_fifties` |
 | Top Batting Strike Rates (min 100) | Top list, qualified | 🟢 | `bat_best_strike_rate` |
 | Most Ducks | Top list | 🟢 | `bat_most_ducks` |
-| Most Consecutive Scores Without a Duck | Top list | 🔴 | — (needs per-innings batting streak) |
+| Most Consecutive Scores Without a Duck | Top list | ✅ | `bat_consec_no_duck` |
 
 ## §23.4 Batting partnerships
 
@@ -82,7 +87,7 @@ unknowns or undated matches.
 | Top Wicket Takers | 🟢 | `bowl_most_wickets` | |
 | Top Bowling Averages (min 50) | 🟢 | `bowl_best_average` | |
 | Most Wickets in a Season | 🟢 | `bowl_most_wickets_season` | |
-| Best Bowling in a Match | 🟡 | `bowl_best_match` | ranks by wickets; runs not yet a tie-break (OBS-1) |
+| Best Bowling in a Match | ✅ | `bowl_best_match` | most wickets, then fewest runs (runs tie-break); ties preserved |
 | Top Economy Rates (min 50) | 🟢 | `bowl_best_economy` | configured over length |
 | Top Bowling Strike Rates (min 50) | 🟢 | `bowl_best_strike_rate` | |
 | Most Expensive Bowling in an Innings | ✅ | `bowl_most_expensive` | |
@@ -98,7 +103,7 @@ unknowns or undated matches.
 | Top Wicketkeeper Catches | 🟢 | `wk_most_catches` |
 | Top Wicketkeeper Stumpings | 🟢 | `wk_most_stumpings` |
 | Top Wicketkeeper Dismissals (total) | 🟢 | `wk_most_dismissals` |
-| Top Wicketkeeping in an Innings | 🔴 | — (per-innings keeper tally not yet stored) |
+| Top Wicketkeeping in an Innings | ✅ | `wk_best_innings` |
 | Combined Catches (field + keeper) | 🟢 | `field_most_catches` |
 | Top Run Outs | 🟢 | `field_most_run_outs` |
 
@@ -118,11 +123,11 @@ season captain led every match; no match double-credited (§24.1).
 | Captaincy Unbeaten Streak | 🟢 | `capt_unbeaten` | |
 | Captaincy Winless Streak | 🟢 | `capt_winless` | |
 | Win/Loss/Draw/Tie Record | 🟢 | `capt_most_matches` | the W/L/D/T columns |
-| Captaincy by Season | 🟡 | via season filter | no all-seasons breakdown report yet |
-| Captaincy by Club / Competition / Grade | 🟡 | via scope filters | |
-| Most Consecutive Matches Captained | 🔴 | — | needs player-vs-team-fixture sequencing |
+| Captaincy by Season | ✅ | `capt_by_season` | dedicated per-season × captain breakdown (results, win %, finals, GF, premierships) |
+| Captaincy by Club / Competition / Grade | 🟢 | `capt_most_matches` + scope filters | |
+| Most Consecutive Matches Captained | ✅ | `capt_consec_matches` | over the team's played fixtures; no-play forfeits skipped |
 | Complete Individual Captaincy Record | 🟢 | Player Profile → Captaincy | per-player breakdown on the profile |
-| Captaincy Comparison Reports | 🔴 | — | multi-captain side-by-side not yet built |
+| Captaincy Comparison Reports | ✅ | `capt_compare` | side-by-side tool at `/statistics/captaincy-compare` |
 
 ## §23.9 Other records
 
@@ -146,27 +151,41 @@ season captain led every match; no match double-credited (§24.1).
   (the single best performance is the No.1 of the list; not forced into a fixed Top-10 shape).
 - **Partnership records** — `part_highest`, `part_by_wicket`, `part_aggregates`, bowling combinations.
 
-## Outstanding items (explicitly not complete)
+## Completed 2026-10-26 (previously outstanding)
 
-1. **Most Consecutive Matches** (player) and **Most Consecutive Matches Captained** — require sequencing a
-   person against their team's full fixture list (streaks currently run over the person's own recorded
-   matches). 🔴
-2. **Most Consecutive Scores Without a Duck** — a per-innings batting streak (batting streaks module not
-   yet built). 🔴
-3. **Top Wicketkeeping in an Innings** — per-innings keeper-dismissal tally is not stored in the ledger. 🔴
-4. **Captaincy Comparison Reports** — multi-captain side-by-side view. 🔴
-5. **Captaincy by Season / Grade as a dedicated breakdown** — currently via scope filters, not an
-   all-at-once breakdown report. 🟡
-6. **Best Bowling in a Match runs tie-break** — ranks by wickets only (OBS-1). 🟡
+All six items the earlier matrix flagged are now **implemented and tested**:
 
-The Report Catalogue is **not** declared complete: items 1–6 above are the remaining original requirements,
-identified as outstanding per instruction. Everything else is implemented, and the reports marked ✅ carry
-dedicated automated reference tests.
+1. **Most Consecutive Matches** (player) — `part_consec_matches`. ✅
+2. **Most Consecutive Matches Captained** — `capt_consec_matches`. ✅
+3. **Most Consecutive Scores Without a Duck** — `bat_consec_no_duck`. ✅
+4. **Top Wicketkeeping in an Innings** — `wk_best_innings`. ✅
+5. **Captaincy Comparison** — `capt_compare` (tool at `/statistics/captaincy-compare`). ✅
+6. **Captaincy by Season** — `capt_by_season`. ✅
 
-## Data dependencies & unavailable calculations
+Recorded **separately**: the **Best Bowling in a Match runs tie-break** correction (`bowl_best_match` now
+ranks by most wickets, then fewest runs; genuine ties preserved; runs never invented when incomplete). ✅
+
+## Approved decisions (2026-10-26)
+
+- **Forfeit policy (§24.2a) — APPROVED and implemented.** A forfeit may count for **team** results,
+  competition points and ladders (where competition rules recognise it); a forfeit with **no play** creates
+  **no** player appearance and **no** captaincy appearance, and never inflates captaincy wins/losses/
+  consecutive records/winning %. A **partly-played** match later awarded keeps its verified appearances and
+  captaincy. Team outcomes and individual participation are kept separate. Implemented in `recalc.py`
+  (`_forfeit_no_play`), applied consistently to statistics, records, profiles, captaincy reports and PDFs
+  (they all read the one ledger), and covered by `tests/test_forfeit_policy.py` (full no-play forfeit,
+  team-points-without-appearances, partly-played preservation, named-but-absent captain, captain in an
+  awarded match, and a normal-match control).
+- **Cricket Statz "Captain2" — EXCLUDED BY USER DECISION — NOT REQUIRED.** No Captain2 report or feature;
+  no captaincy credit to Captain2. **Not** an outstanding requirement or open decision. Ordinary captaincy
+  reports, statistics, comparisons and history are unaffected.
+
+## Remaining genuine limitations
 
 - Boundaries (4s/6s), balls faced, and some fielder/bowler attributions depend on the scorecard recording
   them; where unrecorded the figure is a **known-minimum**, never zero.
 - Career economy assumes a single over length; per-season/era figures are exact.
-- Forfeit treatment (§24.2a) and Cricket-Statz "Captain2" (§24.1) remain **open user decisions** and are
-  not finalised; current behaviour follows the documented defaults.
+- Consecutive-match streaks run over the team's **recorded played fixtures**; an undocumented missing
+  fixture cannot be detected, and undated matches flag a **known-minimum** (never an assumed unbroken run).
+- Wicketkeeping-in-an-innings attributes to the primary recorded keeper; a rare second keeper (`wk2`) in
+  the same innings is not separately split.

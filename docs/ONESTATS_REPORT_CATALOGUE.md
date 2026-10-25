@@ -5,24 +5,30 @@ requirements matrix ([ONESTATS_RMCC_REPORT_MATRIX.md](ONESTATS_RMCC_REPORT_MATRI
 
 ## 1. Current OneStats report inventory
 
-**73 distinct reports**, all over the one deterministic engine (scope is a filter, not a separate report):
+**79 distinct reports**, all over the one deterministic engine (scope is a filter, not a separate report):
 
 | Category | Reports |
 |---|---|
-| Batting | 17 |
+| Batting | 18 |
 | Bowling | 11 |
 | Fielding | 4 |
-| Wicketkeeping | 3 |
-| Captaincy | 8 |
+| Wicketkeeping | 4 |
+| Captaincy | 11 |
 | Partnerships | 6 |
-| Player Participation | 4 |
+| Player Participation | 5 |
 | Teams | 7 |
 | Seasons | 1 |
 | Finals & Grand Finals | 4 |
 | Historical Records | 5 |
 | Awards & Achievements | 2 |
 | Data Integrity & Audit | 1 |
-| **Total** | **73** |
+| **Total** | **79** |
+
+**Update 2026-10-26:** the six previously-outstanding reports are complete (consecutive matches — player &
+captain, consecutive scores without a duck, wicketkeeping dismissals in an innings, captaincy comparison,
+captaincy by season), the best-bowling-in-a-match **runs tie-break** is corrected, the **approved forfeit
+policy** is applied throughout, and **Captain2 is excluded by user decision**. See the matrix for per-report
+status.
 
 Each report has a name, description, category, available filters, qualification rules, completeness
 limitations, a working **View Report** action, **PDF** export (branded, print-ready) and **CSV** export for
@@ -76,10 +82,10 @@ Sources: [cricketstatz.com](https://cricketstatz.com/), [getting-started](https:
 
 ## 3. Missing / outstanding reports
 
-Six original RMCC requirements remain outstanding or partial (full detail and reasons in the matrix):
-player/captain **consecutive-matches** (needs team-fixture sequencing), **consecutive scores without a
-duck**, **top wicketkeeping in an innings**, **captaincy comparison**, **captaincy by-season breakdown**
-(currently via filter), and the **best-bowling-in-a-match runs tie-break**.
+**None outstanding.** The six RMCC requirements previously flagged are now implemented and tested, and the
+best-bowling runs tie-break is corrected (see the matrix). Remaining items are genuine *limitations* (not
+missing reports): undocumented-fixture gaps in streaks (flagged known-minimum), career-economy single
+over-length, and the rare second-keeper-in-an-innings split.
 
 ## 4. Implemented improvements (this expansion)
 
@@ -92,9 +98,10 @@ duck**, **top wicketkeeping in an innings**, **captaincy comparison**, **captain
 
 ## 5. Number of genuinely distinct working reports
 
-**73** — counted by distinct metric/structure. Scope filters (season, grade, competition, team, date,
+**79** — counted by distinct metric/structure. Scope filters (season, grade, competition, team, date,
 venue, finals split) are **not** counted as separate reports. The finals/grand-final entries that preset a
-split are labelled as such and counted once each.
+split are labelled as such and counted once each. (The Captaincy Comparison is an interactive tool rather
+than a flat table, included in the count once.)
 
 ## 6. Reports dependent on data that may be unavailable
 
@@ -104,11 +111,14 @@ report flags it. Career economy assumes a single over length.
 
 ## 7. Test results
 
-- `tests/test_report_catalogue.py`: **every** one of the 73 entries opens and exports CSV; the catalogue
+- `tests/test_report_catalogue.py`: **every** one of the 79 entries opens and exports CSV; the catalogue
   index renders; new calculations verified against hand-computed values (streaks = 4, highest innings =
   120, 90s/40s = 1, best single season = 260, ducks inflicted = 4, fielder–bowler = 4, most expensive = 60,
-  boundaries = 20, grand-final split = 30).
-- Existing `test_reports_catalogue.py` / `test_reports_pdf.py` / engine / partnership suites: green.
+  boundaries = 20, grand-final split = 30; consecutive matches = 4, consecutive captained = 4, without-duck
+  = 4, best bowling in a match = 5/60, captaincy-by-season and comparison; WK dismissals in an innings = 3).
+- `tests/test_forfeit_policy.py`: the six forfeit cases (full no-play forfeit → team result + points but no
+  appearance/captaincy; partly-played → preserved; normal-match control).
+- Existing `test_reports_catalogue.py` / `test_reports_pdf.py` / engine / partnership / recalc suites: green.
 - Desktop `report-catalogue.test.tsx`: the catalogue lists, searches and opens a report.
 
 ## 8. Updated acceptance checklist

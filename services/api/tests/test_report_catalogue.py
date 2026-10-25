@@ -161,6 +161,62 @@ def test_records_detail_reference(conn):
     assert next(r for r in bnd if r["player"] == "Big Hitter")["boundaries"] == 20
 
 
+def test_new_reports_reference(conn):
+    """The six completed reports + the best-bowling runs tie-break, hand-computed."""
+    d = _build(conn)
+    wid, f = d["wid"], {"workspace_id": d["wid"]}
+    # Big Hitter played all 4 home matches -> consecutive matches played = 4.
+    ps = catalogue.report_rows(conn, wid, "part_consec_matches", f)["rows"]
+    assert next(r for r in ps if r["player"] == "Big Hitter")["streak"] == 4
+    # Captain Marvel captained all 4 -> consecutive matches captained = 4.
+    cm = catalogue.report_rows(conn, wid, "capt_consec_matches", f)["rows"]
+    assert next(r for r in cm if r["player"] == "Captain Marvel")["streak"] == 4
+    # Big Hitter never made a duck (95,45,120,30) -> without-duck streak = 4.
+    wd = catalogue.report_rows(conn, wid, "bat_consec_no_duck", f)["rows"]
+    assert next(r for r in wd if r["player"] == "Big Hitter")["streak"] == 4
+    # Best bowling in a match: Demon's best is 5 wickets (grand final) for 60 runs.
+    bb = catalogue.report_rows(conn, wid, "bowl_best_match", f)["rows"]
+    assert bb[0]["player"] == "Demon Bowler" and bb[0]["wickets"] == 5 and bb[0]["runs"] == 60
+    # Captaincy by season: 2023/24 = 3 captained, 3 wins; 2024/25 = 1 captained, 1 win.
+    cs = catalogue.report_rows(conn, wid, "capt_by_season", f)["rows"]
+    s23 = next(r for r in cs if r["season"] == "2023/24" and r["player"] == "Captain Marvel")
+    s24 = next(r for r in cs if r["season"] == "2024/25" and r["player"] == "Captain Marvel")
+    assert s23["captained"] == 3 and s23["wins"] == 3 and s24["premierships"] == 1
+    # Comparison endpoint logic: Captain Marvel has 4 captained, 4 wins, consecutive wins 4.
+    from onestats.domain.stats import records_detail
+    cmp = records_detail.captaincy_comparison(conn, wid, [d["cap"]])
+    assert cmp[0]["captained"] == 4 and cmp[0]["wins"] == 4 and cmp[0]["consecutive_wins"] == 4
+
+
+def test_wk_dismissals_in_innings(conn):
+    """Most wicketkeeping dismissals in an innings — keeper catches + stumpings, no outfield catches."""
+    wid = _ws(conn, "WK INNINGS")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    se = conn.execute(text("INSERT INTO season(workspace_id,competition_id,label,start_date) "
+                           "VALUES (:w,:c,'2024/25','2024-10-01') RETURNING id"), {"w": wid, "c": comp}).scalar_one()
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    keep = people.create_person(conn, wid, ACTOR, display_name="Keeper")
+    slip = people.create_person(conn, wid, ACTOR, display_name="Slip")
+    hb = [people.create_person(conn, wid, ACTOR, display_name=f"B{i}") for i in range(4)]
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp, season_id=se)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False, wicketkeeper_person_id=keep)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    # keeper: 2 caught_behind + 1 stumping = 3 WK dismissals in the innings; one outfield catch by slip (excluded)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=hb[0], batting_position=1, runs=5,
+                         dismissal_type="caught_behind", fielder_person_id=keep)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=hb[1], batting_position=2, runs=3,
+                         dismissal_type="caught_behind", fielder_person_id=keep)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=hb[2], batting_position=3, runs=0,
+                         dismissal_type="stumped", fielder_person_id=keep)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=hb[3], batting_position=4, runs=8,
+                         dismissal_type="caught", fielder_person_id=slip)
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+    rows = catalogue.report_rows(conn, wid, "wk_best_innings", {"workspace_id": wid})["rows"]
+    top = next(r for r in rows if r["player"] == "Keeper")
+    assert top["catches"] == 2 and top["stumpings"] == 1 and top["total"] == 3
+
+
 def test_grand_final_split_and_qualification(conn):
     d = _build(conn)
     wid, f = d["wid"], {"workspace_id": d["wid"]}

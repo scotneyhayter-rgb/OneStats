@@ -89,6 +89,7 @@ export function ReportCatalogue() {
   }, [current]);
 
   const openReport = useCallback((r: CatalogueReport) => {
+    if (r.id === "capt_compare") { window.location.hash = "#/statistics/captaincy-compare"; return; }
     setOpen(r);
     setSplit("");
     setData(null);

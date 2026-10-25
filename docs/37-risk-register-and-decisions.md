@@ -89,9 +89,9 @@ Likelihood (L) / Impact (I): H/M/L.
    flags** that are **NOT in the JSON export** — only `round`/`Grade`. Confirm the mapping,
    and whether a **richer export or direct Cricket Statz DB access** is available that
    preserves the flags (and margin, sub-result, D/L, "exclude from stats", Captain2).
-3. **Captain2 / Keeper2 meaning.** Keeper2 is in the JSON; Captain2 is not. What do they
-   represent (joint/deputy captain; substitute keeper)? No captaincy credit to Captain2
-   until confirmed.
+3. **Captain2.** **RESOLVED — EXCLUDED BY USER DECISION (2026-10-26): NOT REQUIRED.** No Captain2 report
+   or feature; no captaincy credit to Captain2. Not an open decision. (Keeper2 remains preserved from the
+   JSON where present; ordinary captaincy features are unaffected.)
 4. **Lost authoritative fields.** Accept per-match **re-capture** of Final/GF, winning
    margin, sub-result, D/L and the **statistical-inclusion ("exclude from stats")** state,
    or supply a richer source? (deliverable 16 §16.9)

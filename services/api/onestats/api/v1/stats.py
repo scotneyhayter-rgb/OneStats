@@ -23,6 +23,7 @@ from onestats.domain.stats import (
     integrity,
     partnerships,
     reconciliation,
+    records_detail,
     saved_reports,
 )
 from onestats.reports import catalogue
@@ -242,6 +243,19 @@ def list_reports(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> lis
 def report_catalogue(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
     """The full, categorised Report Catalogue (every report uses the one engine; scope is a filter)."""
     return catalogue.catalogue_metadata()
+
+
+@router.get("/captaincy/compare")
+def captaincy_compare(workspace_id: UUID, person_ids: str, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """Side-by-side captaincy comparison for the selected captains (comma-separated person ids)."""
+    try:
+        ids = [UUID(x) for x in person_ids.split(",") if x.strip()]
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid_person_id") from exc
+    if not ids:
+        return {"captains": []}
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return {"captains": records_detail.captaincy_comparison(conn, workspace_id, ids)}
 
 
 @router.get("/catalogue/index.pdf")

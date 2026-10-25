@@ -133,9 +133,9 @@ Open from **People** (left sidebar) → open a person → **View full career pro
 
 ---
 
-## Phase 12 (continued) — Report Catalogue (12 tests)
+## Phase 12 (continued) — Report Catalogue (15 tests)
 
-Open from **Statistics → Report Catalogue** (`/statistics/catalogue`). 73 reports over the one engine; see
+Open from **Statistics → Report Catalogue** (`/statistics/catalogue`). 79 reports over the one engine; see
 [ONESTATS_RMCC_REPORT_MATRIX.md](ONESTATS_RMCC_REPORT_MATRIX.md) for every report's status.
 
 | # | Test | Where / How | Expected |
@@ -152,6 +152,9 @@ Open from **Statistics → Report Catalogue** (`/statistics/catalogue`). 73 repo
 | RC10 | Printable index | Printable index button | A PDF listing every report by category |
 | RC11 | Streak & record reports | Open team/captaincy streaks, single-season, highest innings | Correct consecutive/record values; known-minimum flagged where data is incomplete |
 | RC12 | Qualification & empty states | Open an averages report and a report with no data | Qualified players only (configurable threshold); clean empty state, never a crash |
+| RC13 | Captaincy Comparison | Captaincy → Captaincy Comparison; pick 2+ captains | Side-by-side table (matches, W/L/D/T, win %, consecutive wins, finals/GF); leading value highlighted |
+| RC14 | New reports open | Open consecutive-matches (player & captain), without-a-duck, WK-in-an-innings, best-bowling-in-a-match, captaincy-by-season | Correct values; best bowling ranks by wickets then fewest runs; known-minimum flagged where incomplete |
+| RC15 | Forfeit policy | A full forfeit with no play; a partly-played awarded match | Team gets the result/points; a no-play forfeit adds **no** player appearance or captaincy; a partly-played match keeps verified participation |
 
 **Visually inspect** a representative report PDF and the catalogue index.
 
