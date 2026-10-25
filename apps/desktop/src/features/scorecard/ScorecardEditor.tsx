@@ -150,6 +150,8 @@ export function ScorecardEditor({
 
   const nameOf = useCallback((id: string | null) => (id ? names.get(id) ?? null : null), [names]);
   const teamName = useCallback((id: string | null) => (id ? teams.find((t) => t.id === id)?.name ?? null : null), [teams]);
+  // the club (organisation) behind a team — used to scope player selectors to that club (Phase 7.4)
+  const teamOrg = useCallback((id: string | null) => (id ? teams.find((t) => t.id === id)?.organisation_id ?? null : null), [teams]);
   const addName = useCallback((p: Person) => setNames((m) => new Map(m).set(p.id, p.display_name)), []);
 
   const load = useCallback(async () => {
@@ -281,7 +283,7 @@ export function ScorecardEditor({
 
         <TossAndOfficialsSection
           workspaceId={workspaceId} matchId={matchId} match={match} canManage={canManage}
-          teamName={teamName} nameOf={nameOf} addName={addName}
+          teamName={teamName} teamOrg={teamOrg} nameOf={nameOf} addName={addName}
           reload={async () => { setMatch(await api.getMatch(workspaceId, matchId)); }}
           onError={(m) => setErr(m)} flash={flash}
         />
@@ -290,7 +292,7 @@ export function ScorecardEditor({
       <InningsSection
         workspaceId={workspaceId} matchId={matchId} match={match} innings={innings}
         canManage={canManage} activeInnings={activeInnings} setActiveInnings={setActiveInnings}
-        nameOf={nameOf} teamName={teamName} addName={addName}
+        nameOf={nameOf} teamName={teamName} teamOrg={teamOrg} addName={addName}
         reloadInnings={async () => setInnings(await api.listInnings(workspaceId, matchId))}
         onDirty={(m) => m && setErr(m)} flash={flash}
       />
@@ -481,10 +483,11 @@ function useWorkspaceId(): string | null {
 const TOSS_DECISIONS = ["bat", "field", "no_toss", "not_recorded", "unknown"];
 
 function TossAndOfficialsSection({
-  workspaceId, matchId, match, canManage, teamName, nameOf, addName, reload, onError, flash,
+  workspaceId, matchId, match, canManage, teamName, teamOrg, nameOf, addName, reload, onError, flash,
 }: {
   workspaceId: string; matchId: string; match: MatchDetail; canManage: boolean;
-  teamName: (id: string | null) => string | null; nameOf: (id: string | null) => string | null;
+  teamName: (id: string | null) => string | null; teamOrg: (id: string | null) => string | null;
+  nameOf: (id: string | null) => string | null;
   addName: (p: Person) => void; reload: () => Promise<void>; onError: (m: string) => void; flash: (m: string) => void;
 }) {
   const sides = match.teams; // one home, one away (where recorded)
@@ -548,32 +551,35 @@ function TossAndOfficialsSection({
 
       {sides.length === 0 && <p className="text-sm text-muted-foreground">Set the home and away teams above to record captains and wicketkeepers.</p>}
       <div className="grid gap-4 sm:grid-cols-2">
-        {sides.map((mt) => (
-          <TeamPanel key={mt.id} side={mt.is_home ? "home" : "away"} teamName={teamName(mt.team_id)}>
+        {sides.map((mt) => {
+          const org = teamOrg(mt.team_id); const club = teamName(mt.team_id);
+          return (
+          <TeamPanel key={mt.id} side={mt.is_home ? "home" : "away"} teamName={club}>
             <div className="flex flex-col gap-2">
               <Field label="Captain">
                 <PlayerSelect workspaceId={workspaceId} value={mt.captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Captain" roleLabel="Captain"
+                  disabled={!canManage} aria-label="Captain" roleLabel="Captain" organisationId={org} scopeLabel={club}
                   onChange={(pid) => void saveOfficial(mt, { captain_person_id: pid })} />
               </Field>
               <Field label="Acting / replacement captain">
                 <PlayerSelect workspaceId={workspaceId} value={mt.acting_captain_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Acting captain" roleLabel="Captain"
+                  disabled={!canManage} aria-label="Acting captain" roleLabel="Captain" organisationId={org} scopeLabel={club}
                   onChange={(pid) => void saveOfficial(mt, { acting_captain_person_id: pid })} />
               </Field>
               <Field label="Wicketkeeper">
                 <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Wicketkeeper" roleLabel="Wicketkeeper"
+                  disabled={!canManage} aria-label="Wicketkeeper" roleLabel="Wicketkeeper" organisationId={org} scopeLabel={club}
                   onChange={(pid) => void saveOfficial(mt, { wicketkeeper_person_id: pid })} />
               </Field>
               <Field label="Second / replacement keeper">
                 <PlayerSelect workspaceId={workspaceId} value={mt.wicketkeeper2_person_id} nameOf={nameOf} onPersonLoaded={addName}
-                  disabled={!canManage} aria-label="Second wicketkeeper" roleLabel="Wicketkeeper"
+                  disabled={!canManage} aria-label="Second wicketkeeper" roleLabel="Wicketkeeper" organisationId={org} scopeLabel={club}
                   onChange={(pid) => void saveOfficial(mt, { wicketkeeper2_person_id: pid })} />
               </Field>
             </div>
           </TeamPanel>
-        ))}
+          );
+        })}
       </div>
     </SectionCard>
   );
@@ -581,11 +587,12 @@ function TossAndOfficialsSection({
 
 function InningsSection({
   workspaceId, matchId, match, innings, canManage, activeInnings, setActiveInnings,
-  nameOf, teamName, addName, reloadInnings, onDirty, flash,
+  nameOf, teamName, teamOrg, addName, reloadInnings, onDirty, flash,
 }: {
   workspaceId: string; matchId: string; match: MatchDetail; innings: Innings[];
   canManage: boolean; activeInnings: string | null; setActiveInnings: (id: string) => void;
   nameOf: (id: string | null) => string | null; teamName: (id: string | null) => string | null;
+  teamOrg: (id: string | null) => string | null;
   addName: (p: Person) => void; reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
 }) {
   const fmt = useScoreFormat();
@@ -641,7 +648,7 @@ function InningsSection({
       {!active && <p className="text-sm text-muted-foreground">No innings yet. Add the first innings to begin entry.</p>}
       {active && (
         <InningsEditor key={active.id} workspaceId={workspaceId} matchId={matchId} innings={active}
-          canManage={canManage} nameOf={nameOf} teamName={teamName} addName={addName}
+          canManage={canManage} nameOf={nameOf} teamName={teamName} teamOrg={teamOrg} addName={addName}
           sides={{ home: match.teams.find((t) => t.is_home)?.team_id ?? null,
                    away: match.teams.find((t) => !t.is_home)?.team_id ?? null }}
           reloadInnings={reloadInnings} onDirty={onDirty} flash={flash}
@@ -652,10 +659,11 @@ function InningsSection({
 }
 
 function InningsEditor({
-  workspaceId, matchId, innings, canManage, nameOf, teamName, addName, sides, reloadInnings, onDirty, flash, onScoreChanged,
+  workspaceId, matchId, innings, canManage, nameOf, teamName, teamOrg, addName, sides, reloadInnings, onDirty, flash, onScoreChanged,
 }: {
   workspaceId: string; matchId: string; innings: Innings; canManage: boolean;
   nameOf: (id: string | null) => string | null; teamName: (id: string | null) => string | null;
+  teamOrg: (id: string | null) => string | null;
   addName: (p: Person) => void; sides: { home: string | null; away: string | null };
   reloadInnings: () => Promise<void>; onDirty: (m: string | null) => void; flash: (m: string) => void;
   onScoreChanged?: () => void;
@@ -716,7 +724,9 @@ function InningsEditor({
   };
 
   const ctx = { workspaceId: w, inningsId: innings.id, canManage, nameOf, onPersonLoaded: addName,
-    onDirty, refreshKey, onChanged: () => { setRefreshKey((k) => k + 1); void recompute(); } };
+    onDirty, refreshKey, onChanged: () => { setRefreshKey((k) => k + 1); void recompute(); },
+    battingOrgId: teamOrg(innings.batting_team_id), bowlingOrgId: teamOrg(innings.bowling_team_id),
+    battingTeamName: teamName(innings.batting_team_id), bowlingTeamName: teamName(innings.bowling_team_id) };
 
   // Batting side is explicit (never assumed). Choosing it sets bowling to the other recorded side.
   const applyBatting = (battingId: string | null) => {

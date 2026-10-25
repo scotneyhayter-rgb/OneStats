@@ -675,7 +675,7 @@ export const api = {
     request<OrgRelationship>(`/api/v1/workspaces/${w}/organisation-relationships/${id}/restore`, { method: "POST" }),
 
   // --- Phase 5: people ---
-  listPeople: (w: string, opts: { search?: string; role?: string; include_merged?: boolean; include_protected?: boolean } = {}) =>
+  listPeople: (w: string, opts: { search?: string; role?: string; include_merged?: boolean; include_protected?: boolean; organisation_id?: string; active_only?: boolean } = {}) =>
     request<Person[]>(`/api/v1/workspaces/${w}/people${qs(opts)}`),
   getPerson: (w: string, id: string, include_protected = false) =>
     request<Person & { names: unknown[]; source_identities: unknown[]; roles: string[] }>(

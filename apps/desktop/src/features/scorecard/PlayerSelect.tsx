@@ -29,6 +29,11 @@ export interface PlayerSelectProps {
   roleLabel?: string;
   /** Role pre-ticked in the wizard for this field (default "player"). */
   defaultRole?: string;
+  /** Club/organisation to scope the search to by default (Phase 7.4 player selection). Players from
+   *  other clubs stay discoverable via the "Show all" toggle — never a hard restriction. */
+  organisationId?: string | null;
+  /** Short club name shown on the scope toggle (e.g. "Northside CC"). */
+  scopeLabel?: string | null;
   "aria-label"?: string;
 }
 
@@ -50,9 +55,12 @@ export function PlayerSelect({
   placeholder = "Search player…",
   roleLabel = "Player",
   defaultRole = "player",
+  organisationId = null,
+  scopeLabel = null,
   ...rest
 }: PlayerSelectProps) {
   const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);  // scope to the club by default; show all for fill-ins
   const [wizard, setWizard] = useState<string | null>(null); // the name to create, when the wizard is open
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Person[]>([]);
@@ -110,7 +118,11 @@ export function PlayerSelect({
       setBusy(true);
       setErr(null);
       try {
-        setResults(await api.listPeople(workspaceId, { search: query || undefined }));
+        // scope to the field's club by default; "Show all" (or no club set) searches everyone so
+        // fill-ins, multi-club and historical players stay discoverable
+        const opts: { search?: string; organisation_id?: string } = { search: query || undefined };
+        if (organisationId && !showAll) opts.organisation_id = organisationId;
+        setResults(await api.listPeople(workspaceId, opts));
         setActive(0);
       } catch (e) {
         setErr(e instanceof ApiError ? e.message : "Search failed");
@@ -119,7 +131,7 @@ export function PlayerSelect({
       }
     }, 200);
     return () => clearTimeout(t);
-  }, [open, query, workspaceId]);
+  }, [open, query, workspaceId, organisationId, showAll]);
 
   // ---- outside click / dismiss ---------------------------------------------------------------
   useEffect(() => {
@@ -223,6 +235,12 @@ export function PlayerSelect({
             onKeyDown={onKeyDown}
             className="mb-2 h-8 w-full shrink-0 rounded-[var(--radius-app)] border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
           />
+          {organisationId && (
+            <label className="mb-2 flex shrink-0 items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+              Show all players{showAll ? "" : scopeLabel ? ` (showing ${scopeLabel} only)` : " (showing this club only)"}
+            </label>
+          )}
           {err && <p className="px-1 pb-1 text-xs text-danger">{err}</p>}
           <div className="min-h-0 flex-1 overflow-auto">
             {busy && <p className="px-1 py-2 text-xs text-muted-foreground">Searching…</p>}

@@ -31,6 +31,12 @@ interface GridCtx {
   onDirty: Saver;
   onChanged: () => void; // ask parent to recompute totals/validation
   refreshKey?: number;   // bumped by the parent so sibling grids re-fetch (e.g. FOW -> partnerships)
+  // club scoping for player selectors (Phase 7.4): batters scope to the batting club, bowlers/
+  // fielders to the bowling club; "Show all" in the selector keeps everyone discoverable
+  battingOrgId?: string | null;
+  bowlingOrgId?: string | null;
+  battingTeamName?: string | null;
+  bowlingTeamName?: string | null;
 }
 
 /** A focus grid: register inputs by (row,col); handle arrow/Enter keys to move focus. */
@@ -221,7 +227,7 @@ export function BattingGrid(ctx: GridCtx) {
               <td className="px-1 py-1 text-muted-foreground tabular-nums">{r.batting_position ?? "—"}</td>
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Batter ${i + 1}`}
+                  disabled={!canManage} aria-label={`Batter ${i + 1}`} organisationId={ctx.battingOrgId} scopeLabel={ctx.battingTeamName}
                   onChange={(pid) => void commit(r.id, { person_id: pid })} />
               </td>
               <td className="px-1 py-1">
@@ -233,12 +239,12 @@ export function BattingGrid(ctx: GridCtx) {
               </td>
               <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.fielder_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`}
+                  disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
                   onChange={(pid) => void commit(r.id, { fielder_person_id: pid })} />
               </td>
               <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`}
+                  disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
                   onChange={(pid) => void commit(r.id, { bowler_person_id: pid })} />
               </td>
               <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
@@ -346,7 +352,7 @@ export function BowlingGrid(ctx: GridCtx) {
             <tr key={r.id} className="border-t border-border">
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Bowler ${i + 1}`}
+                  disabled={!canManage} aria-label={`Bowler ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
                   onChange={(pid) => void commit(r.id, { person_id: pid })} />
               </td>
               <td className="px-1 py-1">
@@ -429,7 +435,7 @@ export function FowGrid(ctx: GridCtx) {
               <td className="px-1 py-1"><NumCell value={r.team_score} ariaLabel={`Team score ${i + 1}`} disabled={!canManage} onCommit={(v) => void commit(r.id, { team_score: v })} /></td>
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.dismissed_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Batter out ${i + 1}`}
+                  disabled={!canManage} aria-label={`Batter out ${i + 1}`} organisationId={ctx.battingOrgId} scopeLabel={ctx.battingTeamName}
                   onChange={(pid) => void commit(r.id, { dismissed_person_id: pid })} />
               </td>
               {canManage && (
