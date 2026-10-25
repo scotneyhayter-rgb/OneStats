@@ -66,6 +66,8 @@ export function AutoSync() {
 
   const syncNow = (source_system: string) =>
     act(() => api.autosyncSyncNow(workspaceId, { source_system, kind: "manual" }), "Sync run.");
+  const checkUpdates = (source_system: string) =>
+    act(() => api.autosyncSyncNow(workspaceId, { source_system, kind: "updated" }), "Checked for scorecard updates.");
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const bulk = (action: "accept" | "reject") =>
     act(() => api.autosyncBulk(workspaceId, { item_ids: [...selected], action }), `Bulk ${action} done.`);
@@ -114,6 +116,7 @@ export function AutoSync() {
               <span className="text-xs text-muted-foreground">{s.connector_id} · {s.reliability}</span>
               <div className="ml-auto flex gap-1">
                 <Button size="sm" disabled={busy || !s.enabled} onClick={() => void syncNow(s.connector_id)}><PlayCircle className="h-4 w-4" aria-hidden /> Sync Now</Button>
+                <Button size="sm" variant="outline" disabled={busy || !s.enabled} onClick={() => void checkUpdates(s.connector_id)}>Check updates</Button>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => api.autosyncSetSourceEnabled(workspaceId, s.id, !s.enabled), "Source updated.")}>{s.enabled ? "Disable" : "Enable"}</Button>
               </div>
             </div>
