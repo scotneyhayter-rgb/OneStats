@@ -177,7 +177,9 @@ def build_pdf(doc: ReportDoc) -> bytes:
     flow.append(Spacer(1, 3 * mm))
 
     for section in doc.sections:
-        flow.append(Paragraph(section.heading, h_style))
+        # Don't repeat the document title as a section heading (single-section reports would show it twice).
+        if section.heading and section.heading != doc.title:
+            flow.append(Paragraph(section.heading, h_style))
         header_row = [Paragraph(c.label, head_cell_r if c.align == "right" else head_cell) for c in section.columns]
         data = [header_row]
         for r in section.rows:

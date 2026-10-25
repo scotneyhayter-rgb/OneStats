@@ -14,6 +14,9 @@ from sqlalchemy.exc import DBAPIError, ProgrammingError
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
+from onestats.domain import matches
+
+_ACTOR = "11111111-1111-1111-1111-111111111111"
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(
@@ -73,6 +76,43 @@ def test_cannot_write_into_another_workspace(engine):
                 conn.execute(
                     text("INSERT INTO audit_log(workspace_id, action) VALUES (:w, 'x')"),
                     {"w": ws_a},
+                )
+            sp.rollback()
+        finally:
+            trans.rollback()
+
+
+def test_stats_ledger_is_isolated_by_workspace(engine):
+    """The Phase 12 statistics ledger (match_stat_contribution) must be workspace-isolated too — a
+    representative guard that newer tables carry FORCE RLS + a policy, not only the Phase 3 tables."""
+    with engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            ws_a = _new_workspace(conn, "ISO STAT A")
+            ws_b = _new_workspace(conn, "ISO STAT B")
+            conn.execute(text("INSERT INTO app_user(id, username) VALUES (:a, 'iso') ON CONFLICT (id) DO NOTHING"),
+                         {"a": _ACTOR})
+            subj = "22222222-2222-2222-2222-222222222222"
+            set_workspace(conn, ws_a)
+            mid = matches.create_match(conn, ws_a, _ACTOR)
+            conn.execute(
+                text("INSERT INTO match_stat_contribution(workspace_id, match_id, calculator, "
+                     "subject_kind, subject_id, metrics) "
+                     "VALUES (:w, :m, 'player_batting', 'person', :s, '{\"runs\": 10}'::jsonb)"),
+                {"w": ws_a, "m": mid, "s": subj},
+            )
+            assert conn.execute(text("SELECT count(*) FROM match_stat_contribution")).scalar_one() == 1
+            set_workspace(conn, ws_b)
+            assert conn.execute(text("SELECT count(*) FROM match_stat_contribution")).scalar_one() == 0, \
+                "workspace B must NOT see workspace A's statistics ledger rows"
+            # and B cannot write a row tagged for A
+            sp = conn.begin_nested()
+            with pytest.raises((ProgrammingError, DBAPIError)):
+                conn.execute(
+                    text("INSERT INTO match_stat_contribution(workspace_id, match_id, calculator, "
+                         "subject_kind, subject_id, metrics) "
+                         "VALUES (:w, :m, 'player_batting', 'person', :s, '{}'::jsonb)"),
+                    {"w": ws_a, "m": mid, "s": subj},
                 )
             sp.rollback()
         finally:

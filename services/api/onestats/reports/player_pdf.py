@@ -93,8 +93,10 @@ def player_profile_pdf(conn: Connection, settings: Settings, workspace_id: UUID,
             rows=[{"title": h["title"], "award_category": h.get("award_category") or h["honour_type"].replace("_", " "),
                    "awarded_season": h.get("awarded_season") or "—"} for h in prof["honours"]]))
 
-    doc = ReportDoc(title=f"{name} — Career Profile", subtitle=ws_name, workspace_name=ws_name,
-                    logo_path=logo_path, brand_hex=hexc, cover_page=True,
+    # A career profile is a portrait document (the club name is already in the running header, so it is
+    # not repeated as a subtitle; portrait keeps the cover and the narrow discipline tables well-proportioned).
+    doc = ReportDoc(title=f"{name} — Career Profile", subtitle=None, workspace_name=ws_name,
+                    orientation="portrait", logo_path=logo_path, brand_hex=hexc, cover_page=True,
                     qualification_notes=[("Official statistics from approved scorecards only; unknown "
                                           "values are never treated as zero. Private personal details are "
                                           "not included.")],

@@ -374,49 +374,21 @@ def backfill(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, Any]
     return {"matches": len(ids), "contributions": total}
 
 
-def _merge_aware(column: str = "subject_id") -> str:
-    # match the subject directly, or any identity merged into it (so a corrected identity combines)
-    return f"({column} = :p OR {column} IN (SELECT id FROM person WHERE merged_into_id = :p))"
-
-
 def official_player_batting(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
-    """Official career batting for a person from the approved ledger (merge-aware). Unknown stays 0
-    only where genuinely nothing is recorded; averages are None when undefined."""
-    r = conn.execute(
-        text(
-            "SELECT count(DISTINCT match_id) AS matches, "
-            " coalesce(sum((metrics->>'innings')::int), 0) AS innings, "
-            " coalesce(sum((metrics->>'runs')::int), 0) AS runs, "
-            " coalesce(sum((metrics->>'balls')::int), 0) AS balls, "
-            " coalesce(sum((metrics->>'fours')::int), 0) AS fours, "
-            " coalesce(sum((metrics->>'sixes')::int), 0) AS sixes, "
-            " coalesce(sum((metrics->>'dismissed')::int), 0) AS dismissed, "
-            " coalesce(sum((metrics->>'not_out')::int), 0) AS not_out "
-            f"FROM match_stat_contribution WHERE calculator = 'player_batting' AND {_merge_aware()}"
-        ),
-        {"p": person_id},
-    ).mappings().one()
-    d = dict(r)
-    d["average"] = round(d["runs"] / d["dismissed"], 2) if d["dismissed"] else None
-    d["strike_rate"] = round(d["runs"] * 100 / d["balls"], 2) if d["balls"] else None
+    """Official career batting for a person — delegates to the ONE statistics engine (merge-aware,
+    unknown-aware). Kept as the Phase 7 entry point; it is a thin wrapper so there is a single
+    authoritative calculation, never a competing formula. ``not_out`` is retained as a back-compat
+    alias of the engine's ``not_outs``."""
+    from onestats.domain.stats import engine
+    d = engine.person_batting(conn, {"workspace_id": workspace_id}, person_id)
+    d["not_out"] = d.get("not_outs", 0)
     return d
 
 
-def official_player_bowling(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
-    """Official career bowling for a person from the approved ledger (merge-aware)."""
-    r = conn.execute(
-        text(
-            "SELECT count(DISTINCT match_id) AS matches, "
-            " coalesce(sum((metrics->>'innings')::int), 0) AS innings, "
-            " coalesce(sum((metrics->>'balls')::int), 0) AS balls, "
-            " coalesce(sum((metrics->>'maidens')::int), 0) AS maidens, "
-            " coalesce(sum((metrics->>'runs')::int), 0) AS runs, "
-            " coalesce(sum((metrics->>'wickets')::int), 0) AS wickets "
-            f"FROM match_stat_contribution WHERE calculator = 'player_bowling' AND {_merge_aware()}"
-        ),
-        {"p": person_id},
-    ).mappings().one()
-    d = dict(r)
-    d["average"] = round(d["runs"] / d["wickets"], 2) if d["wickets"] else None
-    d["economy"] = round(d["runs"] * 6 / d["balls"], 2) if d["balls"] else None
-    return d
+def official_player_bowling(conn: Connection, workspace_id: UUID, person_id: UUID,
+                            *, over_length: int = 6) -> dict[str, Any]:
+    """Official career bowling for a person — delegates to the ONE statistics engine (merge-aware).
+    Economy uses the given over length via the engine (never a hardcoded six-ball over); the career
+    default is six balls, configurable for historical eight-ball-over eras."""
+    from onestats.domain.stats import engine
+    return engine.person_bowling(conn, {"workspace_id": workspace_id}, person_id, over_length=over_length)

@@ -133,6 +133,17 @@ Open from **People** (left sidebar) → open a person → **View full career pro
 
 ---
 
+## Pre-acceptance audit spot-checks (added 2026-10-26)
+
+The full system audit ([ONESTATS_FULL_SYSTEM_AUDIT.md](ONESTATS_FULL_SYSTEM_AUDIT.md)) fixed four
+defects before this programme. Add these quick confirmations:
+
+| # | Check | Expected |
+|---|---|---|
+| A1 | A bowler whose matches used **eight-ball overs** → view Bowling economy | Economy uses the configured over length (not a fixed six) |
+| A2 | Open a **captain's** profile → Captaincy tab | Captaincy figures are populated (previously blank) |
+| A3 | Export a **player-profile PDF** | A4 **portrait**, cover shows the club name once (no duplication) |
+
 ## Workflow
 
 Run each test, record Pass/Fail/Blocked and any defect reference. Fix defects found, rerun affected
