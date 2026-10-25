@@ -17,12 +17,12 @@ import { Card, CardContent } from "../../components/ui/card";
 import { api, ApiError, type PlayerFullProfile } from "../../lib/api";
 import { useWorkspace } from "../../lib/workspace-context";
 
-type Tab = "overview" | "batting" | "bowling" | "fielding" | "captaincy" | "seasons" | "matches" | "records" | "awards" | "media";
+type Tab = "overview" | "batting" | "bowling" | "fielding" | "captaincy" | "seasons" | "grandfinals" | "matches" | "records" | "awards" | "media";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" }, { key: "batting", label: "Batting" }, { key: "bowling", label: "Bowling" },
   { key: "fielding", label: "Fielding & WK" }, { key: "captaincy", label: "Captaincy" }, { key: "seasons", label: "Seasons" },
-  { key: "matches", label: "Matches" }, { key: "records", label: "Records & Milestones" },
+  { key: "grandfinals", label: "Grand Finals" }, { key: "matches", label: "Matches" }, { key: "records", label: "Records & Milestones" },
   { key: "awards", label: "Awards & Honours" }, { key: "media", label: "Media" },
 ];
 
@@ -30,6 +30,72 @@ function num(v: unknown, dp?: number): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "number") return dp != null ? v.toFixed(dp) : String(v);
   return String(v);
+}
+
+type ChartPoint = { label: string; value: number | null };
+
+/** A compact, theme-aware bar chart (SVG, no dependency). Null values render as an empty slot, never 0. */
+function BarChart({ title, points, dp }: { title: string; points: ChartPoint[]; dp?: number }) {
+  const W = 360, H = 150, padL = 30, padB = 22, padT = 10;
+  const vals = points.map((p) => (p.value == null ? 0 : p.value));
+  const max = Math.max(1, ...vals);
+  const bw = points.length ? (W - padL) / points.length : 0;
+  const plotH = H - padB - padT;
+  return (
+    <figure className="flex min-w-0 flex-col gap-1">
+      <figcaption className="text-xs font-medium">{title}</figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full text-muted-foreground" role="img"
+        aria-label={`${title}. ${points.map((p) => `${p.label}: ${p.value == null ? "unknown" : num(p.value, dp)}`).join(", ")}`}>
+        <line x1={padL} y1={padT} x2={padL} y2={H - padB} className="stroke-border" strokeWidth={1} />
+        <line x1={padL} y1={H - padB} x2={W} y2={H - padB} className="stroke-border" strokeWidth={1} />
+        <text x={padL - 4} y={padT + 6} textAnchor="end" className="fill-current text-[8px]">{num(max, dp)}</text>
+        {points.map((p, i) => {
+          if (p.value == null) return null;
+          const h = (p.value / max) * plotH;
+          const x = padL + i * bw + bw * 0.18;
+          return (
+            <g key={i}>
+              <rect x={x} y={H - padB - h} width={bw * 0.64} height={Math.max(0, h)} rx={1.5} className="fill-brand" />
+              <text x={x + bw * 0.32} y={H - padB + 9} textAnchor="middle" className="fill-current text-[7px]">{p.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}
+
+/** A compact, theme-aware line chart (SVG). Gaps are drawn where a value is unknown. */
+function LineChart({ title, points, dp }: { title: string; points: ChartPoint[]; dp?: number }) {
+  const W = 360, H = 150, padL = 30, padB = 22, padT = 10;
+  const known = points.filter((p) => p.value != null) as { label: string; value: number }[];
+  const max = Math.max(1, ...known.map((p) => p.value));
+  const plotH = H - padB - padT;
+  const step = points.length > 1 ? (W - padL - 8) / (points.length - 1) : 0;
+  const xy = (i: number, v: number) => [padL + 8 + i * step, H - padB - (v / max) * plotH] as const;
+  const path = points.map((p, i) => (p.value == null ? null : xy(i, p.value)))
+    .filter((c): c is readonly [number, number] => c != null)
+    .map(([x, y], j) => `${j === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return (
+    <figure className="flex min-w-0 flex-col gap-1">
+      <figcaption className="text-xs font-medium">{title}</figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full text-muted-foreground" role="img"
+        aria-label={`${title}. ${points.map((p) => `${p.label}: ${p.value == null ? "unknown" : num(p.value, dp)}`).join(", ")}`}>
+        <line x1={padL} y1={padT} x2={padL} y2={H - padB} className="stroke-border" strokeWidth={1} />
+        <line x1={padL} y1={H - padB} x2={W} y2={H - padB} className="stroke-border" strokeWidth={1} />
+        <text x={padL - 4} y={padT + 6} textAnchor="end" className="fill-current text-[8px]">{num(max, dp)}</text>
+        {path && <path d={path} fill="none" className="stroke-brand" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+        {points.map((p, i) => {
+          if (p.value == null) return null;
+          const [x, y] = xy(i, p.value);
+          return <g key={i}>
+            <circle cx={x} cy={y} r={2.5} className="fill-brand" />
+            <text x={x} y={H - padB + 9} textAnchor="middle" className="fill-current text-[7px]">{p.label}</text>
+          </g>;
+        })}
+      </svg>
+    </figure>
+  );
 }
 
 export function PlayerProfile() {
@@ -151,6 +217,10 @@ export function PlayerProfile() {
                 <Badge key={i} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{String(h.honour_type).replace(/_/g, " ")}</Badge>
               ))}
               {(full?.records ?? []).length > 0 && <Badge variant="warning"><Trophy className="mr-1 h-3 w-3" aria-hidden />Record holder</Badge>}
+              {Number(full?.grand_finals?.premierships ?? 0) > 0 && (
+                <Badge variant="brand"><Trophy className="mr-1 h-3 w-3" aria-hidden />
+                  {full!.grand_finals.premierships}× premiership{full!.grand_finals.premierships === 1 ? "" : "s"}</Badge>
+              )}
               {(full?.clubs ?? []).slice(0, 2).map((cl) => <span key={cl.team_id} className="text-muted-foreground">{cl.club}</span>)}
             </div>
           </div>
@@ -261,9 +331,59 @@ export function PlayerProfile() {
           )}
           {tab === "captaincy" && !c?.has_captaincy && <p className="text-xs text-muted-foreground">No captaincy history recorded.</p>}
 
+          {tab === "grandfinals" && (() => {
+            const gf = full?.grand_finals;
+            if (!gf || gf.appearances === 0)
+              return <p className="text-xs text-muted-foreground">No grand finals recorded.</p>;
+            const gfb = gf.batting, gfw = gf.bowling, gfc = gf.captaincy;
+            return (
+              <>
+                <h3 className="text-sm font-semibold">Grand finals</h3>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {statCard("Grand finals", gf.appearances)}
+                  {statCard("Premierships", gf.premierships)}
+                  {gf.has_batting && statCard("GF runs", gfb.runs, undefined, Boolean(gfb.runs_known_minimum))}
+                  {gf.has_batting && statCard("GF average", gfb.average, 2)}
+                  {gf.has_batting && statCard("GF highest", gfb.highest_score)}
+                  {gf.has_bowling && statCard("GF wickets", gfw.wickets, undefined, Boolean(gfw.wickets_known_minimum))}
+                  {gf.has_bowling && statCard("GF best (match)", gfw.best_match_wickets)}
+                  {gf.has_captaincy && statCard("GF captained", gfc.captained)}
+                  {gf.has_captaincy && statCard("GF won as captain", gfc.gf_wins)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Premierships count grand finals {name}&rsquo;s team won while they featured — a recorded result, never inferred.
+                </p>
+                {gf.matches.length > 0 && (
+                  <>
+                    <h4 className="text-xs font-semibold">Every grand final</h4>
+                    {table([{ key: "match_date", label: "Date" }, { key: "runs", label: "Runs", align: "right" },
+                            { key: "wickets", label: "Wkts", align: "right" }, { key: "catches", label: "Ct", align: "right" },
+                            { key: "result_type", label: "Result" }],
+                           gf.matches, () => navigate("/matches"))}
+                  </>
+                )}
+              </>
+            );
+          })()}
+
           {tab === "seasons" && (
             <>
               <h3 className="text-sm font-semibold">Season by season</h3>
+              {(full?.seasons.length ?? 0) > 1 && (() => {
+                const sp = full!.seasons.map((s) => ({ label: String(s.label ?? ""), s }));
+                const val = (s: Record<string, unknown>, k: string): number | null =>
+                  s[k] == null ? null : Number(s[k]);
+                let cum = 0;
+                const cumRuns = sp.map(({ label, s }) => { cum += Number(s.runs ?? 0); return { label, value: cum }; });
+                return (
+                  <div className="grid gap-4 border-b border-border pb-3 sm:grid-cols-2">
+                    {c?.has_batting && <BarChart title="Runs per season" points={sp.map(({ label, s }) => ({ label, value: val(s, "runs") }))} />}
+                    {c?.has_batting && <LineChart title="Batting average by season" points={sp.map(({ label, s }) => ({ label, value: val(s, "batting_average") }))} dp={2} />}
+                    {c?.has_bowling && <BarChart title="Wickets per season" points={sp.map(({ label, s }) => ({ label, value: val(s, "wickets") }))} />}
+                    {c?.has_batting && <LineChart title="Cumulative runs" points={cumRuns} />}
+                  </div>
+                );
+              })()}
               {(full?.seasons.length ?? 0) === 0 ? <p className="text-xs text-muted-foreground">No seasons.</p> :
                 table([{ key: "label", label: "Season" }, { key: "matches", label: "M", align: "right" },
                        { key: "runs", label: "Runs", align: "right" }, { key: "batting_average", label: "Bat Avg", align: "right", dp: 2 },

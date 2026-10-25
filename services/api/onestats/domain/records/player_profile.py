@@ -158,6 +158,28 @@ def records_held(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[
     return held
 
 
+def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
+    """Grand-final career record for the player: figures restricted to matches classified as grand
+    finals (the engine's ``grand_final`` split), plus each grand final played. ``premierships`` is the
+    number of grand finals the player's team won while they featured — a recorded result, never inferred."""
+    f = {"workspace_id": workspace_id, "split": "grand_final"}
+    bat = engine.person_batting(conn, f, person_id)
+    bowl = engine.person_bowling(conn, f, person_id)
+    field = engine.person_fielding(conn, f, person_id)
+    capt = engine.person_captaincy(conn, f, person_id)
+    part = engine.person_participation(conn, f, person_id)
+    gf_matches = [m for m in match_history(conn, workspace_id, person_id) if m["classification"] == "grand_final"]
+    return {
+        "appearances": int(part.get("matches", 0) or 0),
+        "premierships": int(part.get("wins", 0) or 0),
+        "batting": bat, "bowling": bowl, "fielding": field, "captaincy": capt,
+        "matches": gf_matches,
+        "has_batting": int(bat.get("innings", 0) or 0) > 0,
+        "has_bowling": int(bowl.get("innings", 0) or 0) > 0,
+        "has_captaincy": int(capt.get("captained", 0) or 0) > 0,
+    }
+
+
 def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, competition_id: UUID | None = None,
                  season_id: UUID | None = None) -> dict[str, Any]:
     """Everything the profile needs in one call (career scope optional), composed from the engines."""
@@ -167,6 +189,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
         "seasons": season_breakdown(conn, workspace_id, person_id),
         "clubs": clubs_and_teams(conn, workspace_id, person_id),
         "records": records_held(conn, workspace_id, person_id),
+        "grand_finals": grand_finals(conn, workspace_id, person_id),
         "milestones": milestones.person_milestones(conn, workspace_id, person_id),
         "badges": badges.person_badges(conn, workspace_id, person_id),
         "honours": [{k: (str(v) if isinstance(v, UUID) else v) for k, v in h.items()}

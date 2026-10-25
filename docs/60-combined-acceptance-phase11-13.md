@@ -107,7 +107,7 @@ Section: **Records & Achievements** (Club Management → Records & Achievements)
 
 ---
 
-## Phase 13 (continued) — Player Profiles (14 tests)
+## Phase 13 (continued) — Player Profiles (16 tests)
 
 Open from **People** (left sidebar) → open a person → **View full career profile →** (route
 `/people/<id>`). Profiles compose the one engine; nothing is fabricated; unknown is never shown as zero.
@@ -128,6 +128,8 @@ Open from **People** (left sidebar) → open a person → **View full career pro
 | P12 | Multi-club career | A player in >1 club | Clubs listed; **one** identity (no duplicate profiles) |
 | P13 | Unknown handling | A player with unknown figures | Known-minimum "min." indicators; never shown as zero |
 | P14 | Profile PDF export | Profile → Export PDF | A4, branding, cover page, career tables — same figures as screen |
+| P15 | Graphical career charts | Seasons tab (player with >1 season) | Runs/season, batting avg/season, wickets/season, cumulative runs render as clean SVG charts; unknown is a gap, not zero; accessible labels |
+| P16 | Grand Finals section | Grand Finals tab | GFs played, premierships (team won — recorded, never inferred), GF batting/bowling/captaincy, list of every GF; header shows premiership badge; "No grand finals recorded" when none |
 
 ---
 

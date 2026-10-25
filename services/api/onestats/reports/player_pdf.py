@@ -60,6 +60,21 @@ def player_profile_pdf(conn: Connection, settings: Settings, workspace_id: UUID,
                                 columns=[Column("title", "Record"), Column("value", "", "right")],
                                 rows=prof["records"]))
 
+    gf = prof.get("grand_finals") or {}
+    if gf.get("appearances"):
+        gfb, gfw, gfc = gf.get("batting", {}), gf.get("bowling", {}), gf.get("captaincy", {})
+        gf_rows = [
+            {"stat": "Grand finals played", "value": gf.get("appearances")},
+            {"stat": "Premierships (team won)", "value": gf.get("premierships")},
+            {"stat": "Grand final runs", "value": gfb.get("runs")},
+            {"stat": "Grand final wickets", "value": gfw.get("wickets")},
+            {"stat": "Grand finals captained", "value": gfc.get("captained")},
+            {"stat": "Grand finals won as captain", "value": gfc.get("gf_wins")},
+        ]
+        sections.append(Section(heading="Grand finals",
+                                columns=[Column("stat", "Statistic"), Column("value", "", "right")],
+                                rows=gf_rows))
+
     achieved = []
     for data in prof["milestones"]["metrics"].values():
         for m in data["milestones"]:

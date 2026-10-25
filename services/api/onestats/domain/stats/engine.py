@@ -246,8 +246,11 @@ def _person_agg(conn: Connection, calculator: str, filters: dict[str, Any], pers
     sql = (f"SELECT {select} FROM match_stat_contribution c {join}"
            f"WHERE c.calculator = :cal AND {where} "
            "AND (c.subject_id = :pid OR c.subject_id IN (SELECT id FROM person WHERE merged_into_id = :pid))")
+    # With no GROUP BY the aggregate always returns exactly one row (all-zero via coalesce when the
+    # person has no contributions), so a missing row only happens on an empty result set. Note: not every
+    # calculator selects a ``matches`` column (captaincy does not), so the guard must not depend on it.
     r = conn.execute(text(sql), params).mappings().first()
-    if r is None or r.get("matches") is None:
+    if r is None:
         return {"subject_id": str(person_id), "matches": 0, "innings": 0, "runs": 0, "wickets": 0}
     d = dict(r)
     d["subject_id"] = str(person_id)

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Player Profile (Phase 13): loads the composed profile and shows adaptive career cards. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
@@ -23,9 +23,16 @@ const FULL = {
     bowling: { wickets: 60, average: 22.3 }, fielding: { catches: 25, stumpings: 0, run_outs: 5, keeper_catches: 0, keeper_dismissals: 0 },
     captaincy: { captained: 10, wins: 6 }, derived_role: "all-rounder", has_batting: true, has_bowling: true,
     has_captaincy: true, has_keeping: false },
-  seasons: [{ label: "2024/25", matches: 12, runs: 600, batting_average: 50, wickets: 20, bowling_average: 18, catches: 8, captained: 12 }],
+  seasons: [
+    { label: "2023/24", matches: 10, runs: 420, batting_average: 42, wickets: 15, bowling_average: 20, catches: 6, captained: 0 },
+    { label: "2024/25", matches: 12, runs: 600, batting_average: 50, wickets: 20, bowling_average: 18, catches: 8, captained: 12 },
+  ],
   clubs: [{ team_id: "t1", team: "1st XI", org_id: "o1", club: "Rhymney/Moyston CC" }],
   records: [{ title: "Most Career Runs", value: 1850, tied: false, known_minimum: true }],
+  grand_finals: { appearances: 3, premierships: 2, batting: { runs: 180, average: 60, highest_score: 92 },
+    bowling: { wickets: 8 }, fielding: { catches: 3 }, captaincy: { captained: 2, gf_wins: 2 },
+    matches: [{ match_date: "2024-03-23", runs: 92, wickets: 2, catches: 1, result_type: "home_win" }],
+    has_batting: true, has_bowling: true, has_captaincy: true },
   milestones: { metrics: { runs: { label: "Career runs", total: 1850, known_minimum: true,
     milestones: [{ threshold: 1000, state: "achieved_known_minimum" }], next: { threshold: 2500, to_go: 650 } } } },
   badges: { calculated: [{ label: "1000 career runs", source: "calculated", state: "achieved_known_minimum" }], awarded: [] },
@@ -44,8 +51,28 @@ describe("PlayerProfile", () => {
     await screen.findByText("A G Steel");
     expect(screen.getByText("all-rounder")).toBeTruthy();
     expect(screen.getByText("Record holder")).toBeTruthy();
+    expect(screen.getByText("2× premierships")).toBeTruthy();
     expect(screen.getAllByText("1,850".replace(",", "") === "1850" ? "1850" : "1850").length).toBeGreaterThan(0);
     // known-minimum indicator present on runs
     expect(screen.getAllByText("min.").length).toBeGreaterThan(0);
+  });
+
+  it("renders career charts on the Seasons tab and the Grand Finals section", async () => {
+    H.profileFull.mockResolvedValue(FULL);
+    H.getProfile.mockResolvedValue({ person: { display_name: "A G Steel" }, photos: [] });
+    render(<MemoryRouter initialEntries={["/people/p1"]}>
+      <Routes><Route path="/people/:personId" element={<PlayerProfile />} /></Routes>
+    </MemoryRouter>);
+    await screen.findByText("A G Steel");
+
+    fireEvent.click(screen.getByText("Seasons"));
+    // graphical career charts (>1 season) render as accessible SVG figures
+    expect(screen.getByText("Runs per season")).toBeTruthy();
+    expect(screen.getByText("Batting average by season")).toBeTruthy();
+    expect(screen.getByText("Cumulative runs")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Grand Finals"));
+    expect(screen.getByText("Premierships")).toBeTruthy();
+    expect(screen.getByText(/recorded result, never inferred/)).toBeTruthy();
   });
 });

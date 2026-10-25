@@ -123,3 +123,27 @@ def test_full_profile_and_awards_category(conn):
     from onestats.reports import player_pdf
     pdf = player_pdf.player_profile_pdf(conn, Settings(env="test", db_password=None, _env_file=None), wid, p)
     assert pdf[:5] == b"%PDF-" and len(pdf) > 2500
+
+
+def test_grand_finals_recorded(conn):
+    wid = _ws(conn, "PP GF")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    s1 = _season(conn, wid, comp, "2024/25", 2024)
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    p = people.create_person(conn, wid, ACTOR, display_name="Premiership Captain")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp, season_id=s1)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True, captain_person_id=p)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    matches.set_classification(conn, wid, ACTOR, mid, classification="grand_final")
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=p, batting_position=1,
+                         runs=92, balls_faced=100, dismissal_type="bowled")
+    matches.set_result(conn, wid, ACTOR, mid, result_type="home_win", won_by_team_id=home)
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    gf = player_profile.grand_finals(conn, wid, p)
+    assert gf["appearances"] == 1 and gf["premierships"] == 1          # team won the grand final (recorded)
+    assert gf["batting"]["runs"] == 92 and gf["has_batting"]
+    assert gf["captaincy"]["captained"] == 1 and gf["captaincy"]["gf_wins"] == 1
+    assert len(gf["matches"]) == 1 and gf["matches"][0]["classification"] == "grand_final"
+    assert player_profile.full_profile(conn, wid, p)["grand_finals"]["premierships"] == 1

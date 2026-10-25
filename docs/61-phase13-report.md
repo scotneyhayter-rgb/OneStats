@@ -46,18 +46,28 @@ the Phase 12 engine and Phase 13 records/honours/media — no second identity or
   Batting Award, Coach's Award, representative honours, …) alongside Life/Honorary Membership — recorded
   and authorised, never inferred.
 - **Frontend** `/people/:personId`: professional header (avatar, role, Captain / Life Member / record-
-  holder badges, clubs), adaptive career-summary cards (no misleading zero cards), and tabs for Overview,
-  Batting, Bowling, Fielding & WK, Captaincy, Seasons, Matches, Records & Milestones, Awards & Honours and
-  Media (photo thumbnails). Known-minimum indicators throughout; light/dark; opened from the People
-  directory.
+  holder / premiership badges, clubs), adaptive career-summary cards (no misleading zero cards), and tabs
+  for Overview, Batting, Bowling, Fielding & WK, Captaincy, Seasons, **Grand Finals**, Matches, Records &
+  Milestones, Awards & Honours and Media (photo thumbnails). Known-minimum indicators throughout;
+  light/dark; opened from the People directory.
+- **Graphical career charts** (§15): the Seasons tab draws theme-aware, dependency-free SVG charts —
+  runs per season, batting average by season, wickets per season and cumulative runs — with accessible
+  (`role="img"` + descriptive label) text alternatives. Unknown values render as a gap, never as zero.
+- **Dedicated Grand Finals section** (§21): a Grand Finals tab (and a matching PDF section) with grand
+  finals played, **premierships** (grand finals the player's team won while featuring — a recorded
+  result, never inferred), grand-final batting/bowling/captaincy figures and a list of every grand final.
+  All figures come from the engine's `grand_final` classification split.
 - **Profile PDF** (`reports/player_pdf.py`, `/people/{id}/profile.pdf`): a full career profile via the
   one shared framework (cover page, branding, career/season/records/milestones/awards) — same figures as
   on screen; private details excluded. A representative profile PDF was generated and provided for review.
-- **A real bug was found and fixed**: the engine's per-person aggregate grouped by `subject_id`, so a
-  **merged** player's totals (contributions under more than one identity) were undercounted to a single
-  identity. Now it aggregates the whole merge-aware set.
-- The combined acceptance programme ([60](60-combined-acceptance-phase11-13.md)) gains a **14-test Player
-  Profiles section** (now 84 tests total; tests were added, not trimmed).
+- **Two real bugs were found and fixed**: (1) the engine's per-person aggregate grouped by `subject_id`,
+  so a **merged** player's totals (contributions under more than one identity) were undercounted to a
+  single identity — now it aggregates the whole merge-aware set; (2) `person_captaincy` always returned
+  zeros because the empty-result guard tested a `matches` column the captaincy query does not select, so
+  the profile's captaincy figures were silently blank — the guard now only short-circuits a genuinely
+  empty result set.
+- The combined acceptance programme ([60](60-combined-acceptance-phase11-13.md)) gains a **16-test Player
+  Profiles section** (career charts + grand finals added; now 86 tests total; tests were added, not trimmed).
 
 ## Automated test results
 

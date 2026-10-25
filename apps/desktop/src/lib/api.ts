@@ -108,6 +108,18 @@ export interface PlayerFullProfile {
   seasons: Record<string, unknown>[];
   clubs: { team_id: string; team: string; org_id: string; club: string }[];
   records: { title: string; value: number | null; tied: boolean; known_minimum: boolean }[];
+  grand_finals: {
+    appearances: number;
+    premierships: number;
+    batting: Record<string, number | null>;
+    bowling: Record<string, number | null>;
+    fielding: Record<string, number>;
+    captaincy: Record<string, number>;
+    matches: Record<string, unknown>[];
+    has_batting: boolean;
+    has_bowling: boolean;
+    has_captaincy: boolean;
+  };
   milestones: { metrics: Record<string, { label: string; total: number; known_minimum: boolean;
     milestones: { threshold: number; state: string }[]; next: { threshold: number; to_go: number } | null }> };
   badges: { calculated: { label: string; source: string; state: string }[];
