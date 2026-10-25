@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import matches
+from onestats.domain import match_sources, matches
 from onestats.domain.autosync import discovery, sources
 from onestats.domain.autosync.connectors import FixtureConnector
 from onestats.domain.importing import pipeline
@@ -122,6 +122,24 @@ def test_discover_updated_queues_change_without_overwriting_approved(conn):
     assert pc["result_label"]["was"] == "home_win" and pc["result_label"]["now"] == "tie"
     # the approved scorecard is UNCHANGED — the change only sits in the review queue
     assert matches.get_match(conn, mid)["result_type"] == before_result
+
+
+def test_accepting_possible_duplicate_attaches_source_not_new_match(conn):
+    wid = _ws(conn, "DISC ATTACH")
+    pipeline.import_dataset(conn, wid, ACTOR, dataset=FixtureConnector("csv_feed", [ROWS[0]]).fetch_new(None).dataset, commit=True)
+    before = conn.execute(text("SELECT count(*) FROM match")).scalar_one()
+    # a different source reports the same fixture with a different result
+    discovery.discover_new(conn, wid, ACTOR, connector=FixtureConnector("herald", [{**ROWS[0], "Result": "Tie"}]), mode=REVIEW_REQUIRED)
+    item = next(i for i in discovery.list_items(conn, wid) if i["source_system"] == "herald")
+    assert item["classification"] == "possible_duplicate" and item["match_id"] is not None
+
+    accepted = discovery.accept_item(conn, wid, ACTOR, item["id"])
+    assert accepted["status"] == "accepted"
+    # NO duplicate match; the existing match gains a second source (R1), with the result conflict kept
+    assert conn.execute(text("SELECT count(*) FROM match")).scalar_one() == before
+    assert len(match_sources.list_match_sources(conn, accepted["match_id"])) == 2
+    conflicts = {c["field"] for c in match_sources.source_conflicts(conn, accepted["match_id"])}
+    assert "result_label" in conflicts
 
 
 def test_rediscovery_does_not_reopen_accepted_or_duplicate(conn):

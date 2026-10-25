@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain import audit, matches, recalc
+from onestats.domain import audit, match_sources, matches, recalc
 from onestats.domain.autosync import sources
 from onestats.domain.importing import dedupe, pipeline
 from onestats.domain.importing.model import (
@@ -307,17 +307,31 @@ def list_items(conn: Connection, workspace_id: UUID, *, status: str | None = "pe
 
 
 def accept_item(conn: Connection, workspace_id: UUID, actor: str, item_id: UUID) -> dict[str, Any]:
-    """Accept a queued discovery: import the candidate as a DRAFT match (Phase 7 approval still
-    governs official statistics). Idempotent; preserves provenance."""
+    """Accept a queued discovery. A **new** match is imported as a DRAFT (Phase 7 approval still
+    governs official statistics). A discovery that links to an **existing** match (possible duplicate,
+    additional evidence, or an updated scorecard) is recorded as an **additional source** on that
+    match (R1) — never creating a duplicate match and never overwriting the scorecard. Idempotent;
+    preserves provenance."""
     item = get_item(conn, item_id)
     if item is None:
         raise ValueError("item_not_found")
     if item["status"] not in ("pending_review",):
         return item
-    ds = _dataset_from_candidate(item["candidate"], item["source_system"])
-    pipeline.import_dataset(conn, workspace_id, actor, dataset=ds, commit=True)
-    mid = conn.execute(text("SELECT id FROM match WHERE source_system = :ss AND source_ref = :sr"),
-                       {"ss": item["source_system"], "sr": item["source_ref"]}).scalar_one_or_none()
+    if item["match_id"] is not None:
+        # confirm it is the same match: attach this source as evidence, do NOT create a new match.
+        # Store the source's fields in the same match-norm schema the importer uses, so conflicting
+        # accounts across sources line up field-for-field for review.
+        ds = _dataset_from_candidate(item["candidate"], item["source_system"])
+        norm = pipeline._match_norm(ds.matches[0]) if ds.matches else {}
+        match_sources.attach_source(conn, workspace_id, actor, item["match_id"],
+                                    source_system=item["source_system"], source_ref=item["source_ref"],
+                                    recorded_fields=norm)
+        mid = item["match_id"]
+    else:
+        ds = _dataset_from_candidate(item["candidate"], item["source_system"])
+        pipeline.import_dataset(conn, workspace_id, actor, dataset=ds, commit=True)
+        mid = conn.execute(text("SELECT id FROM match WHERE source_system = :ss AND source_ref = :sr"),
+                           {"ss": item["source_system"], "sr": item["source_ref"]}).scalar_one_or_none()
     conn.execute(text("UPDATE discovery_item SET status = 'accepted', match_id = :m, reviewed_by = :by, "
                       "reviewed_at = now(), updated_at = now() WHERE id = :id"),
                  {"m": mid, "by": actor, "id": item_id})
