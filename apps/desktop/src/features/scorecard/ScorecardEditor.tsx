@@ -36,6 +36,8 @@ import { useScoreFormat } from "../../lib/score-format";
 
 /** "no_toss" -> "No Toss", "in_progress" -> "In Progress" — consistent, readable option labels. */
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+// Sentence case (first letter only) — natural for result labels like "No result", "Home win".
+const sentenceCase = (s: string) => (s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /** Human-readable match result, e.g. "Rhymney/Moyston won by 42 runs" (Phase 7.3). Display only. */
 function formatResult(m: MatchDetail, teamName: (id: string | null) => string | null): string {
@@ -945,7 +947,7 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Result">
           <Select value={resultType} disabled={!canManage} onChange={(e) => setResultType(e.target.value)}>
-            {RESULT_TYPES.map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
+            {RESULT_TYPES.map((r) => <option key={r} value={r}>{sentenceCase(r.replace(/_/g, " "))}</option>)}
           </Select>
         </Field>
         <Field label="Won by (team)">
