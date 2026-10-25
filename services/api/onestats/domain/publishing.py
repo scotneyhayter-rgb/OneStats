@@ -233,6 +233,68 @@ def get_public(conn: Connection, slug: str) -> dict[str, Any] | None:
     return dict(r) if r else None
 
 
+def public_portal(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
+    """The public mobile records portal index for a club (Phase 16) — the published reports and profiles,
+    read from the publication edge with NO workspace context. Approved, published, non-private data only;
+    independent of server uptime (it uses the stored snapshots). Club name/colour come from the snapshots."""
+    rows = conn.execute(
+        text("SELECT title, kind, slug, snapshot->'branding'->>'club' AS club, "
+             "snapshot->'branding'->>'primary' AS primary FROM publication "
+             "WHERE workspace_id = :w AND status = 'published' ORDER BY kind DESC, title"),
+        {"w": workspace_id}).mappings().all()
+    club = next((r["club"] for r in rows if r["club"]), "OneStats")
+    primary = next((r["primary"] for r in rows if r["primary"]), "#0b5e3b")
+    items = [{"title": r["title"], "kind": r["kind"], "slug": r["slug"],
+              "path": f"/api/v1/public/{'p' if r['kind'] == 'player_profile' else 'r'}/{r['slug']}"}
+             for r in rows]
+    return {"club": club, "primary": primary, "items": items, "workspace_id": str(workspace_id)}
+
+
+def render_portal_html(portal: dict[str, Any]) -> str:
+    """A mobile-first, branded, read-only portal index page (no DB; works offline from snapshots)."""
+    primary = escape(str(portal.get("primary") or "#0b5e3b"))
+    club = escape(str(portal.get("club") or "OneStats"))
+    reports = [i for i in portal["items"] if i["kind"] == "report"]
+    players = [i for i in portal["items"] if i["kind"] == "player_profile"]
+
+    def _section(name: str, items: list[dict[str, Any]]) -> str:
+        if not items:
+            return ""
+        links = "".join(
+            f"<li data-name='{escape(i['title'].lower())}'><a href='{escape(i['path'])}'>{escape(i['title'])}</a></li>"
+            for i in items)
+        return f"<h2>{escape(name)}</h2><ul class='list'>{links}</ul>"
+
+    body = _section("Players", players) + _section("Reports", reports)
+    if not portal["items"]:
+        body = "<p class='muted'>No published records yet.</p>"
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{club} — Records</title>
+<style>
+:root{{--brand:{primary}}}
+*{{box-sizing:border-box}}
+body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;color:#17201c;background:#f7f9f8}}
+header{{background:var(--brand);color:#fff;padding:16px;position:sticky;top:0}}
+header h1{{margin:0;font-size:18px}}
+main{{max-width:680px;margin:0 auto;padding:16px}}
+.search{{width:100%;padding:12px;font-size:16px;border:1px solid #d8dcd9;border-radius:10px;margin-bottom:12px}}
+h2{{color:var(--brand);font-size:15px;margin:18px 0 6px}}
+.list{{list-style:none;padding:0;margin:0}}
+.list li{{background:#fff;border:1px solid #e5eae7;border-radius:10px;margin-bottom:8px}}
+.list a{{display:block;padding:14px 16px;color:#17201c;text-decoration:none;font-size:16px}}
+.list a:active{{background:#eef3f0}}
+.muted{{color:#5b665f}} footer{{color:#8a938d;font-size:11px;text-align:center;padding:16px}}
+</style></head><body>
+<header><h1>{club} — Records</h1></header>
+<main>
+<input class="search" type="search" placeholder="Search players and reports…" aria-label="Search"
+ oninput="var q=this.value.toLowerCase();document.querySelectorAll('.list li').forEach(function(li){{li.style.display=li.dataset.name.indexOf(q)>-1?'':'none'}})">
+{body}
+</main>
+<footer>Read-only records portal · published by OneStats</footer>
+</body></html>"""
+
+
 def static_export(conn: Connection, workspace_id: UUID, pub_id: UUID) -> dict[str, str]:
     """The self-contained files for uploading to existing website hosting: a JSON feed + an HTML page."""
     row = _row(conn, workspace_id, pub_id)

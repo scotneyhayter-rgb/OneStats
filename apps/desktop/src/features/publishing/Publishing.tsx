@@ -91,6 +91,15 @@ export function Publishing() {
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
         {msg && <p className="text-xs text-success">{msg}</p>}
 
+        <Card><CardContent className="flex flex-wrap items-center gap-2">
+          <div className="text-sm"><span className="font-medium">Public records portal</span>
+            <span className="ml-2 text-xs text-muted-foreground">a mobile-first page listing everything you publish</span></div>
+          <Button size="sm" variant="outline" className="ml-auto"
+            onClick={() => window.open(api.publicPreviewUrl(`/api/v1/public/club/${current.id}`), "_blank")}>
+            Open portal
+          </Button>
+        </CardContent></Card>
+
         <Card><CardContent className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold">Publish a report</h3>
           <p className="text-xs text-muted-foreground">Creates a permanent public URL backed by a snapshot (approved data only, club-branded). It keeps serving the last published snapshot even while this computer is offline.</p>

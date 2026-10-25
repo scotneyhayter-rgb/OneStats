@@ -147,6 +147,23 @@ def test_public_profile_excludes_private_data(seeded, conn):
     assert "1990-01-01" not in blob               # the private DOB is never published
 
 
+def test_mobile_portal_lists_published_only(seeded, conn):
+    """Phase 16: the public mobile portal index lists published items (no workspace context) and excludes
+    unpublished/revoked, independent of the live DB (snapshot-based)."""
+    wid = seeded["wid"]
+    r1 = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Leading Run Scorers", report_id="bat_most_runs")
+    r2 = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Most Wickets", report_id="bowl_most_wickets")
+    publishing.set_status(conn, wid, ACTOR, r2["id"], "unpublished")   # should not appear in the portal
+    _no_context(conn)
+    portal = publishing.public_portal(conn, wid)
+    titles = [i["title"] for i in portal["items"]]
+    assert "Leading Run Scorers" in titles and "Most Wickets" not in titles
+    assert portal["club"] == "PUB"                                     # branding from the snapshot
+    html = publishing.render_portal_html(portal)
+    assert "Leading Run Scorers" in html and "PUB — Records" in html and "viewport" in html
+    assert r1["slug"] in html
+
+
 def test_isolation_admin_cannot_see_other_workspace(seeded, conn):
     wid = seeded["wid"]
     pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="R", report_id="bat_most_runs")

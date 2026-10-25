@@ -9,6 +9,7 @@ alternative for existing website hosting.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import HTMLResponse
@@ -56,3 +57,24 @@ def public_profile_html(slug: str, settings: SettingsDep) -> HTMLResponse:
     """Alias for a published public player profile (same slug space)."""
     row = _fetch(settings, slug)
     return HTMLResponse(content=row["snapshot_html"] or "", headers=_SECURITY_HEADERS)
+
+
+def _portal(settings, workspace_id: UUID) -> dict[str, Any]:
+    eng = get_engine(settings)
+    if eng is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "unavailable")
+    with eng.connect() as conn:               # no workspace context — RLS exposes only published rows
+        return publishing.public_portal(conn, workspace_id)
+
+
+@router.get("/club/{workspace_id}.json")
+def portal_json(workspace_id: UUID, settings: SettingsDep) -> dict[str, Any]:
+    """The mobile records portal index for a club as JSON (Phase 16)."""
+    return _portal(settings, workspace_id)
+
+
+@router.get("/club/{workspace_id}", response_class=HTMLResponse)
+def portal_html(workspace_id: UUID, settings: SettingsDep) -> HTMLResponse:
+    """The responsive, read-only mobile records portal index for a club (Phase 16)."""
+    return HTMLResponse(content=publishing.render_portal_html(_portal(settings, workspace_id)),
+                        headers=_SECURITY_HEADERS)

@@ -63,10 +63,24 @@ Manual acceptance tests (DEFERRED). Several require a **hosting decision** + rea
 Automated coverage: `tests/test_publishing.py` (6), `features/publishing/publishing.test.tsx` (1).
 **Hosting decision required before public deployment** (static hosting vs central service) — see 64.
 
-## Phase 16 — Mobile Records Portal (added as built)
+## Phase 16 — Mobile Records Portal (IMPLEMENTED 2026-10-26 — see [65](65-phase16-report.md))
 
-Planned manual tests: responsive read-only portal renders on a phone; only approved/public data; privacy
-scoping (no junior/DOB/private); performance on mobile; links from the public site.
+Manual acceptance tests (DEFERRED; some need the hosting target + a phone):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| MOB1 | Portal renders | Open `/public/club/<workspace_id>` (Publishing → Open portal) | Mobile-first, club-branded index of published players + reports |
+| MOB2 | On a phone | Open the portal URL on a phone | Responsive layout, large tap targets, readable; no horizontal scroll |
+| MOB3 | Search | Type in the search box | Instant client-side filter of players/reports |
+| MOB4 | Read-only | Try to act | No write/admin actions; links only open published snapshots |
+| MOB5 | Privacy | Inspect a public profile from the portal | No DOB/junior/private; approved data only |
+| MOB6 | Published-only | Unpublish/revoke an item | It disappears from the portal |
+| MOB7 | Offline/snapshot | Stop the backend after publishing (hosting-dependent) | Portal + snapshots still served from the host |
+| MOB8 | Accessibility | Keyboard + contrast check | WCAG AA (semantic HTML, focus, contrast) |
+
+Automated coverage: `tests/test_publishing.py::test_mobile_portal_lists_published_only`.
+Reachability shares the **Phase 15 hosting decision**. Authenticated member view + Ask-on-portal + mobile
+media upload are follow-ups (see 65).
 
 ## Phase 17 — Windows Install, Website & Mobile Release (added as built)
 
