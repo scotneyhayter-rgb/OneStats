@@ -3,13 +3,35 @@
 Lightweight, evidence-based status. Updated by hand from verified test/build runs — **no invented
 completion percentages**. Full assessment: [43. Testing & Acceleration](43-testing-and-acceleration.md).
 
-_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0033_stat_contributions`._
+_Last updated: 2026-10-25 · branch `phase-2-foundation` · migration head `0034_match_source`._
 
 ## Verified test evidence (last run)
 | Suite | Result | Command |
 |---|---|---|
-| Backend (pytest) | **360 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
-| Desktop (vitest) | **52 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+| Backend (pytest) | **409 tests passing, 2 skipped** (DB tests roll back) | `run-tests.cmd backend` |
+| Desktop (vitest) | **54 tests passing**; `tsc` clean; `vite build` OK | `run-tests.cmd desktop` |
+
+## Phase 8 — Universal Third-Party Import Framework — implementation + tests complete (awaiting UAT)
+
+Adapter-based framework extending the existing staging substrate (design [47](47-phase8-import-framework.md);
+acceptance [49](49-phase8-acceptance.md)). Stages 8.1–8.10 done:
+
+| Stage | Status |
+|---|---|
+| 8.1 Adapter core (Canonical model + registry) | ✅ |
+| 8.2 CricketStatz adapter (CS→CCDM) | ✅ |
+| 8.3 Mapping engine + CSV + source-agnostic promotion + generic stager (end-to-end) | ✅ |
+| 8.4 Excel / JSON / XML adapters (defusedxml) | ✅ |
+| 8.5 Duplicate detection + multiple sources per match (R1) | ✅ |
+| 8.6 Universal import wizard (detect/preview/import any format) | ✅ |
+| 8.7 Import history & provenance (scorecard→source) | ✅ |
+| 8.8 Recovery (R2) + large-dataset performance (R3) | ✅ |
+| 8.9 Phase 9 AutoSync service interfaces (no discovery engine) | ✅ |
+| 8.10 Comprehensive tests, docs & acceptance checklist | ✅ |
+
+Five formats import through **one** shared stager+promoter; CricketStatz behaviour unchanged (28
+regression tests green). Imported matches are draft (Phase 7 approval authority). **Do not begin
+Phase 9 until Phase 8 is accepted.**
 
 The 2 skipped backend tests are `test_auth_service.py::test_bootstrap_creates_super_admin_with_valid_token`
 and `::test_bootstrap_rejects_bad_token` — they exercise first-super-admin bootstrap, which only runs
@@ -72,8 +94,8 @@ automated isolation tests. Defects found during acceptance were fixed and re-tes
 | 5 | People & Profiles | ✅ Complete |
 | **6** | **Matches & Scorecard Entry** | **✅ Complete (manual entry + CricketStatz import accepted)** |
 | **7** | **Validation, Integrity & Automatic Scorecard Intelligence** | **✅ Complete — user-accepted 2026-10-25** |
-| **8** | **Universal Third-Party Import Framework** | **🔄 In progress — design ([47](47-phase8-import-framework.md)); authorised 2026-10-25** |
-| 9–18 | AutoSync → … → RMCC Trial | ⏳ Future |
+| **8** | **Universal Third-Party Import Framework** | **✅ Implementation + tests complete — awaiting UAT ([49](49-phase8-acceptance.md))** |
+| 9–18 | AutoSync → … → RMCC Trial | ⏳ Future (Phase 9 interfaces in place) |
 
 ## Phase 6 stage detail
 | Stage | Scope | Status |

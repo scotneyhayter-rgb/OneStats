@@ -8,6 +8,7 @@ rejected. Blank fields are unknown; nothing is invented.
 from __future__ import annotations
 
 from typing import Any
+from xml.etree.ElementTree import ParseError
 
 from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring
@@ -42,6 +43,8 @@ class XmlGenericAdapter(SourceAdapter):
             root = fromstring(content)
         except DefusedXmlException as exc:
             raise ValueError(f"generic_xml: unsafe XML rejected ({exc})") from exc
+        except ParseError as exc:
+            raise ValueError(f"generic_xml: malformed XML ({exc})") from exc
         # match elements anywhere: <match> directly, or under a wrapper like <matches>
         matches = root.iter("match") if root.tag != "match" else [root]
         out: list[dict[str, Any]] = []
