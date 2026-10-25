@@ -1,7 +1,13 @@
 # Phase 10 — Historical Research Centre: Implementation Report
 
-**Status:** implementation + automated tests complete (2026-10-25) — **awaiting user acceptance.**
+**Status: FORMALLY ACCEPTED by the user on 2026-10-25.** All 24 manual acceptance tests passed;
+automated regression green; no outstanding critical defects, data-integrity issues or security concerns.
 Manual acceptance checklist: [55](55-phase10-acceptance.md). Engineering plan: [54](54-phase10-research-centre-plan.md).
+
+During the acceptance walkthrough, additional UI was added so every test is clickable (not API-only):
+an inline OCR text + correction panel, the reconstruction editor (attach sources, record field claims,
+view/resolve conflicts side by side), a historical-aliases panel, and historical-date entry on Start a
+reconstruction. All covered by the green suites below.
 
 Phase 10 transforms OneStats into a historical research platform: discover, collect, examine,
 reconstruct, compare, verify and preserve historical cricket information, for volunteers and experienced
@@ -36,7 +42,8 @@ approved-only official-statistics rule.
 
 ## 2. Automated test results
 
-- Backend **486 passing, 2 skipped**; Desktop **58 passing**; `tsc` clean; **ruff** clean.
+- Backend **486 passing, 2 skipped**; Desktop **58 passing**; `tsc` clean; **ruff** clean (re-confirmed at
+  acceptance, 2026-10-25).
 - Regression green: Phase 7 approval/recalc/statistics (31), Phase 8 import, Phase 9 AutoSync.
 - New Phase 10 suites: foundation + RLS isolation, storage, provenance/conflict, OCR (injected engine +
   fallback), reconstruction/multi-source, verification, timeline/gaps, tasks/notes/assistance,

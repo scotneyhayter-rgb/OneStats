@@ -8,6 +8,14 @@ verification steps) — the Super Admin and Workspace Admin have both.
 Record each test **Pass / Fail / Blocked**. Investigate and fix failures before continuing. Simulated
 capabilities are never recorded as verified live integrations.
 
+> **Acceptance walkthrough result (2026-10-25): Tests 1–24 all PASS** in the Sandbox. OCR Test 5 passed
+> via the honest **manual-transcription fallback** (no local Tesseract on the test machine; no paid cloud
+> OCR used). During the walkthrough several screens were added so every test is clickable rather than
+> API-only: an inline **OCR text + correction** panel, the **reconstruction editor** (attach sources,
+> record field claims, view/resolve conflicts side by side), a **historical aliases** panel, and
+> **historical-date entry** on Start a reconstruction. No live third-party archive connector was
+> exercised — all remain interface-only, as documented.
+
 ## Scope of live sources (read first)
 
 No verified live third-party archive connector ships in this phase. PlayHQ (Phase 9 Test 16),
@@ -90,5 +98,8 @@ verification (verified_partial eligible / disputed excluded / approved flow unch
 gaps, tasks/notes/assistance, archive connectors interface-only + alias expansion, worldwide/copyright/
 pagination/OneVault.
 
-**Phase 10 implementation + automated tests complete — awaiting user acceptance. Do not begin Phase 11
-without explicit authorisation.**
+**Phase 10 — Historical Research Centre: FORMALLY ACCEPTED by the user on 2026-10-25.** All 24 manual
+acceptance tests passed; automated regression green (486 backend / 58 desktop; Phase 7/8/9 regression
+green); no outstanding critical defects, data-integrity issues or security concerns. Preparation for
+Phase 11 (Media Archive & OneVault) is authorised; **Phase 11 implementation has not begun** and awaits
+the consolidated Phase 11 requirements. See the completion report ([56](56-phase10-report.md)).
