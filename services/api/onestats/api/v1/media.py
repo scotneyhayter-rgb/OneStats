@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain.media import assets, migration, providers
+from onestats.domain.media import assets, heritage, migration, providers
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/media", tags=["media"])
 Ctx = Annotated[RequestContext, Depends(require_permission("media.manage"))]
@@ -34,6 +34,11 @@ _ERRORS = {
     "publication_blocked_junior": status.HTTP_409_CONFLICT,
     "publication_blocked_sensitive": status.HTTP_409_CONFLICT,
     "publication_requires_copyright": status.HTTP_409_CONFLICT,
+    "name_required": status.HTTP_400_BAD_REQUEST,
+    "collection_not_found": status.HTTP_404_NOT_FOUND,
+    "item_not_found": status.HTTP_404_NOT_FOUND,
+    "item_has_no_asset": status.HTTP_409_CONFLICT,
+    "asset_not_cleared_for_publication": status.HTTP_409_CONFLICT,
 }
 
 
@@ -209,6 +214,67 @@ def link_asset(workspace_id: UUID, asset_id: UUID, body: LinkBody, settings: Set
         try:
             return _s(assets.link_asset(conn, workspace_id, str(ctx.user["id"]), asset_id,
                                        entity_type=body.entity_type, entity_id=body.entity_id, role=body.role))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+class CollectionCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class ItemCreate(BaseModel):
+    media_asset_id: UUID | None = None
+    title: str | None = None
+    significance: str | None = None
+    description: str | None = None
+    display_order: int = 0
+
+
+class ItemUpdate(BaseModel):
+    title: str | None = None
+    significance: str | None = None
+    description: str | None = None
+    display_order: int | None = None
+    publication_eligible: bool | None = None
+
+
+@router.get("/heritage/collections")
+def list_collections(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in heritage.list_collections(conn, workspace_id)]
+
+
+@router.post("/heritage/collections", status_code=status.HTTP_201_CREATED)
+def create_collection(workspace_id: UUID, body: CollectionCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(heritage.create_collection(conn, workspace_id, str(ctx.user["id"]), **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.get("/heritage/collections/{collection_id}/items")
+def list_items(workspace_id: UUID, collection_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in heritage.list_items(conn, workspace_id, collection_id)]
+
+
+@router.post("/heritage/collections/{collection_id}/items", status_code=status.HTTP_201_CREATED)
+def add_item(workspace_id: UUID, collection_id: UUID, body: ItemCreate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(heritage.add_item(conn, workspace_id, str(ctx.user["id"]), collection_id, **body.model_dump()))
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.patch("/heritage/items/{item_id}")
+def update_item(workspace_id: UUID, item_id: UUID, body: ItemUpdate, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(heritage.update_item(conn, workspace_id, str(ctx.user["id"]), item_id,
+                                          **body.model_dump(exclude_none=True)))
         except ValueError as exc:
             raise _err(exc) from exc
 
