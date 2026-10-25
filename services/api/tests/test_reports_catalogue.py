@@ -66,7 +66,7 @@ def _approved(conn, wid):
 
 def test_report_rows_named_and_ranked(conn):
     wid = _ws(conn, "RPT ROWS")
-    p = _approved(conn, wid)
+    _approved(conn, wid)
     data = catalogue.report_rows(conn, wid, "batting", {"workspace_id": wid})
     assert data["title"].startswith("Batting")
     r0 = data["rows"][0]
