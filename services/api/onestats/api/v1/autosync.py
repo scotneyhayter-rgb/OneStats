@@ -172,4 +172,7 @@ def coverage(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> list[dict[s
 @router.get("/dashboard")
 def dashboard(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
+        # offline catch-up: recover any job left 'running' by a shutdown before reporting status, so
+        # nothing is ever falsely shown as running and interrupted work is requeued.
+        service.startup_reconcile(conn, workspace_id, str(ctx.user["id"]))
         return service.dashboard_summary(conn, workspace_id)
