@@ -22,9 +22,16 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import affiliations, batting, bowling, competitions
+from onestats.domain import (
+    affiliations,
+    batting,
+    bowling,
+    competitions,
+    matches,
+    partnerships,
+    people,
+)
 from onestats.domain import innings as inn
-from onestats.domain import matches, partnerships, people
 
 SEED_WS_NAME = "ONESTATS SYNTHETIC TEST"
 ACTOR = "11111111-1111-1111-1111-111111111111"

@@ -3,10 +3,12 @@
 For a reviewer in the **OneStats Sandbox** workspace. AutoSync is reached from **Club Management →
 AutoSync** (`/manage/autosync`). Start the backend + desktop app (see [46](46-phase7-acceptance.md)).
 
-> **Acceptance walkthrough result (2026-10-25):** Tests **1–15 PASS** in the Sandbox using the
-> built-in fixture sources. Test **16 is N/A** — no verified live connector is available; PlayHQ,
-> Play-Cricket and CricketArchive are recorded as outstanding external dependencies
-> ([52](52-phase9-external-dependencies.md)) and are **not** operational.
+> **Phase 9 — CONDITIONALLY ACCEPTED (2026-10-25).** The user confirmed Tests **1–15 PASS** in the
+> Sandbox using the built-in fixture sources, and authorised **conditional acceptance** of Phase 9 with
+> one outstanding external dependency recorded below. Test **16 (Live PlayHQ Connector) is BLOCKED** —
+> pending a valid, approved PlayHQ API Client ID — and is **not** marked passed. PlayHQ, Play-Cricket and
+> CricketArchive remain **interface-only** (not operational); see the dependency register
+> ([52](52-phase9-external-dependencies.md)) and the handover report ([53](53-phase9-handover.md)).
 >
 > Defects found and fixed during this walkthrough (all re-tested): updated-scorecard diff now compares
 > like-for-like; re-discovery never re-queues an imported match; accepting a possible-duplicate
@@ -67,8 +69,12 @@ performed only where legitimate live access is confirmed; otherwise it is docume
     **failed** coverage — never "searched, no matches".
 14. **Discovery provenance.** From a discovery, trace to its source evidence.
 15. **Workspace isolation.** Confirm all AutoSync data is confined to the Sandbox workspace.
-16. **A verified live connector** — only where legitimate access is available; otherwise documented
-    as interface-only above.
+16. **A verified live connector** — **BLOCKED (not passed)**. No verified live third-party access is
+    available. PlayHQ is blocked pending a valid, approved PlayHQ API Client ID; Play-Cricket and
+    CricketArchive pending their own credentials/licence. The connectors stay **interface-only** and
+    must not be claimed operational until tested against a legitimate sample. Steps to complete this
+    test once a valid key is available are in the handover report ([53](53-phase9-handover.md)) and the
+    dependency register ([52](52-phase9-external-dependencies.md)).
 
 ## Requirements coverage
 
@@ -95,5 +101,8 @@ performed only where legitimate live access is confirmed; otherwise it is docume
 - The in-process desktop job runner covers the Windows desktop; a cloud-hosted runner reuses the same
   interfaces (not built here).
 
-**Phase 9: implementation + automated tests complete — awaiting user acceptance. Do not begin Phase 10
-until Phase 9 is accepted.**
+**Phase 9: CONDITIONALLY ACCEPTED by the user on 2026-10-25.** Tests 1–15 passed; Test 16 (live PlayHQ
+connector) is blocked pending a valid, approved PlayHQ API Client ID and is recorded as an outstanding
+external dependency — not operational, not passed. Preparation for Phase 10 (Historical Research Centre)
+is authorised; **Phase 10 implementation has not begun** and awaits the user's consolidated Phase 10
+requirements. See the handover report ([53](53-phase9-handover.md)).

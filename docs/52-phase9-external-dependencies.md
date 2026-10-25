@@ -1,10 +1,11 @@
 # Phase 9 — External Integration Dependency Register
 
-_Logged 2026-10-25 during Phase 9 acceptance. **No verified live connector is operational.** The
-providers below are registered as **interface-only** connectors: they carry metadata but refuse to
+_Logged 2026-10-25 during Phase 9 acceptance. Phase 9 was **conditionally accepted** on that date with
+the items below as the outstanding external dependencies. **No verified live connector is operational.**
+The providers below are registered as **interface-only** connectors: they carry metadata but refuse to
 fetch, so nothing is fabricated and none is claimed to work. A connector is implemented and enabled
 only after the listed access is obtained and its real data structure is verified against a legitimate
-sample._
+sample. **Acceptance Test 16 (live connector) is BLOCKED, not passed**, pending the access below._
 
 | Provider | `connector_id` | Status | Access method | What is required to make it operational |
 |---|---|---|---|---|
@@ -21,6 +22,31 @@ sample._
   deterministic **fixture** source is used for development and testing instead.
 - Each real connector, once enabled, needs its own **rate-limit / backoff** tuning and secure
   **credential storage** (the registry stores only a reference, never the secret).
+
+## Completing Test 16 — PlayHQ live connector (when a valid key is available)
+
+Everything except the credential is ready (org id, tenant, endpoint chain and pagination are verified).
+When a **valid, approved 36-char UUID PlayHQ Client ID** is obtained, complete Test 16 like this:
+
+1. **Place the key** in `services/api/.env` as `ONESTATS_PLAYHQ_API_KEY=<uuid>` (the file is gitignored;
+   never commit it). `ONESTATS_PLAYHQ_TENANT` defaults to `ca`. Restart the backend so it reloads.
+2. **Smoke-test auth** with one authenticated call to confirm the key is accepted (expect HTTP 200, not
+   401): `GET https://api.playhq.com/v1/organisations/2a9c6833-92cb-466b-aea8-16fa8277887d` with headers
+   `x-api-key: <uuid>` and `x-phq-tenant: ca`. Capture a sample response (store it outside source control).
+3. **Build the live connector** `PlayHqConnector` in `services/api/onestats/domain/autosync/connectors.py`
+   implementing the `fetch`/discovery contract (org → seasons → grades → fixtures → games; follow
+   `metadata.hasMore` / `metadata.nextCursor` cursor pagination). Replace the `InterfaceOnlyConnector`
+   registration for `playhq` with it **only when** a real response has been parsed successfully; map its
+   fields into the Phase 8 CCDM so discovery/dedupe/import run unchanged. Add **rate-limit / backoff**
+   tuning for the live endpoint; the registry stores only a credential **reference**, never the secret.
+4. **Add connector tests** against the captured sample (as a fixture), mirroring the existing fixture
+   connector tests — never against the live API in CI.
+5. **Run acceptance Test 16** end-to-end in the Sandbox: add a PlayHQ source, Sync Now, confirm real
+   discovery → review → import. Only then update [51](51-phase9-acceptance.md) to mark Test 16 passed and
+   change this register's PlayHQ status from interface-only to operational.
+
+Play-Cricket and CricketArchive follow the same pattern once their respective credentials/licence and a
+verified sample are obtained.
 
 ## Current operational sources
 
