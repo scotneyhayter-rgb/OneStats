@@ -7,7 +7,6 @@ agree. Private personal details are not exported.
 """
 from __future__ import annotations
 
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy.engine import Connection
