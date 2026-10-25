@@ -65,11 +65,11 @@ def test_super_admin_has_all_permissions_without_membership(conn):
     perms = permissions.effective_permissions(conn, uuid.uuid4(), ws, True)
     # 24 Phase 3 perms + organisation/venue/competition/import.manage (Phase 4) + person.manage
     # (Phase 5) + match.manage (Phase 6 Stage 1) + scorecard.approve (Phase 7 Stage 7.1) +
-    # research.manage/research.verify (Phase 10 Stage 10.1).
-    assert len(perms) == 33
+    # research.manage/research.verify (Phase 10) + media.manage (Phase 11) + honour.manage (Phase 13).
+    assert len(perms) == 34
     assert {"organisation.manage", "venue.manage", "competition.manage", "import.manage",
             "person.manage", "match.manage", "scorecard.approve",
-            "research.manage", "research.verify"} <= perms
+            "research.manage", "research.verify", "media.manage", "honour.manage"} <= perms
     assert permissions.has_permission(conn, uuid.uuid4(), ws, True, "record.verify")
 
 
