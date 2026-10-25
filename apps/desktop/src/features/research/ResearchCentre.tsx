@@ -19,6 +19,7 @@ import {
   ApiError,
   type GapCategory,
   type ResearchDashboard,
+  type ResearchExtraction,
   type ResearchGaps,
   type ResearchMatchRow,
   type ResearchProject,
@@ -369,6 +370,11 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
   onExtract: () => void;
 }) {
   const [docUrl, setDocUrl] = useState<string | null>(null);
+  const [extractions, setExtractions] = useState<ResearchExtraction[] | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
   const viewDoc = async () => {
     try {
       setDocUrl(await api.researchSourceFileObjectUrl(workspaceId, source.id));
@@ -376,6 +382,25 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
       setDocUrl(null);
     }
   };
+  const loadText = async () => {
+    const list = await api.researchExtractions(workspaceId, source.id);
+    setExtractions(list);
+    setDraft(Object.fromEntries(list.map((e) => [e.id, e.corrected_text ?? e.ocr_text ?? ""])));
+  };
+  const saveCorrection = async (extractionId: string) => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api.researchCorrect(workspaceId, extractionId, draft[extractionId] ?? "");
+      setMsg("Transcription saved.");
+      await loadText();
+    } catch {
+      setMsg("Could not save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1 border-t border-border pt-2 first:border-0">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -392,6 +417,9 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
           {source.ocr_status !== "none" && (
             <button type="button" className="text-xs text-brand" disabled={busy} onClick={onExtract}>Run OCR</button>
           )}
+          {source.ocr_status !== "none" && (
+            <button type="button" className="text-xs text-brand" disabled={busy} onClick={() => void loadText()}>Transcribe</button>
+          )}
           <label className="cursor-pointer text-xs text-brand">
             <input type="file" accept="image/*,application/pdf" className="hidden" disabled={busy}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(source.id, f); e.target.value = ""; }} />
@@ -402,6 +430,36 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
       {docUrl && (
         <div className="rounded-[var(--radius-app)] border border-border p-2">
           <img src={docUrl} alt={source.title} className="max-h-96 w-auto" />
+        </div>
+      )}
+      {extractions && (
+        <div className="flex flex-col gap-2 rounded-[var(--radius-app)] border border-border p-2">
+          {extractions.length === 0 && <p className="text-xs text-muted-foreground">No extraction yet — click Run OCR first.</p>}
+          {extractions.map((e) => (
+            <div key={e.id} className="flex flex-col gap-1 text-xs">
+              <div className="text-muted-foreground">
+                Page {e.page} · method {e.method}{e.confidence != null ? ` · confidence ${(e.confidence * 100).toFixed(0)}%` : ""}
+              </div>
+              {e.ocr_text != null && (
+                <div>
+                  <div className="text-muted-foreground">Machine OCR (read-only, preserved):</div>
+                  <pre className="whitespace-pre-wrap rounded bg-muted/40 p-2">{e.ocr_text || "(empty)"}</pre>
+                </div>
+              )}
+              <div className="text-muted-foreground">Corrected transcription:</div>
+              <textarea
+                value={draft[e.id] ?? ""}
+                onChange={(ev) => setDraft((d) => ({ ...d, [e.id]: ev.target.value }))}
+                rows={3}
+                className="w-full rounded-[var(--radius-app)] border border-border bg-background p-2"
+                placeholder="Type or correct the transcription here"
+              />
+              <Button size="sm" className="self-start" disabled={saving} onClick={() => void saveCorrection(e.id)}>
+                Save transcription
+              </Button>
+            </div>
+          ))}
+          {msg && <p className="text-xs text-success">{msg}</p>}
         </div>
       )}
     </div>
