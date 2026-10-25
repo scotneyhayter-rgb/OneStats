@@ -215,8 +215,9 @@ def discover_updated(conn: Connection, workspace_id: UUID, actor: str, *, connec
                  "AND source_ref = :sr"),
             {"m": existing, "ss": ds.provenance.source_system, "sr": m.source_ref},
         ).scalar_one_or_none() or {}
-        new_fields = {k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                      for k, v in asdict(m).items() if not isinstance(v, list) and v is not None}
+        # compare like-for-like: the source's fields in the SAME schema as the stored recorded_fields
+        # (both are the pipeline's match-norm), so only genuine changes show — not key-name mismatches.
+        new_fields = {k: v for k, v in pipeline._match_norm(m).items() if v is not None}
         diffs = {k: {"was": prior.get(k), "now": new_fields[k]}
                  for k in new_fields if str(prior.get(k)) != str(new_fields[k])}
         if not diffs:

@@ -116,7 +116,10 @@ def test_discover_updated_queues_change_without_overwriting_approved(conn):
     out = discovery.discover_updated(conn, wid, ACTOR, connector=_conn_feed(ROWS, updated=[changed_row]))
     assert out["changed"] == 1
     item = [i for i in discovery.list_items(conn, wid) if i["kind"] == "updated_scorecard"][0]
-    assert item["classification"] == "conflicting" and "result_type" in (item["proposed_changes"] or {})
+    pc = item["proposed_changes"] or {}
+    # only the genuine change is flagged (the result), not every field
+    assert item["classification"] == "conflicting" and "result_label" in pc
+    assert pc["result_label"]["was"] == "home_win" and pc["result_label"]["now"] == "tie"
     # the approved scorecard is UNCHANGED — the change only sits in the review queue
     assert matches.get_match(conn, mid)["result_type"] == before_result
 
