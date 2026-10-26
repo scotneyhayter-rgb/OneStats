@@ -317,12 +317,6 @@ export function PlayerProfile() {
         <Card><CardContent className="flex flex-col gap-3">
           {tab === "overview" && (
             <>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {name} has played <span className="font-medium text-foreground">{c?.matches ?? 0}</span> recorded match{(c?.matches ?? 0) === 1 ? "" : "es"}
-                {c?.has_batting ? <>, scoring <span className="font-medium text-foreground">{num(bat.runs)}</span> runs at {num(bat.average, 2)}</> : null}
-                {c?.has_bowling ? <>, taking <span className="font-medium text-foreground">{num(bowl.wickets)}</span> wickets at {num(bowl.average, 2)}</> : null}.
-                <span className="block pt-1 text-xs">Figures are from approved scorecards; unknown values are never counted as zero.</span>
-              </p>
               {full?.detail?.biography && (
                 <p className="whitespace-pre-line border-l-2 border-brand/50 pl-3 text-sm italic leading-relaxed text-foreground/90">
                   {full.detail.biography}
