@@ -28,7 +28,12 @@ def start_draft(conn: Connection, created_by: UUID, template: str | None = None)
     ).scalar_one()
 
 
-def get_draft(conn: Connection, draft_id: UUID) -> dict[str, Any] | None:
+def get_draft(
+    conn: Connection, draft_id: UUID, requester_id: UUID | str | None = None
+) -> dict[str, Any] | None:
+    """Read a draft. ``onboarding_draft`` is global (pre-workspace) Super-Admin state, so it has no RLS;
+    when ``requester_id`` is given it scopes the read to the draft's creator (defense-in-depth R-1), so one
+    Super-Admin cannot read another's in-progress draft even with its id."""
     row = conn.execute(
         text(
             "SELECT id, created_by, workspace_id, template, current_step, status, state "
@@ -36,20 +41,28 @@ def get_draft(conn: Connection, draft_id: UUID) -> dict[str, Any] | None:
         ),
         {"id": draft_id},
     ).mappings().first()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    if requester_id is not None and str(row["created_by"]) != str(requester_id):
+        return None
+    return dict(row)
 
 
 def save_draft(
-    conn: Connection, draft_id: UUID, state_patch: dict[str, Any], current_step: int | None = None
+    conn: Connection, draft_id: UUID, state_patch: dict[str, Any], current_step: int | None = None,
+    requester_id: UUID | str | None = None,
 ) -> dict[str, Any]:
+    # scope the write to the draft's creator when a requester is supplied (defense-in-depth R-1)
     updated = conn.execute(
         text(
             "UPDATE onboarding_draft "
             "SET state = state || CAST(:p AS jsonb), "
             "current_step = coalesce(:s, current_step), updated_at = now() "
-            "WHERE id = :id AND status = 'in_progress' RETURNING id"
+            "WHERE id = :id AND status = 'in_progress' "
+            "AND (CAST(:r AS uuid) IS NULL OR created_by = CAST(:r AS uuid)) RETURNING id"
         ),
-        {"p": json.dumps(state_patch), "s": current_step, "id": draft_id},
+        {"p": json.dumps(state_patch), "s": current_step, "id": draft_id,
+         "r": str(requester_id) if requester_id is not None else None},
     ).first()
     if updated is None:
         raise ValueError("draft_not_active")
@@ -57,7 +70,8 @@ def save_draft(
 
 
 def activate_draft(conn: Connection, draft_id: UUID, actor_user_id: UUID) -> UUID:
-    draft = get_draft(conn, draft_id)
+    # only the Super-Admin who created the draft may activate it (defense-in-depth R-1)
+    draft = get_draft(conn, draft_id, requester_id=actor_user_id)
     if draft is None:
         raise ValueError("draft_not_found")
     if draft["status"] != "in_progress":

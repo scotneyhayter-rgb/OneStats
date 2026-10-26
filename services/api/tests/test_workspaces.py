@@ -88,6 +88,29 @@ def test_activation_requires_fields(conn):
         onboarding.activate_draft(conn, did, sa)
 
 
+def test_onboarding_draft_scoped_to_creator(conn):
+    """R-1 defense-in-depth: a draft is scoped to the Super-Admin who created it, so another Super-Admin
+    cannot read, save to, or activate it even with its id."""
+    owner = _mk_user(conn, "sa_owner")
+    other = _mk_user(conn, "sa_other")
+    did = onboarding.start_draft(conn, owner, "club")
+    onboarding.save_draft(conn, did,
+                          {"organisation": {"name": "Stawell CC", "short_name": "stawell", "type": "club"}}, 2,
+                          requester_id=owner)
+
+    # another Super-Admin sees nothing and cannot modify or activate it
+    assert onboarding.get_draft(conn, did, requester_id=other) is None
+    with pytest.raises(ValueError, match="draft_not_active"):
+        onboarding.save_draft(conn, did, {"x": 1}, requester_id=other)
+    with pytest.raises(ValueError, match="draft_not_found"):
+        onboarding.activate_draft(conn, did, other)
+
+    # the creator still has full access, and the other's failed save changed nothing
+    owned = onboarding.get_draft(conn, did, requester_id=owner)
+    assert owned is not None and owned["state"]["organisation"]["short_name"] == "stawell"
+    assert "x" not in owned["state"]
+
+
 def test_multiple_memberships_and_my_workspaces(conn):
     user = _mk_user(conn, "multi")
     actor = _mk_user(conn, "creator3")

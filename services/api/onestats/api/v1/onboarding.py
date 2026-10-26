@@ -43,7 +43,7 @@ def start(body: StartDraft, admin: SuperAdmin, settings: SettingsDep) -> dict[st
 @router.get("/{draft_id}")
 def get(draft_id: UUID, admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
     with _engine(settings).begin() as conn:
-        draft = onboarding.get_draft(conn, draft_id)
+        draft = onboarding.get_draft(conn, draft_id, requester_id=admin["id"])
     if draft is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "draft_not_found")
     return draft
@@ -53,7 +53,8 @@ def get(draft_id: UUID, admin: SuperAdmin, settings: SettingsDep) -> dict[str, A
 def save(draft_id: UUID, body: SaveDraft, admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
     with _engine(settings).begin() as conn:
         try:
-            return onboarding.save_draft(conn, draft_id, body.state, body.current_step)
+            return onboarding.save_draft(conn, draft_id, body.state, body.current_step,
+                                         requester_id=admin["id"])
         except ValueError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
