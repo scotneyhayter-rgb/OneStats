@@ -192,7 +192,7 @@ server must never be exposed to the public internet and insecure access is never
 
 | # | Requirement / test | Blocked by | Expected |
 |---|---|---|---|
-| DEP1 | Build the installer (`tauri build`) → `.exe`/`.msi`, checksums | Windows build machine | Installer artifact exists (today it does **not**); see `OneStats-USB-Installation/` |
+| DEP1 | Build the installer (`tauri build`) → `.exe`/`.msi`, checksums | Windows build machine | **App-only NSIS `.exe` built** 26 Oct 2026 (in `OneStats-USB-Installation/`); **MSI** still fails on the non-numeric `-beta.1` version (build NSIS-only or use a numeric version) |
 | DEP2 | Packaged PostgreSQL + backend sidecar (§31.3a) | build-engineering | A standalone/server install needs no manual Python/PG/Node (today the bundle is **app-only**) |
 | DEP3 | LAN connectivity for clients | DEP1/DEP2 | Clients reach the server over the LAN; server address discoverable; firewall guidance |
 | DEP4 | HTTPS/TLS on the LAN | DEP3 | client↔server traffic encrypted; dev server stays loopback-only until TLS exists |

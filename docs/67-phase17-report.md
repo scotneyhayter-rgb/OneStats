@@ -4,13 +4,15 @@
 AWAITING COMBINED MANUAL ACCEPTANCE (deferred, now due: this is the last development phase before
 acceptance).** Not recorded as formally user-accepted.
 
-> **Verified build status (26 Oct 2026):** No installer artifact has been generated. There is no
-> `.exe`/`.msi` and no `target/release/bundle/` — only a developer *debug* build of the Rust shell. The
-> bundle configuration also does **not** yet package PostgreSQL or the FastAPI backend (no `resources` /
-> `externalBin` / sidecar in `tauri.conf.json`), so a built installer today would install the **app only**
-> (fine for a connect-to-server *client*, not yet a self-contained *standalone/server* install). Building
-> the installer, and completing the §31.3a packaged-sidecar work so it installs the database/backend, are
-> outstanding. See `OneStats-USB-Installation/` for a plain-English guide and the exact build steps.
+> **Verified build status (26 Oct 2026):** The **app-only NSIS installer is now built** —
+> `OneStats_1.0.0-beta.1_x64-setup.exe` (~212 MB, offline WebView2 bundled; SHA-256 8042a917…4e97e), in
+> `OneStats-USB-Installation/PLACE-INSTALLER-HERE/` (binary kept out of git). It installs the **app only**:
+> it does **not** package PostgreSQL or the FastAPI backend (no `resources`/`externalBin`/sidecar in
+> `tauri.conf.json`), so it is ready for a **connect-to-server client** but not yet a self-contained
+> *standalone/server* install. Still outstanding: the **MSI** target (fails because the `-beta.1`
+> pre-release version is non-numeric — build NSIS-only or use a numeric version), the **§31.3a
+> packaged-sidecar** work (DB/backend), **code-signing** (paid), and all **real-device** install/upgrade/USB
+> tests. See `OneStats-USB-Installation/` for the plain-English guide.
 
 Phase 17 hardens and packages OneStats for release (deliverable 31 §31.6). The parts that are **software**
 are built and tested; the parts that are **build/release-engineering or real-hardware** (actually building,

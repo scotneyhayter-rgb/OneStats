@@ -5,35 +5,38 @@
 PLEASE READ THIS FIRST. It is written in plain English.
 
 -------------------------------------------------------------------
-IMPORTANT — THE INSTALLER HAS NOT BEEN BUILT YET
+STATUS — THE APP INSTALLER HAS BEEN BUILT (APP-ONLY)
 -------------------------------------------------------------------
 
-As of 26 October 2026, the OneStats Windows installer (the "Setup"
-program you would double-click to install OneStats) DOES NOT EXIST yet
-on this computer. It has not been generated.
+As of 26 October 2026, the OneStats Windows installer HAS been built and
+is in this folder:
 
-We checked the actual project files and confirmed:
+  PLACE-INSTALLER-HERE\OneStats_1.0.0-beta.1_x64-setup.exe   (~212 MB)
+  PLACE-INSTALLER-HERE\SHA256SUMS.txt                        (its fingerprint)
 
-  * There is NO finished installer file (no OneStats-Setup.exe and no
-    .msi file) anywhere in the project.
-  * Only a developer "debug" build of the app shell exists. That is not
-    an installer and cannot be given to other people.
+  SHA-256: 8042a917468253a1eaa2c54222673c090c754b821bc12867dd5597df1224e97e
 
-So this folder CANNOT yet be copied to a USB stick to install OneStats
-on another computer. There is nothing to install with yet.
+IMPORTANT — WHAT THIS INSTALLER DOES AND DOES NOT DO:
 
-This folder currently contains ONLY instructions:
+  * It installs the OneStats APP only. It bundles the offline Microsoft
+    WebView2 component, so it installs WITHOUT needing the internet.
+  * It does NOT install PostgreSQL (the database) or the backend service.
+  * So it is READY to use for an ADDITIONAL (CLIENT) computer that connects
+    to an EXISTING OneStats server which already has the database.
+  * It is NOT yet enough for a brand-new STANDALONE or MAIN-SERVER computer
+    on its own, because the database/backend are not bundled. That packaging
+    (the "sidecar") is a separate task still to be done.
+
+It is also not code-signed yet, so Windows will show a SmartScreen warning;
+choose "More info" -> "Run anyway" (code-signing needs a paid certificate,
+a decision still pending).
+
+This folder contains:
 
   * READ-ME-FIRST.txt ................ this file
-  * INSTALL-GUIDE.txt ............... how to install, once the installer
-                                      file has been built and placed here
-  * HOW-TO-BUILD-THE-INSTALLER.txt .. the exact steps a developer (or you,
-                                      following them carefully) run ONCE on
-                                      a Windows build computer to create the
-                                      installer file
-  * PLACE-INSTALLER-HERE\ ........... the empty folder where the finished
-                                      installer file must be put after it
-                                      is built
+  * INSTALL-GUIDE.txt ............... how to install, step by step
+  * HOW-TO-BUILD-THE-INSTALLER.txt .. how the installer was built / rebuilt
+  * PLACE-INSTALLER-HERE\ ........... the built installer + its checksum
 
 -------------------------------------------------------------------
 WHAT STILL HAS TO HAPPEN BEFORE A USB WILL WORK

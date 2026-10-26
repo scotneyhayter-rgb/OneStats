@@ -1,0 +1,5 @@
+# Built installer binaries live in this folder on disk for USB copying, but are NOT
+# committed to source control (installers don't belong in git; the .exe is ~212 MB).
+PLACE-INSTALLER-HERE/*.exe
+PLACE-INSTALLER-HERE/*.msi
+PLACE-INSTALLER-HERE/SHA256SUMS.txt
