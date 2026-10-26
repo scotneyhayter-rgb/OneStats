@@ -120,15 +120,20 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
         <>
           <div className="grid gap-2">
             {shown.map((p) => (
-              <Card key={p.id} className="cursor-pointer hover:border-brand">
-                <CardContent className="flex items-center gap-3 py-3" onClick={() => setSelected(p.id)}>
-                  <Users className="h-5 w-5 text-muted-foreground" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{p.display_name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{p.status}</div>
-                  </div>
+              <Card key={p.id} className="hover:border-brand">
+                <CardContent className="flex items-center gap-3 py-3">
+                  <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+                    onClick={() => { window.location.hash = `#/people/${p.id}`; }}
+                    aria-label={`Open ${p.display_name}'s career profile`}>
+                    <Users className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{p.display_name}</div>
+                      <div className="truncate text-xs text-muted-foreground">{p.status}</div>
+                    </div>
+                  </button>
                   {p.is_junior && <Badge variant="warning">junior</Badge>}
                   {p.merged_into_id && <Badge variant="muted">merged</Badge>}
+                  <Button size="sm" variant="outline" onClick={() => setSelected(p.id)}>Details</Button>
                 </CardContent>
               </Card>
             ))}
@@ -196,6 +201,7 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
 }) {
   const [view, setView] = useState<Record<string, any> | null>(null);
   const [candidates, setCandidates] = useState<PersonDuplicateCandidate[]>([]);
+  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [bio, setBio] = useState("");
@@ -208,6 +214,7 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
       const v = await api.getProfile(workspaceId, personId);
       setView(v);
       setBio(((v.profile as any)?.biography as string) ?? "");
+      try { setOrgs(await api.listOrganisations(workspaceId)); } catch { setOrgs([]); }
       try { setCandidates(await api.identityCandidates(workspaceId, personId)); } catch { setCandidates([]); }
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to load profile"); }
     finally { setLoading(false); }
@@ -289,14 +296,20 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Numbers</h3>
               <div className="text-sm">{(view?.numbers ?? []).map((n: any) => n.number ?? "?").join(", ") || "—"}</div>
+              {canManage && <AttrAdder kind="number" workspaceId={workspaceId} personId={personId} orgs={orgs}
+                onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Leadership</h3>
               <div className="text-sm">{(view?.leadership ?? []).map((l: any) => humanise(l.role)).join(", ") || "—"}</div>
+              {canManage && <AttrAdder kind="leadership" workspaceId={workspaceId} personId={personId} orgs={orgs}
+                onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Recognition</h3>
               <div className="text-sm">{(view?.recognition ?? []).map((r: any) => humanise(r.recognition_type)).join(", ") || "—"}</div>
+              {canManage && <AttrAdder kind="recognition" workspaceId={workspaceId} personId={personId} orgs={orgs}
+                onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
           </section>
 
@@ -621,5 +634,57 @@ function ImportBatchModal({ workspaceId, batchId, canManage, onClose, onMsg }: {
           onCancel={() => setConfirmAction(null)} />
       )}
     </Modal>
+  );
+}
+
+/**
+ * Inline add-control for a person's Numbers / Leadership / Recognition (wires the backend POST endpoints).
+ * Numbers and Leadership require a club (organisation); Recognition is a free type. Add-only for now
+ * (the backend has no delete endpoint for these).
+ */
+function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
+  kind: "number" | "leadership" | "recognition";
+  workspaceId: string;
+  personId: string;
+  orgs: { id: string; name: string }[];
+  onDone: (message: string) => void;
+}) {
+  const [orgId, setOrgId] = useState("");
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const needsOrg = kind !== "recognition";
+  const placeholder = kind === "number" ? "Squad number" : kind === "leadership" ? "Role (e.g. Captain)" : "e.g. Life Member";
+
+  const add = async () => {
+    if (!value.trim() || (needsOrg && !orgId)) return;
+    setBusy(true);
+    try {
+      if (kind === "number") await api.addPersonNumber(workspaceId, personId, { organisation_id: orgId, number: value.trim() });
+      else if (kind === "leadership") await api.addPersonLeadership(workspaceId, personId, { organisation_id: orgId, role: value.trim() });
+      else await api.addPersonRecognition(workspaceId, personId, { recognition_type: value.trim() });
+      setValue(""); setOrgId("");
+      onDone(`${kind.charAt(0).toUpperCase()}${kind.slice(1)} added.`);
+    } catch (e) {
+      onDone(e instanceof ApiError ? e.message : "Could not add.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-1">
+      {needsOrg && (
+        <Select value={orgId} disabled={busy} onChange={(e) => setOrgId(e.target.value)} className="h-7 text-xs">
+          <option value="">— choose club —</option>
+          {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </Select>
+      )}
+      <div className="flex gap-1">
+        <Input value={value} disabled={busy} placeholder={placeholder} className="h-7 text-xs"
+          onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+        <Button size="sm" variant="outline" disabled={busy || !value.trim() || (needsOrg && !orgId)}
+          onClick={() => void add()}>Add</Button>
+      </div>
+    </div>
   );
 }

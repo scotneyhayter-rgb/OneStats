@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const H = vi.hoisted(() => ({ statsCatalogue: vi.fn(), statsReport: vi.fn() }));
+const H = vi.hoisted(() => ({ statsCatalogue: vi.fn(), statsReport: vi.fn(), statsUsedFormats: vi.fn() }));
 
 vi.mock("../../lib/workspace-context", () => ({ useWorkspace: () => ({ current: { id: "w1", name: "RMCC" } }) }));
 vi.mock("../../lib/api", () => ({ ApiError: class ApiError extends Error {}, api: H }));
@@ -36,6 +36,7 @@ afterEach(cleanup);
 describe("ReportCatalogue", () => {
   it("lists categorised reports, searches, and opens one", async () => {
     H.statsCatalogue.mockResolvedValue(CAT);
+    H.statsUsedFormats.mockResolvedValue([]);
     H.statsReport.mockResolvedValue({ report: "bat_most_runs", title: "Most Runs",
       columns: [{ key: "player", label: "Player", align: "left", decimals: null },
                 { key: "runs", label: "Runs", align: "right", decimals: null }],

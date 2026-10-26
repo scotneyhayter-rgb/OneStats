@@ -109,7 +109,7 @@ export function ReportCatalogue() {
   // The opened report renders below the catalogue list; bring it into view so it isn't missed off-screen.
   const reportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (open && reportRef.current) reportRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (open) reportRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, [open?.id]);
 
   const exportUrl = useCallback(async (kind: "pdf" | "csv") => {
