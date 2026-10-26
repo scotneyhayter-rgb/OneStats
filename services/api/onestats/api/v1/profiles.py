@@ -158,6 +158,15 @@ def full_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx
                                            season_id=season_id)
 
 
+@router.get("/{person_id}/analysis")
+def player_analysis(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """Career analysis for the profile: performance splits (opposition/ground/grade/format), best batting &
+    bowling, top partnerships, dismissal analysis and chart series — approved data, one engine, no copy."""
+    from onestats.domain.records import player_analysis as pa
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return pa.player_analysis(conn, workspace_id, person_id)
+
+
 @router.get("/{person_id}/profile.pdf")
 def profile_pdf(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> Response:
     """Professional player career-profile PDF (shared framework; same figures as on screen)."""

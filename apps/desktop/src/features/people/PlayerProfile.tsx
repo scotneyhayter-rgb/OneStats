@@ -14,15 +14,18 @@ import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { api, ApiError, type PlayerFullProfile } from "../../lib/api";
+import { api, ApiError, type PlayerAnalysis, type PlayerFullProfile } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
-type Tab = "overview" | "batting" | "bowling" | "fielding" | "captaincy" | "seasons" | "grandfinals" | "matches" | "records" | "awards" | "media";
+type Tab = "overview" | "batting" | "bowling" | "fielding" | "captaincy" | "seasons" | "splits" | "best"
+  | "partnerships" | "analysis" | "grandfinals" | "matches" | "records" | "awards" | "media";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" }, { key: "batting", label: "Batting" }, { key: "bowling", label: "Bowling" },
   { key: "fielding", label: "Fielding & WK" }, { key: "captaincy", label: "Captaincy" }, { key: "seasons", label: "Seasons" },
+  { key: "splits", label: "Splits" }, { key: "best", label: "Best" }, { key: "partnerships", label: "Partnerships" },
+  { key: "analysis", label: "Analysis" },
   { key: "grandfinals", label: "Grand Finals" }, { key: "matches", label: "Matches" }, { key: "records", label: "Records & Milestones" },
   { key: "awards", label: "Awards & Honours" }, { key: "media", label: "Media" },
 ];
@@ -108,6 +111,8 @@ export function PlayerProfile() {
   const [photos, setPhotos] = useState<{ id: string; caption: string | null }[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [matches, setMatches] = useState<Record<string, unknown>[] | null>(null);
+  const [analysis, setAnalysis] = useState<PlayerAnalysis | null>(null);
+  const [splitDim, setSplitDim] = useState<"opposition" | "ground" | "grade" | "format">("opposition");
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +139,12 @@ export function PlayerProfile() {
     if (!current || !personId || matches || !["matches", "batting", "bowling"].includes(tab)) return;
     api.profileMatches(current.id, personId).then(setMatches).catch(() => setMatches([]));
   }, [tab, current, personId, matches]);
+
+  useEffect(() => {
+    // career analysis (splits / best / partnerships / charts) — loaded on demand
+    if (!current || !personId || analysis || !["splits", "best", "partnerships", "analysis"].includes(tab)) return;
+    api.profileAnalysis(current.id, personId).then(setAnalysis).catch(() => setAnalysis(null));
+  }, [tab, current, personId, analysis]);
 
   // Per-match chart points (chronological), so even a single-season player shows a trend per innings/match.
   const matchCharts = useMemo(() => {
@@ -450,6 +461,83 @@ export function PlayerProfile() {
                        { key: "wickets", label: "Wkts", align: "right" }, { key: "bowling_average", label: "Bowl Avg", align: "right", dp: 2 },
                        { key: "catches", label: "Ct", align: "right" }, { key: "captained", label: "Capt", align: "right" }],
                       full!.seasons)}
+            </>
+          )}
+
+          {tab === "splits" && (
+            <>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold">Performance splits</h3>
+                <select value={splitDim} onChange={(e) => setSplitDim(e.target.value as typeof splitDim)}
+                  className="ml-auto h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm">
+                  <option value="opposition">By opposition</option><option value="ground">By ground</option>
+                  <option value="grade">By grade</option><option value="format">By format</option>
+                </select>
+              </div>
+              {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> : (() => {
+                const dl = splitDim[0].toUpperCase() + splitDim.slice(1);
+                return (<div className="flex flex-col gap-4">
+                  <div><h4 className="mb-1 text-xs font-semibold">Batting</h4>
+                    {table([{ key: "label", label: dl }, { key: "matches", label: "M", align: "right" }, { key: "innings", label: "Inns", align: "right" },
+                      { key: "runs", label: "Runs", align: "right" }, { key: "not_outs", label: "NO", align: "right" }, { key: "average", label: "Avg", align: "right", dp: 2 },
+                      { key: "high_score", label: "HS", align: "right" }, { key: "fifties", label: "50s", align: "right" }, { key: "hundreds", label: "100s", align: "right" }],
+                      analysis.splits[splitDim].batting as unknown as Record<string, unknown>[])}</div>
+                  <div><h4 className="mb-1 text-xs font-semibold">Bowling</h4>
+                    {table([{ key: "label", label: dl }, { key: "matches", label: "M", align: "right" }, { key: "overs", label: "Overs", align: "right" },
+                      { key: "maidens", label: "Mdns", align: "right" }, { key: "runs", label: "Runs", align: "right" }, { key: "wickets", label: "Wkts", align: "right" },
+                      { key: "average", label: "Avg", align: "right", dp: 2 }, { key: "economy", label: "Econ", align: "right", dp: 2 }, { key: "best", label: "BBI", align: "right" }],
+                      analysis.splits[splitDim].bowling as unknown as Record<string, unknown>[])}</div>
+                </div>);
+              })()}
+            </>
+          )}
+
+          {tab === "best" && (
+            <>
+              <h3 className="text-sm font-semibold">Best performances</h3>
+              {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> : (
+                <div className="flex flex-col gap-4">
+                  <div><h4 className="mb-1 text-xs font-semibold">Best batting</h4>
+                    {table([{ key: "score", label: "Score" }, { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" },
+                      { key: "date", label: "Date" }, { key: "position", label: "Pos", align: "right" }],
+                      analysis.best_batting.map((r) => ({ ...r, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}</div>
+                  <div><h4 className="mb-1 text-xs font-semibold">Best bowling</h4>
+                    {table([{ key: "figures", label: "Figures" }, { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" }, { key: "date", label: "Date" }],
+                      analysis.best_bowling.map((r) => ({ ...r, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}</div>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "partnerships" && (
+            <>
+              <h3 className="text-sm font-semibold">Top partnerships</h3>
+              {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> :
+                table([{ key: "runs_disp", label: "Runs", align: "right" }, { key: "wicket", label: "Wkt", align: "right" }, { key: "partner", label: "Partner" },
+                  { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" }, { key: "date", label: "Date" }],
+                  analysis.partnerships.map((r) => ({ ...r, runs_disp: `${r.runs}${r.unbroken ? "*" : ""}`, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}
+            </>
+          )}
+
+          {tab === "analysis" && (
+            <>
+              <h3 className="text-sm font-semibold">Career analysis</h3>
+              {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> : (
+                <div className="flex flex-col gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <LineChart title="Run scores (by innings)" points={analysis.scores.innings.map((s, i) => ({ label: s.date ? new Date(s.date).toLocaleDateString() : `#${i + 1}`, value: s.runs }))} />
+                    <BarChart title="Score frequency" points={analysis.scores.frequency.map((f) => ({ label: f.range, value: f.count }))} />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div><h4 className="mb-1 text-xs font-semibold">How out</h4>
+                      {analysis.dismissals.how_out.length === 0 ? <p className="text-xs text-muted-foreground">No dismissals recorded.</p> :
+                        analysis.dismissals.how_out.map((h, i) => (<div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm"><span className="capitalize">{h.type}</span><span className="tabular-nums">{h.count}</span></div>))}</div>
+                    <div><h4 className="mb-1 text-xs font-semibold">Dismissed by (most)</h4>
+                      {analysis.dismissals.dismissed_by.length === 0 ? <p className="text-xs text-muted-foreground">—</p> :
+                        analysis.dismissals.dismissed_by.map((d, i) => (<div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm"><span>{d.player}</span><span className="tabular-nums">{d.count}</span></div>))}</div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

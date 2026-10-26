@@ -129,6 +129,22 @@ export interface UserInvitation {
   status: string;
   expires_at: string | null;
 }
+export interface BattingSplit {
+  label: string; matches: number; innings: number; runs: number; not_outs: number;
+  average: number | null; high_score: string | null; fifties: number; hundreds: number;
+}
+export interface BowlingSplit {
+  label: string; matches: number; overs: string; maidens: number; runs: number; wickets: number;
+  average: number | null; economy: number | null; best: string | null;
+}
+export interface PlayerAnalysis {
+  splits: Record<"opposition" | "ground" | "grade" | "format", { batting: BattingSplit[]; bowling: BowlingSplit[] }>;
+  best_batting: { score: string; runs: number; opposition: string | null; ground: string | null; date: string | null; position: number | null }[];
+  best_bowling: { figures: string; wickets: number; runs: number | null; opposition: string | null; ground: string | null; date: string | null }[];
+  partnerships: { runs: number; unbroken: boolean; wicket: number | null; partner: string; opposition: string | null; ground: string | null; date: string | null }[];
+  dismissals: { how_out: { type: string; count: number }[]; dismissed_by: { player: string; count: number }[] };
+  scores: { innings: { date: string | null; runs: number; not_out: boolean }[]; frequency: { range: string; count: number }[] };
+}
 export interface PlayerFullProfile {
   person_id: string;
   detail: { batting_style: string | null; bowling_style: string | null; is_wicketkeeper: boolean };
@@ -1249,6 +1265,8 @@ export const api = {
     request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/seasons`),
   profileMatches: (w: string, id: string) =>
     request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/matches`),
+  profileAnalysis: (w: string, id: string) =>
+    request<PlayerAnalysis>(`/api/v1/workspaces/${w}/people/${id}/analysis`),
   profilePdfUrl: async (w: string, id: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();
