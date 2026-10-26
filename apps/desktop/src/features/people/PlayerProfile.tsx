@@ -264,10 +264,20 @@ export function PlayerProfile() {
               {(full?.clubs ?? []).slice(0, 2).map((cl) => <span key={cl.team_id} className="text-muted-foreground">{cl.club}</span>)}
             </div>
           </div>
-          <div className="ml-auto flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
-            <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
-            <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
+          <div className="ml-auto flex flex-col items-end gap-2">
+            {(full?.detail?.numbers ?? []).length > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">No.</span>
+                <span className="rounded-[var(--radius-app)] border-2 border-brand px-2 py-0.5 text-lg font-bold leading-none text-brand">
+                  {full!.detail.numbers.join(", ")}
+                </span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
+              <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
+              <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
+            </div>
           </div>
         </CardContent></Card>
 
@@ -331,14 +341,10 @@ export function PlayerProfile() {
               {(() => {
                 const d = full?.detail;
                 const service = [...(d?.leadership ?? []), ...(d?.recognition ?? [])];
-                const nums = d?.numbers ?? [];
-                if (service.length === 0 && nums.length === 0) return null;
+                if (service.length === 0) return null;
                 return (
                   <div className="flex flex-col gap-2">
                     <h4 className="text-xs font-semibold">Service &amp; Honours</h4>
-                    {nums.length > 0 && (
-                      <div className="text-sm"><span className="text-muted-foreground">Squad number{nums.length > 1 ? "s" : ""}: </span>{nums.join(", ")}</div>
-                    )}
                     {service.map((s, i) => (
                       <div key={i} className="text-sm">
                         <span className="font-medium">{s.label}</span>
