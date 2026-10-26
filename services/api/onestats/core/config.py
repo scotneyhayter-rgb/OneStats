@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     media_root: str = Field(default="media")
     max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
+    # Player/person profile photos — larger than logos (phone photos), still bounded for safety.
+    max_photo_bytes: int = Field(default=15_000_000)  # 15 MB
+    max_photo_pixels: int = Field(default=10000)  # per side; anti decompression-bomb
     # Research source documents (newspaper scans, PDFs, photographs) — larger than logos.
     max_source_bytes: int = Field(default=30_000_000)  # 30 MB
     # Media archive originals (Phase 11) — preserved at original quality.

@@ -1,5 +1,6 @@
 import { GitMerge, Plus, Undo2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { compressImage } from "../../lib/utils";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -237,9 +238,15 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
   const uploadPhoto = async (file: File) => {
     setBusy(true);
     try {
-      await api.uploadPersonPhoto(workspaceId, personId, file, { isPrimary: (view?.photos ?? []).length === 0 });
+      const compressed = await compressImage(file);
+      await api.uploadPersonPhoto(workspaceId, personId, compressed, { isPrimary: (view?.photos ?? []).length === 0 });
       onChanged("Photo uploaded."); await load();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Photo upload failed (use a JPEG, PNG or WebP image)."); }
+    } catch (e) {
+      const m = e instanceof ApiError ? e.message : "";
+      setErr(m === "file_too_large" ? "That image is too large (max 15 MB). Please choose a smaller photo."
+        : m === "dimensions_too_large" ? "That image's resolution is too high. Please choose a smaller photo."
+        : (/unsupported|invalid_image|type_mismatch/.test(m) ? "Please use a JPEG, PNG or WebP image." : (m || "Photo upload failed.")));
+    }
     finally { setBusy(false); }
   };
   const removePhoto = async (photoId: string) => {

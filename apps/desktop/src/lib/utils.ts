@@ -11,6 +11,44 @@ export function cn(...inputs: ClassValue[]) {
  * click gesture, so popup blockers stop it ("does not open"). A programmatic anchor with `download` is not
  * popup-blocked and works in both the browser and the Tauri webview. The object URL is revoked afterwards.
  */
+/**
+ * Downscale and re-encode an image on the client before upload, so large phone photos fit comfortably
+ * (and storage stays small). Resizes so the longest side is at most `maxDim`px and re-encodes as JPEG.
+ * Passes the file through unchanged if it isn't a decodable raster image or is already small.
+ */
+export async function compressImage(file: File, maxDim = 1280, quality = 0.85): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+  try {
+    const dataUrl: string = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.onerror = () => rej(new Error("read"));
+      r.readAsDataURL(file);
+    });
+    const img: HTMLImageElement = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error("decode"));
+      i.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    if (scale >= 1 && file.size <= 1_500_000) return file;   // already small enough
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    if (!blob || blob.size >= file.size) return blob && blob.size < file.size ? new File([blob], file.name, { type: "image/jpeg" }) : file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;   // on any failure, let the server validate the original
+  }
+}
+
 export function openBlobUrl(url: string, filename: string): void {
   const a = document.createElement("a");
   a.href = url;

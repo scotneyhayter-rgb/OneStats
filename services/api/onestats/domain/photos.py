@@ -36,7 +36,7 @@ def _safe_ref(media_key: str) -> str:
 
 def store_photo(settings: Settings, workspace_id: UUID, raw: bytes, declared_type: str) -> dict[str, object]:
     ext, width, height = images.validate_image(
-        raw, declared_type, settings.max_logo_bytes, settings.max_logo_pixels
+        raw, declared_type, settings.max_photo_bytes, settings.max_photo_pixels
     )
     directory = _workspace_dir(settings, workspace_id)
     name = f"photo-{uuid.uuid4().hex}.{ext}"
