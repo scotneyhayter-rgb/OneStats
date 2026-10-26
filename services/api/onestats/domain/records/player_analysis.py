@@ -201,7 +201,7 @@ def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], na
         text(
             "SELECT CASE WHEN p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
             "            THEN p.player2_person_id ELSE p.player1_person_id END AS partner, "
-            " sum(p.runs) AS total, count(*) AS stands, max(p.runs) AS best "
+            " sum(p.runs) AS total, count(*) AS stands, count(DISTINCT m.id) AS matches, max(p.runs) AS best "
             "FROM partnership p JOIN innings i ON i.id = p.innings_id JOIN match m ON m.id = i.match_id "
             f"WHERE p.runs IS NOT NULL AND m.workspace_id = :w AND {_APPROVED} "
             "  AND p.player1_person_id IS NOT NULL AND p.player2_person_id IS NOT NULL "
@@ -217,8 +217,10 @@ def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], na
         pid = str(r["partner"])
         if pid in idset:
             continue                                   # guard against a self-pair row
+        stands = int(r["stands"])
         out.append({"partner": names.get(pid, "Unknown"), "runs": int(r["total"] or 0),
-                    "stands": int(r["stands"]), "best": int(r["best"] or 0)})
+                    "stands": stands, "matches": int(r["matches"]), "best": int(r["best"] or 0),
+                    "average": round(int(r["total"] or 0) / stands, 2) if stands else None})
     return out
 
 
