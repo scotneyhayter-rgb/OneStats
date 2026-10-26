@@ -240,10 +240,14 @@ def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[
     cls = match.get("classification")
     gf = _is_grand_final(match)
     agg: dict[Any, dict[str, Any]] = {}
+
+    def _a(pid: Any, team: Any) -> dict[str, Any]:
+        return agg.setdefault(pid, {"team_id": team, "field_catches": 0, "keeper_catches": 0,
+                                    "stumpings": 0, "run_outs": 0, "run_out_assists": 0})
+
     for r in rows:
         pid, dt, team = r["pid"], r["dt"], r["team_id"]
-        a = agg.setdefault(pid, {"team_id": team, "field_catches": 0, "keeper_catches": 0,
-                                 "stumpings": 0, "run_outs": 0})
+        a = _a(pid, team)
         is_keeper = str(pid) in keepers.get(str(team), set())
         if dt == "stumped":
             a["stumpings"] += 1
@@ -253,11 +257,23 @@ def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[
             a["field_catches"] += 1
         elif dt == "run_out":
             a["run_outs"] += 1
+    # additional run-out fielders (R-3): each is credited a run-out ASSIST — distinct from the primary
+    # fielder's run_out, so existing run_outs figures never change and the wicket is never double counted.
+    assists = conn.execute(
+        text("SELECT df.person_id AS pid, i.bowling_team_id AS team_id "
+             "FROM dismissal_fielder df JOIN batting_entry be ON be.id = df.batting_entry_id "
+             "JOIN innings i ON i.id = be.innings_id "
+             "WHERE i.match_id = :m AND be.dismissal_type = 'run_out'"),
+        {"m": match["id"]},
+    ).mappings().all()
+    for r in assists:
+        _a(r["pid"], r["team_id"])["run_out_assists"] += 1
     out = []
     for pid, a in agg.items():
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"field_catches": a["field_catches"], "keeper_catches": a["keeper_catches"],
                                 "stumpings": a["stumpings"], "run_outs": a["run_outs"],
+                                "run_out_assists": a["run_out_assists"],
                                 # total catches include keeper catches; keeper dismissals kept separate
                                 "catches": a["field_catches"] + a["keeper_catches"],
                                 "keeper_dismissals": a["keeper_catches"] + a["stumpings"],

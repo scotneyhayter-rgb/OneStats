@@ -31,6 +31,8 @@ _VALUE_ERR_STATUS = {
     "entry_not_found": status.HTTP_404_NOT_FOUND,
     "duplicate_batter": status.HTTP_409_CONFLICT,
     "duplicate_position": status.HTTP_409_CONFLICT,
+    "not_a_run_out": status.HTTP_409_CONFLICT,
+    "invalid_role": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -142,6 +144,39 @@ def reorder(workspace_id: UUID, innings_id: UUID, body: BattingReorder, settings
             pass
         results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
         return rows
+
+
+class RunOutFielder(BaseModel):
+    person_id: UUID
+    role: str = Field(default="assist")
+
+
+class RunOutFielders(BaseModel):
+    fielders: list[RunOutFielder] = Field(default_factory=list)
+
+
+@router.get("/{entry_id}/run-out-fielders")
+def get_run_out_fielders(workspace_id: UUID, innings_id: UUID, entry_id: UUID, settings: SettingsDep,
+                         ctx: MatchCtx) -> list[dict[str, Any]]:
+    """The ADDITIONAL involved fielders for a run-out dismissal (the primary fielder is on the entry)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return batting_domain.list_dismissal_fielders(conn, entry_id)
+
+
+@router.put("/{entry_id}/run-out-fielders")
+def set_run_out_fielders(workspace_id: UUID, innings_id: UUID, entry_id: UUID, body: RunOutFielders,
+                         settings: SettingsDep, ctx: MatchCtx) -> list[dict[str, Any]]:
+    """Replace the additional involved fielders for a run-out (credited as run-out assists). Re-runs the
+    deterministic statistics engine for the innings."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            out = batting_domain.set_run_out_fielders(
+                conn, workspace_id, str(ctx.user["id"]), entry_id,
+                [f.model_dump() for f in body.fielders])
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+        results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
+        return out
 
 
 @router.get("/card")

@@ -20,8 +20,12 @@ Neither may be presented as a live integration. They are correctly fenced off in
   destabilising the pre-workspace onboarding flow without a dedicated test.
 - **R-2 — "Best Bowling in a Match" shows wickets only (OBS-1).** No runs tie-break / no "7/23" figure.
   The data to do it (BBI wickets + runs) is already in the ledger. Enhancement, not a miscalculation.
-- **R-3 — Shared run-outs (OBS-2).** One fielder per dismissal is modelled; multi-fielder run-out
-  involvement isn't separately credited. A data-model limitation to confirm with the user.
+- **R-3 — Shared run-outs (OBS-2). RESOLVED 2026-10-26.** Multi-fielder run-outs are now modelled: the
+  primary fielder stays on `batting_entry.fielder_person_id` (credited `run_outs`, unchanged), and a new
+  `dismissal_fielder` table records additional involved fielders, each credited a distinct
+  `run_out_assists` (with `run_out_involvements = run_outs + run_out_assists` for display). One wicket, no
+  double count; set from the scorecard (Fielder cell → "add fielder") or
+  `PUT …/batting/{entry}/run-out-fielders`. See [72-multi-fielder-run-outs.md](72-multi-fielder-run-outs.md).
 - **R-4 — Career economy over length.** Economy at career scope uses a single configurable over length
   (default six). A career spanning mixed six- and eight-ball eras can't resolve per-era economy from a
   single aggregate; per-season/era figures are accurate. Documented approximation.

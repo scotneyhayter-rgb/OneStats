@@ -949,6 +949,11 @@ export interface InningsTotals {
   official_total: number | null;
   official_wickets: number | null;
 }
+export interface DismissalFielder {
+  id: string;
+  person_id: string;
+  role: string;
+}
 export interface BattingEntry {
   id: string;
   innings_id: string;
@@ -1623,6 +1628,12 @@ export const api = {
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/innings/${iid}/batting/card`),
   validateBatting: (w: string, iid: string) =>
     request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/batting/validate`),
+  // multi-fielder run-outs (R-3): additional involved fielders beyond the primary
+  getRunOutFielders: (w: string, iid: string, id: string) =>
+    request<DismissalFielder[]>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}/run-out-fielders`),
+  setRunOutFielders: (w: string, iid: string, id: string, fielders: { person_id: string; role?: string }[]) =>
+    request<DismissalFielder[]>(`/api/v1/workspaces/${w}/innings/${iid}/batting/${id}/run-out-fielders`,
+      { method: "PUT", body: { fielders } }),
 
   // --- Phase 6: bowling ---
   listBowling: (w: string, iid: string) =>

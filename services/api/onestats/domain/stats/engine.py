@@ -183,6 +183,7 @@ _FIELD_SELECT = (
     "count(DISTINCT c.match_id) AS matches, " + _num("catches", "catches") + ", "
     + _num("field_catches", "field_catches") + ", " + _num("keeper_catches", "keeper_catches") + ", "
     + _num("stumpings", "stumpings") + ", " + _num("run_outs", "run_outs") + ", "
+    + _num("run_out_assists", "run_out_assists") + ", "
     + _num("keeper_dismissals", "keeper_dismissals")
 )
 
@@ -192,7 +193,9 @@ def fielding_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str
     rows = [{"subject_id": str(r["subject_id"]), "matches": int(r["matches"]),
              "catches": int(r["catches"]), "field_catches": int(r["field_catches"]),
              "keeper_catches": int(r["keeper_catches"]), "stumpings": int(r["stumpings"]),
-             "run_outs": int(r["run_outs"]), "keeper_dismissals": int(r["keeper_dismissals"])}
+             "run_outs": int(r["run_outs"]), "run_out_assists": int(r["run_out_assists"]),
+             "run_out_involvements": int(r["run_outs"]) + int(r["run_out_assists"]),
+             "keeper_dismissals": int(r["keeper_dismissals"])}
             for r in _rows(conn, "player_fielding", filters, _FIELD_SELECT)]
     _sort(rows, order_by)
     return rows[:limit]
@@ -304,4 +307,6 @@ def person_fielding(conn: Connection, filters: dict[str, Any], person_id: UUID) 
                        lambda r: {"subject_id": str(r["subject_id"]), "matches": int(r["matches"]),
                                   "catches": int(r["catches"]), "field_catches": int(r["field_catches"]),
                                   "keeper_catches": int(r["keeper_catches"]), "stumpings": int(r["stumpings"]),
-                                  "run_outs": int(r["run_outs"]), "keeper_dismissals": int(r["keeper_dismissals"])})
+                                  "run_outs": int(r["run_outs"]), "run_out_assists": int(r["run_out_assists"]),
+                                  "run_out_involvements": int(r["run_outs"]) + int(r["run_out_assists"]),
+                                  "keeper_dismissals": int(r["keeper_dismissals"])})

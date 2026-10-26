@@ -153,6 +153,9 @@ def update_entry(conn: Connection, workspace_id: UUID, actor: str, entry_id: UUI
         conn.execute(text(f"UPDATE batting_entry SET {sets}, updated_at = now() WHERE id = :id"),
                      {**data, "id": entry_id})
     after = get_entry(conn, entry_id)
+    # a dismissal that is no longer a run-out (or has no primary fielder) can't carry assisting fielders
+    if after and (after["dismissal_type"] != "run_out" or after["fielder_person_id"] is None):
+        conn.execute(text("DELETE FROM dismissal_fielder WHERE batting_entry_id = :e"), {"e": entry_id})
     audit.write_audit(conn, workspace_id, actor, "batting_entry.update", entity="batting_entry",
                       entity_id=str(entry_id), before=before, after=after)
     return after
@@ -162,9 +165,55 @@ def delete_entry(conn: Connection, workspace_id: UUID, actor: str, entry_id: UUI
     before = get_entry(conn, entry_id)
     if before is None:
         raise ValueError("entry_not_found")
-    conn.execute(text("DELETE FROM batting_entry WHERE id = :id"), {"id": entry_id})
+    conn.execute(text("DELETE FROM batting_entry WHERE id = :id"), {"id": entry_id})  # ON DELETE CASCADE clears fielders
     audit.write_audit(conn, workspace_id, actor, "batting_entry.delete", entity="batting_entry",
                       entity_id=str(entry_id), before=before)
+
+
+# --- multi-fielder run-outs (R-3): additional involved fielders beyond the primary ---------------
+
+ROLES = ("assist", "thrower", "keeper", "fielder", "other")
+
+
+def list_dismissal_fielders(conn: Connection, entry_id: UUID) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        text("SELECT id, person_id, role FROM dismissal_fielder WHERE batting_entry_id = :e ORDER BY created_at"),
+        {"e": entry_id}).mappings().all()
+    return [{"id": str(r["id"]), "person_id": str(r["person_id"]), "role": r["role"]} for r in rows]
+
+
+def set_run_out_fielders(conn: Connection, workspace_id: UUID, actor: str, entry_id: UUID,
+                         fielders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace the ADDITIONAL involved fielders for a run-out dismissal. ``fielders`` is a list of
+    {person_id, role?}. The primary fielder (``batting_entry.fielder_person_id``) is credited separately
+    and must not be repeated here. Only valid for run-out dismissals; the engine credits these as
+    ``run_out_assists`` (never changing the primary ``run_outs``)."""
+    entry = get_entry(conn, entry_id)
+    if entry is None:
+        raise ValueError("entry_not_found")
+    if entry["dismissal_type"] != "run_out":
+        raise ValueError("not_a_run_out")
+    primary = str(entry["fielder_person_id"]) if entry["fielder_person_id"] else None
+    seen: set[str] = set()
+    cleaned: list[dict[str, Any]] = []
+    for f in fielders:
+        pid = str(f.get("person_id") or "")
+        if not pid or pid == primary or pid in seen:
+            continue                                   # skip blanks, the primary, and duplicates
+        role = f.get("role") or "assist"
+        if role not in ROLES:
+            raise ValueError("invalid_role")
+        seen.add(pid)
+        cleaned.append({"person_id": pid, "role": role})
+    conn.execute(text("DELETE FROM dismissal_fielder WHERE batting_entry_id = :e"), {"e": entry_id})
+    for f in cleaned:
+        conn.execute(
+            text("INSERT INTO dismissal_fielder(workspace_id, batting_entry_id, person_id, role, created_by) "
+                 "VALUES (:w, :e, :p, :r, :a)"),
+            {"w": workspace_id, "e": entry_id, "p": f["person_id"], "r": f["role"], "a": actor})
+    audit.write_audit(conn, workspace_id, actor, "batting_entry.run_out_fielders", entity="batting_entry",
+                      entity_id=str(entry_id), after={"fielders": cleaned})
+    return list_dismissal_fielders(conn, entry_id)
 
 
 def reorder_entries(

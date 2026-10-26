@@ -118,6 +118,48 @@ def test_fielding_engine(conn):
     assert k["stumpings"] == 1 and k["keeper_dismissals"] == 1 and k["field_catches"] == 0
 
 
+def test_multi_fielder_run_out_credits_assist_without_changing_primary(conn):
+    """R-3: a second fielder in a run-out is credited a distinct run_out ASSIST; the primary fielder's
+    run_outs is unchanged, and the dismissal is still one wicket (no double count)."""
+    wid = _ws(conn, "ENG R3")
+    x = _build(conn, wid)
+    # the run-out entry (bat4), primary fielder = fielder2; credit 'fielder' (the catcher) as the thrower
+    eid = conn.execute(text("SELECT id FROM batting_entry WHERE dismissal_type = 'run_out'"
+                            " AND fielder_person_id = :f"), {"f": x["fielder2"]}).scalar_one()
+    batting.set_run_out_fielders(conn, wid, ACTOR, eid, [{"person_id": str(x["fielder"]), "role": "thrower"}])
+    recalc.recompute_match(conn, wid, ACTOR, x["mid"])
+
+    lead = {r["subject_id"]: r for r in engine.fielding_leaders(conn, _f(wid))}
+    primary, assist = lead[str(x["fielder2"])], lead[str(x["fielder"])]
+    # primary unchanged; assist credited separately; involvements combine the two
+    assert primary["run_outs"] == 1 and primary["run_out_assists"] == 0 and primary["run_out_involvements"] == 1
+    assert assist["run_outs"] == 0 and assist["run_out_assists"] == 1 and assist["run_out_involvements"] == 1
+    # the fielder also keeps their catch — assist is additive, not a reclassification
+    assert assist["field_catches"] == 1
+    # reconciliation still sees exactly one run-out wicket (no double count)
+    from onestats.domain.stats import reconciliation
+    assert reconciliation.reconcile_match(conn, wid, x["mid"])["total_run_outs"] == 1
+
+    # changing the dismissal away from run_out clears the assisting fielders
+    batting.update_entry(conn, wid, ACTOR, eid, dismissal_type="bowled", fielder_person_id=None)
+    assert batting.list_dismissal_fielders(conn, eid) == []
+
+
+def test_set_run_out_fielders_rejects_non_run_out_and_primary(conn):
+    wid = _ws(conn, "ENG R3 GUARD")
+    x = _build(conn, wid)
+    caught = conn.execute(text("SELECT id FROM batting_entry WHERE dismissal_type = 'caught'")).scalar_one()
+    with pytest.raises(ValueError, match="not_a_run_out"):
+        batting.set_run_out_fielders(conn, wid, ACTOR, caught, [{"person_id": str(x["fielder"])}])
+    run_out = conn.execute(text("SELECT id FROM batting_entry WHERE dismissal_type = 'run_out'")).scalar_one()
+    # the primary fielder and duplicates are ignored (never double-credited)
+    out = batting.set_run_out_fielders(conn, wid, ACTOR, run_out,
+                                       [{"person_id": str(x["fielder2"])},
+                                        {"person_id": str(x["fielder"])},
+                                        {"person_id": str(x["fielder"])}])
+    assert [f["person_id"] for f in out] == [str(x["fielder"])]
+
+
 def test_captaincy_and_team_engine(conn):
     wid = _ws(conn, "ENG CAPT")
     x = _build(conn, wid)

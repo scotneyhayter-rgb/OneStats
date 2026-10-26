@@ -11,7 +11,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { ConfirmDialog } from "../../components/ui/dialog";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type BattingEntry, type BowlingEntry, type FallOfWicket, type Partnership, type Person } from "../../lib/api";
+import { api, ApiError, type BattingEntry, type BowlingEntry, type DismissalFielder, type FallOfWicket, type Partnership, type Person } from "../../lib/api";
 import { PlayerSelect } from "./PlayerSelect";
 import {
   battingOrderIssues,
@@ -285,6 +285,9 @@ export function BattingGrid(ctx: GridCtx) {
                 <PlayerSelect workspaceId={workspaceId} value={r.fielder_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
                   disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
                   onChange={(pid) => void commit(r.id, { fielder_person_id: pid })} />
+                {r.dismissal_type === "run_out" && r.fielder_person_id && (
+                  <RunOutAssists ctx={ctx} entryId={r.id} primaryId={r.fielder_person_id} />
+                )}
               </td>
               <td className="min-w-[150px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
@@ -610,6 +613,66 @@ export function PartnershipsGrid(ctx: GridCtx) {
         <Badge variant="brand">Auto</Badge> partnerships are calculated automatically from Fall of Wickets (runs include extras) whenever the FOW or batting order changes;
         <Badge variant="muted">Manual</Badge>/<Badge variant="success">Verified</Badge> entries are preserved and stay editable.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Additional run-out fielders (R-3). The primary fielder is set in the cell above; this manages the
+ * OTHER involved fielders for a run-out (e.g. the thrower), credited as run-out assists. Changes are
+ * saved immediately and the parent recomputes stats.
+ */
+function RunOutAssists({ ctx, entryId, primaryId }: { ctx: GridCtx; entryId: string; primaryId: string }) {
+  const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onChanged } = ctx;
+  const [fielders, setFielders] = useState<DismissalFielder[]>([]);
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void api.getRunOutFielders(workspaceId, inningsId, entryId)
+      .then((f) => { if (live) setFielders(f); })
+      .catch(() => { /* a fresh entry may have none yet */ });
+    return () => { live = false; };
+  }, [workspaceId, inningsId, entryId]);
+
+  const save = async (ids: { person_id: string; role?: string }[]) => {
+    try {
+      setFielders(await api.setRunOutFielders(workspaceId, inningsId, entryId, ids));
+      onChanged();
+    } catch { /* surfaced by the parent's own error handling on next load */ }
+  };
+  const add = (pid: string | null) => {
+    setAdding(false);
+    if (!pid || pid === primaryId || fielders.some((f) => f.person_id === pid)) return;
+    void save([...fielders.map((f) => ({ person_id: f.person_id, role: f.role })), { person_id: pid, role: "assist" }]);
+  };
+  const remove = (pid: string) =>
+    void save(fielders.filter((f) => f.person_id !== pid).map((f) => ({ person_id: f.person_id, role: f.role })));
+
+  return (
+    <div className="mt-1 flex flex-col gap-1">
+      {fielders.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[11px] text-muted-foreground">assisted by</span>
+          {fielders.map((f) => (
+            <Badge key={f.id} variant="outline" className="gap-1">
+              {nameOf(f.person_id) ?? "Unknown"}
+              {canManage && (
+                <button type="button" aria-label={`Remove assisting fielder ${nameOf(f.person_id) ?? ""}`}
+                  className="text-muted-foreground hover:text-danger" onClick={() => remove(f.person_id)}>×</button>
+              )}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {canManage && (adding ? (
+        <PlayerSelect workspaceId={workspaceId} value={null} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
+          aria-label="Add assisting fielder" organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
+          onChange={add} />
+      ) : (
+        <button type="button" className="self-start text-[11px] text-brand hover:underline"
+          onClick={() => setAdding(true)}>+ add fielder</button>
+      ))}
     </div>
   );
 }

@@ -171,6 +171,19 @@ Automated coverage: `tests/test_mobile_upload.py` (9), `tests/test_publishing.py
 **Outstanding (needs the user):** the hosted standalone portal app + public reachability (hosting decision);
 LAN binding/TLS + QR rendering (release/operator step); remote cloud upload (later release).
 
+## Multi-fielder run-outs (R-3 resolved 2026-10-26 — see [72](72-multi-fielder-run-outs.md))
+
+Manual acceptance (DEFERRED):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| RO1 | Record assisting fielders | Scorecard → run-out → Fielder cell → "+ add fielder" | Additional fielders recorded; primary unchanged |
+| RO2 | Crediting | View fielding stats / profiles | Primary keeps `run_outs`; assistants get `run_out_assists`; involvements combine; still one wicket |
+| RO3 | Clear on change | Change the dismissal away from run-out | Assisting fielders are removed automatically |
+| RO4 | Guards | Try to add the primary fielder or a duplicate | Ignored (never double-credited); non-run-out rejected |
+
+Automated coverage: `tests/test_stats_engine.py` (2 R-3 tests). Backend regression **637 passed, 2 skipped**.
+
 ## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
 All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one
