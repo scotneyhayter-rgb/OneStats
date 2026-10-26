@@ -15,6 +15,7 @@ import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { ChangePassword } from "./features/auth/ChangePassword";
 import { UserManagement } from "./features/admin/UserManagement";
 import { Integrations } from "./features/settings/Integrations";
+import { MemberPortal } from "./features/portal/MemberPortal";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { Organisations } from "./features/manage/Organisations";
@@ -59,6 +60,7 @@ function AuthedApp() {
         <Route path="/manage/media" element={<MediaArchive />} />
         <Route path="/manage/records" element={<Records />} />
         <Route path="/manage/publishing" element={<Publishing />} />
+        <Route path="/manage/portal" element={<MemberPortal />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />

@@ -7,7 +7,7 @@
  * shown when available. Built to be usable by non-technical volunteers: guided uploads, clear previews,
  * plain-language actions. All data is read from the backend; nothing is fabricated.
  */
-import { CheckCircle2, HardDrive, Image as ImageIcon, Landmark, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, HardDrive, Image as ImageIcon, Landmark, ShieldCheck, Smartphone, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
@@ -22,6 +22,7 @@ import {
   type MediaAsset,
   type MediaProviderInfo,
   type MediaVerifyReport,
+  type UploadSession,
 } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
@@ -126,6 +127,8 @@ export function MediaArchive() {
               </p>
               <UploadForm busy={busy} onUpload={upload} />
             </CardContent></Card>
+
+            <MobileUploadCard workspaceId={workspaceId} />
 
             <Card><CardContent className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">Media library ({assets.length})</h3>
@@ -351,5 +354,80 @@ function HeritageCollectionRow({ workspaceId, collection, assets, busy, onChange
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Mobile upload pairing (deliverable 20a). An authenticated admin starts a short-lived, scoped pairing
+ * session; the phone uses the one-time token (shown once here) to upload media over the LAN. The token is
+ * never stored or shown again after this; sessions are revocable and expire. Uploaded files land in the
+ * media review queue (unassigned) — nothing is auto-published.
+ */
+function MobileUploadCard({ workspaceId }: { workspaceId: string }) {
+  const [sessions, setSessions] = useState<UploadSession[]>([]);
+  const [created, setCreated] = useState<UploadSession | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try { setSessions(await api.mobileUploadSessions(workspaceId)); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not load pairing sessions."); }
+  }, [workspaceId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const start = async () => {
+    setBusy(true); setError(null);
+    try { setCreated(await api.mobileUploadCreate(workspaceId, { ttl_minutes: 30 })); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not start pairing."); }
+    finally { setBusy(false); }
+  };
+  const revoke = async (id: string) => {
+    setBusy(true); setError(null);
+    try { await api.mobileUploadRevoke(workspaceId, id); if (created?.id === id) setCreated(null); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not revoke."); }
+    finally { setBusy(false); }
+  };
+
+  const active = sessions.filter((s) => s.active);
+
+  return (
+    <Card><CardContent className="flex flex-col gap-3">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Smartphone className="h-4 w-4 text-brand" aria-hidden /> Upload from a phone
+      </h3>
+      <p className="text-xs text-muted-foreground">
+        Start a secure, time-limited pairing session, then open the link on a phone connected to the same
+        network to upload photos or PDFs straight into the media review queue. The one-time code is shown
+        once and never stored.
+      </p>
+      {error && <p className="text-xs text-danger">{error}</p>}
+
+      <div><Button size="sm" disabled={busy} onClick={() => void start()}>Start pairing session</Button></div>
+
+      {created?.token && (
+        <div className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-brand/40 bg-brand/5 p-3 text-xs">
+          <span className="font-medium text-brand">Pairing started — enter this on the phone now (shown once):</span>
+          <span className="break-all">Upload path: <code>{created.upload_path}</code></span>
+          <span className="break-all">One-time code: <code>{created.token}</code></span>
+          <span className="text-muted-foreground">
+            Open the path on the server's LAN address from the phone and supply the code as the
+            <code> X-Upload-Token</code> header. Expires {created.expires_at ? new Date(created.expires_at).toLocaleString() : "soon"}.
+          </span>
+        </div>
+      )}
+
+      {active.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium">Active sessions</span>
+          {active.map((s) => (
+            <div key={s.id} className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="success">active</Badge>
+              <span className="text-muted-foreground">{s.upload_count} uploaded · expires {s.expires_at ? new Date(s.expires_at).toLocaleString() : "—"}</span>
+              <Button size="sm" variant="outline" disabled={busy} className="ml-auto" onClick={() => void revoke(s.id)}>Revoke</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardContent></Card>
   );
 }

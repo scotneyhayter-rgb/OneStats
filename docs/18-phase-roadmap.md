@@ -94,6 +94,11 @@ continues through the approved sequence:
   role-gated (`import.configure`), SSRF-protected, test-before-trust, rotatable/revocable, and fully
   audited. No config-file or source edits. This is the reusable secure credential foundation for the
   import/AutoSync connectors (PlayHQ and future providers).
+- **Phase 16 follow-ups** (see [71-phase16-followups.md](71-phase16-followups.md)): an authenticated
+  **member portal** (public + members-only records, workspace-isolated), **Ask OneStats on the portal**
+  (reusing the deterministic engine), and **mobile media upload** (deliverable 20a — QR-paired, short-lived
+  scoped tokens hashed at rest, content-verified uploads into the media review queue, never auto-published).
+  Hosted-portal reachability and LAN binding/TLS/QR remain the hosting/release decisions.
 
 **Acceptance register:** all deferred Phase 11–13 manual tests (including the Report Catalogue tests
 RC1–RC15 and the integrity/spot-checks) are preserved and maintained in the **deferred acceptance register**

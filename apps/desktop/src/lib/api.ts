@@ -759,6 +759,38 @@ export interface IntegrationAuditEntry {
   provider: string | null;
   at: string | null;
 }
+export interface MemberPortalItem {
+  title: string;
+  kind: string;
+  slug: string;
+  status: string;
+  public: boolean;
+  stale: boolean;
+  path: string | null;
+  snapshot_at: string | null;
+}
+export interface MemberPortal {
+  club: string;
+  primary: string;
+  items: MemberPortalItem[];
+  public_count: number;
+  member_only_count: number;
+  workspace_id: string;
+  ask: { enabled: boolean; endpoint: string | null };
+}
+export interface UploadSession {
+  id: string;
+  status: string;
+  scope: Record<string, unknown>;
+  upload_count: number;
+  expires_at: string | null;
+  created_at: string | null;
+  last_used_at: string | null;
+  active: boolean;
+  // present only on create (returned once)
+  token?: string;
+  upload_path?: string;
+}
 export interface SyncJob {
   id: string;
   source_system: string;
@@ -1325,6 +1357,17 @@ export const api = {
     request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials/${id}/test`, { method: "POST" }),
   integrationAudit: (w: string) =>
     request<IntegrationAuditEntry[]>(`/api/v1/workspaces/${w}/integrations/audit`),
+
+  // --- Authenticated member portal (read-only) ---
+  memberPortal: (w: string) => request<MemberPortal>(`/api/v1/workspaces/${w}/portal`),
+
+  // --- Mobile upload pairing (deliverable 20a) ---
+  mobileUploadSessions: (w: string) =>
+    request<UploadSession[]>(`/api/v1/workspaces/${w}/mobile-upload/sessions`),
+  mobileUploadCreate: (w: string, body: { ttl_minutes?: number; scope?: Record<string, unknown> }) =>
+    request<UploadSession>(`/api/v1/workspaces/${w}/mobile-upload/sessions`, { method: "POST", body }),
+  mobileUploadRevoke: (w: string, id: string) =>
+    request<UploadSession>(`/api/v1/workspaces/${w}/mobile-upload/sessions/${id}/revoke`, { method: "POST" }),
 
   // --- Phase 10: Research Centre ---
   researchDashboard: (w: string) => request<ResearchDashboard>(`/api/v1/workspaces/${w}/research/dashboard`),

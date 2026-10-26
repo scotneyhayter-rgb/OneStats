@@ -23,6 +23,7 @@ from onestats.api.v1 import (
     match_formats,
     matches,
     media,
+    mobile_upload,
     onboarding,
     organisations,
     participation,
@@ -30,6 +31,7 @@ from onestats.api.v1 import (
     people,
     people_import,
     playing_conditions,
+    portal,
     premierships,
     profiles,
     public,
@@ -63,6 +65,8 @@ api_v1.include_router(autosync.router)
 api_v1.include_router(integrations.router)
 api_v1.include_router(research.router)
 api_v1.include_router(media.router)
+api_v1.include_router(mobile_upload.pairing_router)
+api_v1.include_router(mobile_upload.upload_router)
 api_v1.include_router(dashboard.router)
 api_v1.include_router(finals_series.router)
 api_v1.include_router(people.router)
@@ -82,5 +86,6 @@ api_v1.include_router(records.router)
 api_v1.include_router(premierships.router)
 api_v1.include_router(ask.router)
 api_v1.include_router(publications.router)
+api_v1.include_router(portal.router)
 api_v1.include_router(public.router)
 api_v1.include_router(users.router)

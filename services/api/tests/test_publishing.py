@@ -164,6 +164,25 @@ def test_mobile_portal_lists_published_only(seeded, conn):
     assert r1["slug"] in html
 
 
+def test_member_portal_includes_non_public_items(seeded, conn):
+    """Phase 16 follow-up: the authenticated member portal lists public published items PLUS the non-public
+    (unpublished) catalogue, each flagged — and excludes revoked. Branding/club come from the workspace."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Public Report", report_id="bat_most_runs")
+    draft = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Draft Report", report_id="bowl_most_wickets")
+    publishing.set_status(conn, wid, ACTOR, draft["id"], "unpublished")
+    gone = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile", title="Gone", person_id=seeded["p"])
+    publishing.set_status(conn, wid, ACTOR, gone["id"], "revoked")
+
+    portal = publishing.member_portal(conn, wid)
+    by_title = {i["title"]: i for i in portal["items"]}
+    assert by_title["Public Report"]["public"] is True and by_title["Public Report"]["path"]
+    assert by_title["Draft Report"]["public"] is False and by_title["Draft Report"]["path"] is None
+    assert "Gone" not in by_title                                   # revoked never appears
+    assert portal["public_count"] == 1 and portal["member_only_count"] == 1
+    assert portal["club"] == "PUB"
+
+
 def test_isolation_admin_cannot_see_other_workspace(seeded, conn):
     wid = seeded["wid"]
     pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="R", report_id="bat_most_runs")

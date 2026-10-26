@@ -250,6 +250,32 @@ def public_portal(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
     return {"club": club, "primary": primary, "items": items, "workspace_id": str(workspace_id)}
 
 
+def member_portal(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
+    """The authenticated member portal index for a club — the **public** published items PLUS the
+    non-public catalogue (unpublished drafts members may see), each flagged with its public status. Runs
+    WITH workspace context, so RLS scopes it to the member's workspace; revoked items are excluded. This is
+    the permission-scoped read-only surface for additional non-public data (Phase 16 follow-up)."""
+    rows = conn.execute(
+        text("SELECT title, kind, slug, status, stale, snapshot_at FROM publication "
+             "WHERE workspace_id = :w AND status IN ('published','unpublished') "
+             "ORDER BY kind DESC, title"),
+        {"w": workspace_id}).mappings().all()
+    branding = conn.execute(
+        text("SELECT primary_colour FROM branding WHERE workspace_id = :w"), {"w": workspace_id}).mappings().first()
+    ws = conn.execute(text("SELECT name FROM workspace WHERE id = :w"), {"w": workspace_id}).mappings().first()
+    items = [{"title": r["title"], "kind": r["kind"], "slug": r["slug"], "status": r["status"],
+              "public": r["status"] == "published", "stale": bool(r["stale"]),
+              "path": (f"/api/v1/public/{'p' if r['kind'] == 'player_profile' else 'r'}/{r['slug']}"
+                       if r["status"] == "published" else None),
+              "snapshot_at": r["snapshot_at"].isoformat() if r["snapshot_at"] else None}
+             for r in rows]
+    return {"club": (ws or {}).get("name") or "OneStats",
+            "primary": (branding or {}).get("primary_colour") or "#0b5e3b",
+            "items": items, "workspace_id": str(workspace_id),
+            "public_count": sum(1 for i in items if i["public"]),
+            "member_only_count": sum(1 for i in items if not i["public"])}
+
+
 def render_portal_html(portal: dict[str, Any]) -> str:
     """A mobile-first, branded, read-only portal index page (no DB; works offline from snapshots)."""
     primary = escape(str(portal.get("primary") or "#0b5e3b"))

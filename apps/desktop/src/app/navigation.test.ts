@@ -43,6 +43,7 @@ describe("club-management navigation (Phase 4, Stage 7)", () => {
       "Media Archive",
       "Records & Achievements",
       "Website Publishing",
+      "Member Portal",
     ]);
     for (const s of MANAGEMENT_SECTIONS) {
       expect(s.path.startsWith("/manage/")).toBe(true);

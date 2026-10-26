@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   SlidersHorizontal,
+  Smartphone,
   Trophy,
   Users,
   type LucideIcon,
@@ -152,5 +153,12 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     path: "/manage/publishing",
     icon: Globe,
     blurb: "Publish reports and player profiles to permanent public URLs, or export them for your website.",
+  },
+  {
+    key: "portal",
+    label: "Member Portal",
+    path: "/manage/portal",
+    icon: Smartphone,
+    blurb: "The members' read-only view of published and members-only records, with Ask OneStats.",
   },
 ];

@@ -149,6 +149,28 @@ Automated coverage: `tests/test_integrations.py` (28), `features/settings/integr
 **INT3/INT11 for PlayHQ remain gated** on a valid API key + live cricket-v2 field validation (see
 [69](69-playhq-connector.md), [70](70-api-integrations.md)).
 
+## Phase 16 Follow-ups — Member Portal, Ask-on-Portal, Mobile Upload (IMPLEMENTED 2026-10-26 — see [71](71-phase16-followups.md))
+
+Manual acceptance (DEFERRED):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| MP1 | Member portal view | Club Management → Member Portal (as a member) | Lists public + members-only items, each flagged; counts shown; revoked excluded |
+| MP2 | Members-only privacy | Compare with the public portal | Members-only (unpublished) items appear here but NOT on the public `/public/club/{id}` |
+| MP3 | Ask on portal | Use the embedded Ask box | Deterministic engine answer with qualifications; no fabrication; hidden when the member lacks `ask.query` |
+| MP4 | Isolation | As a member of another workspace | Only this workspace's items; no cross-workspace leakage |
+| MU1 | Start pairing | Media Archive → Upload from a phone → Start pairing | One-time code + upload path shown once; session active, time-limited |
+| MU2 | Upload from a phone | Open the path on a phone (same network), supply the code | Photo/PDF uploaded into the media review queue (unassigned, private) |
+| MU3 | Type/size guard | Upload a non-image/PDF, or an oversized file | Rejected (content-verified allowlist; size limit) |
+| MU4 | Expiry / revoke | Wait for expiry, or Revoke | The code/session stops working immediately |
+| MU5 | Token security | Inspect storage/logs | Only a SHA-256 hash stored; token never logged; no long-lived credential on the phone |
+| MU6 | Isolation | Pair in one workspace | Uploads/sessions belong only to that workspace (RLS) |
+| MU7 | Not auto-published | After upload | File sits in the review queue; requires assignment/verification; never auto-published |
+
+Automated coverage: `tests/test_mobile_upload.py` (9), `tests/test_publishing.py::test_member_portal_includes_non_public_items`, `features/portal/member-portal.test.tsx` (2).
+**Outstanding (needs the user):** the hosted standalone portal app + public reachability (hosting decision);
+LAN binding/TLS + QR rendering (release/operator step); remote cloud upload (later release).
+
 ## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
 All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one
@@ -164,7 +186,8 @@ blocks above (run those rows); cross-cutting areas add the extra checks listed.
 | 5 | Media archive & OneVault | Phase 11 (20) | OneVault must show **unavailable** |
 | 6 | Ask OneStats (AI assistant) | **ASK1–ASK7** | No fabrication; deterministic; permission-scoped |
 | 7 | Website publishing & public URLs | **PUB1–PUB10** | RMCC External-URL (hosting-gated); privacy |
-| 8 | Mobile portal | **MOB1–MOB8** | Responsive on a real phone; read-only |
+| 8 | Mobile portal | **MOB1–MOB8** + member view **MP1–MP4** | Responsive on a real phone; read-only; members-only privacy; Ask-on-portal |
+| 8a | Mobile media upload | **MU1–MU7** | QR-paired short-lived tokens; review-queue; isolation; never auto-published |
 | 9 | Windows install / upgrade / uninstall | **INS1–INS9** | USB install; upgrade preserves data; signing decision |
 | 10 | Backup, restoration & disaster recovery | Phase 11 test 18 + a full restore drill | Pre-upgrade backup; recover from a backup |
 | 11 | Permissions, security & workspace isolation | Phase isolation checks + a cross-workspace pass + **INT8–INT10, INT12** | DB-level RLS (automated suite green); role-scoped views; encrypted credentials; SSRF guard |
