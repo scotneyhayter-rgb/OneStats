@@ -76,6 +76,14 @@ def test_all_time_records_holder_and_ties(conn):
     assert hp["value"] == 55 and hp["holder"]["player"] == "Star Batter & Rival"
     assert hp["holder"]["batter1_name"] == "Star Batter" and hp["holder"]["batter2_name"] == "Rival"
     assert hp["ranking"][0]["player"] == "Star Batter & Rival"
+
+    # records show the player's club (derived from their appearances). Both batted for team "H" (org "H CC").
+    assert rec["most_runs"]["holder"]["club"] == "H CC"
+    assert rec["most_runs"]["ranking"][0]["club"] == "H CC"
+    assert hp["holder"]["club"] == "H CC"                       # same club → shown once
+    # global mode lists every club represented; here each player has one club, so it matches primary
+    recg = records.all_time_records(conn, wid, {"workspace_id": wid}, club_mode="global")
+    assert recg["most_runs"]["holder"]["club"] == "H CC"
     assert rec["highest_score"]["value"] == 150
     assert rec["most_wickets"]["holder"]["player"] == "Spearhead" and rec["most_wickets"]["value"] == 6
     assert rec["most_five_fors"]["value"] == 1

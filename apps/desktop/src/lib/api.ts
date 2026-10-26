@@ -170,14 +170,15 @@ export interface RecordHolder {
   value: number;
   tied: boolean;
   known_minimum: boolean;
+  club?: string | null;
 }
 export interface RecordCategory {
   title: string;
   metric: string;
   value: number | null;
   holder: RecordHolder | null;
-  ties: { player: string; subject_id: string }[];
-  ranking: { rank: number; player: string; value: number }[];
+  ties: { player: string; subject_id: string; club?: string | null }[];
+  ranking: { rank: number; player: string; value: number; club?: string | null }[];
 }
 export interface StatColumn {
   key: string;

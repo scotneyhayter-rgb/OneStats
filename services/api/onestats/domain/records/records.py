@@ -46,8 +46,48 @@ def _names(conn: Connection, workspace_id: UUID) -> dict[str, str]:
         text("SELECT id, display_name FROM person WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
 
 
-def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, Any], *, top: int = 10) -> dict[str, Any]:
+def clubs_for(conn: Connection, workspace_id: UUID, filters: dict[str, Any],
+              mode: str = "primary") -> dict[str, str]:
+    """Map each player to the club(s) they represented, derived from their appearances (the team they
+    batted or bowled for) in approved, statistics-eligible matches within the same scope as the records.
+    ``mode='primary'`` → the single club with the most appearances; ``mode='global'`` → every club
+    represented (comma-separated). Never invented — a player with no club-resolvable appearance is omitted."""
+    base = (
+        "SELECT ap.person_id AS pid, coalesce(nullif(o.short_name,''), o.name) AS club, "
+        " count(DISTINCT ap.match_id) AS apps "
+        "FROM (SELECT be.person_id, i.batting_team_id AS team_id, i.match_id "
+        "      FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
+        "      UNION SELECT bo.person_id, i.bowling_team_id, i.match_id "
+        "      FROM bowling_entry bo JOIN innings i ON i.id = bo.innings_id) ap "
+        "JOIN match m ON m.id = ap.match_id "
+        "JOIN team t ON t.id = ap.team_id JOIN organisation o ON o.id = t.organisation_id "
+        "WHERE m.workspace_id = :w AND m.approval_status IN ('approved','verified_partial') "
+        "AND m.include_in_statistics = true AND ap.person_id IS NOT NULL AND ap.team_id IS NOT NULL"
+    )
+    params: dict[str, Any] = {"w": workspace_id}
+    for key, col in (("season_id", "m.season_id"), ("grade_id", "m.grade_id"),
+                     ("competition_id", "m.competition_id")):
+        if filters.get(key):
+            base += f" AND {col} = :{key}"
+            params[key] = filters[key]
+    base += " GROUP BY ap.person_id, club"
+    byp: dict[str, list[tuple[str, int]]] = {}
+    for r in conn.execute(text(base), params).mappings():
+        byp.setdefault(str(r["pid"]), []).append((r["club"], int(r["apps"])))
+    out: dict[str, str] = {}
+    for pid, lst in byp.items():
+        lst.sort(key=lambda x: (-x[1], x[0]))          # most appearances first, then name
+        out[pid] = ", ".join(dict.fromkeys(c for c, _ in lst)) if mode == "global" else lst[0][0]
+    return out
+
+
+def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, Any], *, top: int = 10,
+                     club_mode: str = "primary") -> dict[str, Any]:
     names = _names(conn, workspace_id)
+    clubs = clubs_for(conn, workspace_id, filters, club_mode)
+
+    def _club(pid: str) -> str | None:
+        return clubs.get(str(pid))
     out: dict[str, Any] = {}
     for key, title, which, metric, order_by in _SPECS:
         rows = _LEADERS[which](conn, filters, order_by)
@@ -62,11 +102,13 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
         out[key] = {
             "title": title, "metric": metric, "value": top_val,
             "holder": {"player": rows[0]["player"], "subject_id": rows[0]["subject_id"], "value": top_val,
+                       "club": _club(rows[0]["subject_id"]),
                        "tied": len(ties) > 1, "known_minimum": bool(rows[0].get("runs_known_minimum")
                                                                      or rows[0].get("wickets_known_minimum"))},
-            "ties": [{"player": r["player"], "subject_id": r["subject_id"]} for r in ties] if len(ties) > 1 else [],
+            "ties": [{"player": r["player"], "subject_id": r["subject_id"], "club": _club(r["subject_id"])}
+                     for r in ties] if len(ties) > 1 else [],
             "ranking": [{"rank": i + 1, "player": r["player"], "subject_id": r["subject_id"],
-                         "value": r.get(metric)} for i, r in enumerate(rows[:top])],
+                         "club": _club(r["subject_id"]), "value": r.get(metric)} for i, r in enumerate(rows[:top])],
         }
     # highest partnership (from partnership data). batter1/batter2 are person IDs; resolve to names and
     # present the pair together ("A & B") so the record names BOTH batsmen, not just the value.
@@ -75,15 +117,23 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
     def _pair(row: dict[str, Any]) -> str:
         return f"{names.get(row['batter1'], 'Unknown')} & {names.get(row['batter2'], 'Unknown')}"
 
+    def _pair_club(row: dict[str, Any]) -> str | None:
+        c1, c2 = _club(row["batter1"]), _club(row["batter2"])
+        if c1 and c2:
+            return c1 if c1 == c2 else f"{c1} / {c2}"
+        return c1 or c2
+
     out["highest_partnership"] = {
         "title": "Highest Partnership", "metric": "runs",
         "value": bp[0]["runs"] if bp else None,
         "holder": ({"player": _pair(bp[0]), "value": bp[0]["runs"], "tied": False, "known_minimum": False,
+                    "club": _pair_club(bp[0]),
                     "runs": bp[0]["runs"], "batter1": bp[0]["batter1"], "batter2": bp[0]["batter2"],
                     "batter1_name": names.get(bp[0]["batter1"], "Unknown"),
                     "batter2_name": names.get(bp[0]["batter2"], "Unknown"),
                     "wicket": bp[0]["wicket"], "match_id": bp[0]["match_id"]} if bp else None),
-        "ranking": [{"rank": i + 1, "player": _pair(r), "value": r["runs"]} for i, r in enumerate(bp)],
+        "ranking": [{"rank": i + 1, "player": _pair(r), "club": _pair_club(r), "value": r["runs"]}
+                    for i, r in enumerate(bp)],
     }
     return out
 

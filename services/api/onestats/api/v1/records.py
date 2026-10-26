@@ -56,10 +56,13 @@ def _filters(workspace_id: UUID, season_id: UUID | None, grade_id: UUID | None, 
 @router.get("")
 def all_time(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
              grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-             split: str | None = None, venue: str | None = None, top: int = 10) -> dict[str, Any]:
+             split: str | None = None, venue: str | None = None, top: int = 10,
+             club_mode: str = "primary") -> dict[str, Any]:
+    # club_mode: 'primary' = each holder's main club; 'global' = every club they represented
+    mode = club_mode if club_mode in ("primary", "global") else "primary"
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, None, None, None)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return records.all_time_records(conn, workspace_id, f, top=top)
+        return records.all_time_records(conn, workspace_id, f, top=top, club_mode=mode)
 
 
 @router.get("/seasonal")

@@ -9,6 +9,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { Select } from "../../components/ui/select";
 import { api, ApiError, type RecordCategory } from "../../lib/api";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -24,6 +25,7 @@ export function Records() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clubMode, setClubMode] = useState<"primary" | "global">("primary");
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -31,7 +33,7 @@ export function Records() {
     setError(null);
     try {
       const [a, s, u, h] = await Promise.all([
-        api.recordsAllTime(current.id), api.recordsSeasonal(current.id),
+        api.recordsAllTime(current.id, { club_mode: clubMode }), api.recordsSeasonal(current.id),
         api.recordsUpcoming(current.id, 10), api.recordsHonours(current.id),
       ]);
       setAll(a);
@@ -43,7 +45,7 @@ export function Records() {
     } finally {
       setBusy(false);
     }
-  }, [current]);
+  }, [current, clubMode]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -81,7 +83,17 @@ export function Records() {
         </div>
 
         <Card><CardContent className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold">All-time record holders</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">All-time record holders</h3>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              Club shown:
+              <Select value={clubMode} disabled={busy} className="h-7 w-32"
+                onChange={(e) => setClubMode(e.target.value as "primary" | "global")}>
+                <option value="primary">Primary club</option>
+                <option value="global">All clubs</option>
+              </Select>
+            </label>
+          </div>
           {categories.length === 0 && <p className="text-xs text-muted-foreground">No approved records yet.</p>}
           <div className="grid gap-2 sm:grid-cols-2">
             {categories.map(([key, c]) => (
@@ -97,11 +109,13 @@ export function Records() {
                   {c.holder?.tied && <Badge variant="muted">tied</Badge>}
                   {c.holder?.known_minimum && <Badge variant="warning">known min.</Badge>}
                 </div>
+                {c.holder?.club && <span className="text-xs text-muted-foreground">{c.holder.club}</span>}
                 {expanded === key && (
                   <div className="mt-1 flex flex-col gap-0.5 border-t border-border pt-1 text-xs">
                     {c.ranking.map((r) => (
-                      <div key={r.rank} className="flex justify-between">
-                        <span>{r.rank}. {r.player}</span><span className="tabular-nums">{r.value}</span>
+                      <div key={r.rank} className="flex justify-between gap-2">
+                        <span>{r.rank}. {r.player}{r.club ? <span className="text-muted-foreground"> · {r.club}</span> : null}</span>
+                        <span className="tabular-nums">{r.value}</span>
                       </div>
                     ))}
                   </div>
