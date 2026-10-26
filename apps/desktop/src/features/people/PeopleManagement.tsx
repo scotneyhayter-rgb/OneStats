@@ -207,6 +207,8 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
   const [bio, setBio] = useState("");
   const [batStyle, setBatStyle] = useState("");
   const [bowlStyle, setBowlStyle] = useState("");
+  const [yearFor, setYearFor] = useState<{ kind: "number" | "leadership" | "recognition"; id: string; body: Record<string, unknown> } | null>(null);
+  const [yearSeason, setYearSeason] = useState("");
   const [confirm, setConfirm] = useState<{ candidateId: string; name: string; kind: "merge" | "distinct" } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -245,16 +247,45 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove."); }
   };
 
-  const attrChips = (kind: "number" | "leadership" | "recognition", items: any[], label: (x: any) => string) => (
-    <div className="flex flex-wrap gap-1 text-sm">
-      {(items ?? []).length === 0 ? <span className="text-muted-foreground">—</span> :
-        (items ?? []).map((it: any) => (
-          <span key={it.id} className="inline-flex items-center gap-1 rounded-[var(--radius-app)] border border-border px-1.5 py-0.5 text-xs">
-            {label(it)}{it.season_label ? ` (${it.season_label})` : ""}
-            {canManage && <button type="button" aria-label="Remove" className="text-muted-foreground hover:text-danger"
-              onClick={() => void removeAttr(kind, it.id)}>×</button>}
-          </span>
-        ))}
+  // "+yr": add another season to an existing role/recognition without retyping (creates a new entry with
+  // the same role/number + club, just a new season). Entries group by label on the career profile.
+  const addYear = async () => {
+    if (!yearFor || !yearSeason.trim()) return;
+    const body = { ...yearFor.body, season_label: yearSeason.trim() };
+    try {
+      if (yearFor.kind === "number") await api.addPersonNumber(workspaceId, personId, body);
+      else if (yearFor.kind === "leadership") await api.addPersonLeadership(workspaceId, personId, body);
+      else await api.addPersonRecognition(workspaceId, personId, body);
+      setYearFor(null); setYearSeason(""); onChanged("Season added."); await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not add season."); }
+  };
+
+  const attrChips = (kind: "number" | "leadership" | "recognition", items: any[],
+                     label: (x: any) => string, bodyOf: (x: any) => Record<string, unknown>) => (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1 text-sm">
+        {(items ?? []).length === 0 ? <span className="text-muted-foreground">—</span> :
+          (items ?? []).map((it: any) => (
+            <span key={it.id} className="inline-flex items-center gap-1 rounded-[var(--radius-app)] border border-border px-1.5 py-0.5 text-xs">
+              {label(it)}{it.season_label ? ` (${it.season_label})` : ""}
+              {canManage && <>
+                <button type="button" aria-label="Add another season" title="Add another season"
+                  className="text-muted-foreground hover:text-brand"
+                  onClick={() => { setYearFor({ kind, id: it.id, body: bodyOf(it) }); setYearSeason(""); }}>+yr</button>
+                <button type="button" aria-label="Remove" className="text-muted-foreground hover:text-danger"
+                  onClick={() => void removeAttr(kind, it.id)}>×</button>
+              </>}
+            </span>
+          ))}
+      </div>
+      {canManage && yearFor && (items ?? []).some((it: any) => it.id === yearFor.id) && (
+        <div className="flex gap-1">
+          <Input value={yearSeason} placeholder="Add season (e.g. 2024/25)" className="h-7 text-xs"
+            onChange={(e) => setYearSeason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addYear(); }} />
+          <Button size="sm" variant="outline" disabled={!yearSeason.trim()} onClick={() => void addYear()}>Add</Button>
+          <Button size="sm" variant="ghost" onClick={() => setYearFor(null)}>Cancel</Button>
+        </div>
+      )}
     </div>
   );
 
@@ -325,19 +356,22 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
           <section className="grid gap-3 sm:grid-cols-3">
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Numbers</h3>
-              {attrChips("number", view?.numbers ?? [], (n) => String(n.number ?? "?"))}
+              {attrChips("number", view?.numbers ?? [], (n) => String(n.number ?? "?"),
+                (n) => ({ organisation_id: n.organisation_id, number: n.number }))}
               {canManage && <AttrAdder kind="number" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Leadership</h3>
-              {attrChips("leadership", view?.leadership ?? [], (l) => humanise(l.role))}
+              {attrChips("leadership", view?.leadership ?? [], (l) => humanise(l.role),
+                (l) => ({ organisation_id: l.organisation_id, role: l.role }))}
               {canManage && <AttrAdder kind="leadership" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Recognition</h3>
-              {attrChips("recognition", view?.recognition ?? [], (r) => r.title || humanise(r.recognition_type))}
+              {attrChips("recognition", view?.recognition ?? [], (r) => r.title || humanise(r.recognition_type),
+                (r) => ({ recognition_type: r.recognition_type, title: r.title ?? undefined, organisation_id: r.organisation_id ?? undefined }))}
               {canManage && <AttrAdder kind="recognition" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
