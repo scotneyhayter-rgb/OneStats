@@ -13,7 +13,7 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::Child;
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
@@ -67,6 +67,12 @@ fn spawn_backend(app: &tauri::AppHandle) {
         }
     };
     let mut cmd = std::process::Command::new(&path);
+    // Give the child explicit null stdio. When the app is launched from the Windows desktop/Start
+    // menu (a GUI process with no console), inherited stdout/stderr handles are invalid, and the
+    // packaged Python backend would fail on its first stderr write before it could start. The backend
+    // logs to its own file (server.log), so it needs no console. (It worked when launched from a shell
+    // only because the shell supplied valid pipes.)
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     match cmd.spawn() {
