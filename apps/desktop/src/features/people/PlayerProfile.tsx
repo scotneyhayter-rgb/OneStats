@@ -257,7 +257,9 @@ export function PlayerProfile() {
                 <Badge key={i} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{String(h.honour_type).replace(/_/g, " ")}</Badge>
               ))}
               {(full?.detail?.recognition ?? []).filter((r) => /life member/i.test(r.label)).map((r, i) => (
-                <Badge key={`lm${i}`} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{r.label}</Badge>
+                <Badge key={`lm${i}`} variant="outline" className="border-[#d4af37] bg-[#faf3da] text-[#9a7d16]">
+                  <Medal className="mr-1 h-3 w-3" aria-hidden />{r.label}
+                </Badge>
               ))}
               {(full?.records ?? []).length > 0 && <Badge variant="warning"><Trophy className="mr-1 h-3 w-3" aria-hidden />Record holder</Badge>}
               {Number(full?.grand_finals?.premierships ?? 0) > 0 && (
