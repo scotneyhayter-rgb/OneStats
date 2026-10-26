@@ -130,9 +130,27 @@ export function PlayerProfile() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!current || tab !== "matches" || matches) return;
-    api.profileMatches(current.id, personId!).then(setMatches).catch(() => setMatches([]));
+    // match data backs both the Matches table and the per-match charts on Batting/Bowling
+    if (!current || !personId || matches || !["matches", "batting", "bowling"].includes(tab)) return;
+    api.profileMatches(current.id, personId).then(setMatches).catch(() => setMatches([]));
   }, [tab, current, personId, matches]);
+
+  // Per-match chart points (chronological), so even a single-season player shows a trend per innings/match.
+  const matchCharts = useMemo(() => {
+    const rows = (matches ?? []).filter(Boolean);
+    const ordered = [...rows].sort((a, b) =>
+      String(a.match_date ?? "").localeCompare(String(b.match_date ?? "")));
+    const label = (r: Record<string, unknown>, i: number) =>
+      r.match_date ? String(r.match_date).slice(0, 10) : `#${i + 1}`;
+    const n = (v: unknown): number | null => (v == null ? null : Number(v));
+    let cum = 0;
+    return {
+      count: ordered.length,
+      runs: ordered.map((r, i) => ({ label: label(r, i), value: n(r.runs) })),
+      wickets: ordered.map((r, i) => ({ label: label(r, i), value: n(r.wickets) })),
+      cumRuns: ordered.map((r, i) => { cum += Number(r.runs ?? 0); return { label: label(r, i), value: cum }; }),
+    };
+  }, [matches]);
 
   useEffect(() => {
     if (!current || tab !== "media" || photos.length === 0) return;
@@ -306,6 +324,12 @@ export function PlayerProfile() {
                 {statCard("50s", bat.fifties)}{statCard("100s", bat.hundreds)}{statCard("Ducks", bat.ducks)}
                 {statCard("Fours", bat.fours)}{statCard("Sixes", bat.sixes)}
               </div>
+              {matchCharts.count > 0 && (
+                <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
+                  <BarChart title="Runs by match" points={matchCharts.runs} />
+                  <LineChart title="Cumulative runs" points={matchCharts.cumRuns} />
+                </div>
+              )}
             </>
           )}
           {tab === "batting" && !c?.has_batting && <p className="text-xs text-muted-foreground">No recorded batting.</p>}
@@ -319,6 +343,11 @@ export function PlayerProfile() {
                 {statCard("Average", bowl.average, 2)}{statCard("Economy", bowl.economy, 2)}{statCard("Strike rate", bowl.strike_rate, 2)}
                 {statCard("5wi", bowl.five_wkt_innings)}{statCard("Best (match)", bowl.best_match_wickets)}
               </div>
+              {matchCharts.count > 0 && (
+                <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
+                  <BarChart title="Wickets by match" points={matchCharts.wickets} />
+                </div>
+              )}
             </>
           )}
           {tab === "bowling" && !c?.has_bowling && <p className="text-xs text-muted-foreground">No recorded bowling.</p>}
