@@ -66,7 +66,14 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
     view = profiles.career_view(conn, person_id, public=True) or {}
     prof = player_profile.full_profile(conn, workspace_id, person_id)
     person = view.get("person") or {}
+    det = prof.get("detail") or {}
+    # Public playing-style/service detail — club-appropriate public info only (no DOB, no contact).
+    public_detail = {"batting_style": det.get("batting_style"), "bowling_style": det.get("bowling_style"),
+                     "is_wicketkeeper": det.get("is_wicketkeeper"), "biography": det.get("biography"),
+                     "numbers": det.get("numbers") or [],
+                     "leadership": det.get("leadership") or [], "recognition": det.get("recognition") or []}
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
+            "detail": public_detail, "span": prof.get("span"),
             "career": prof["career"], "seasons": prof["seasons"], "records": prof["records"],
             "grand_finals": prof.get("grand_finals"),
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
@@ -74,6 +81,130 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
             "branding": brand,
             "qualifications": [("Public profile — approved statistics only; personal contact details and "
                                 "dates of birth are never published.")]}
+
+
+def _num(v: Any, dp: int = 0) -> str:
+    """Format a stat value for display; unknown → em dash (never shown as zero when truly unknown)."""
+    if v is None:
+        return "—"
+    if isinstance(v, float):
+        return f"{v:.{dp}f}"
+    return escape(str(v))
+
+
+def _render_profile_body(snap: dict[str, Any]) -> str:
+    """Full (privacy-safe) public career view: playing style, career tiles, batting/bowling/fielding
+    summaries, season-by-season, records held and service & honours. No DOB/contact/private data."""
+    c = snap.get("career") or {}
+    det = snap.get("detail") or {}
+    span = snap.get("span") or {}
+    bat, bowl, field = c.get("batting") or {}, c.get("bowling") or {}, c.get("fielding") or {}
+    parts: list[str] = [f"<h2>{escape(snap['person_name'])}</h2>"]
+
+    # Playing style + squad number (public, club-appropriate)
+    style_bits = []
+    if det.get("batting_style"):
+        style_bits.append("Bats: " + escape(str(det["batting_style"])))
+    if det.get("bowling_style"):
+        style_bits.append("Bowls: " + escape(str(det["bowling_style"])))
+    if det.get("is_wicketkeeper"):
+        style_bits.append("Wicketkeeper")
+    if det.get("numbers"):
+        style_bits.append("No. " + escape(", ".join(str(n) for n in det["numbers"])))
+    if style_bits:
+        parts.append("<p class='style'>" + " &nbsp;·&nbsp; ".join(style_bits) + "</p>")
+
+    # First / most-recent match
+    def _edge(e: dict[str, Any] | None) -> str | None:
+        if not e or not e.get("date"):
+            return None
+        opp = e.get("opposition")
+        return escape(str(e["date"])) + (f" v {escape(str(opp))}" if opp else "")
+    first, last = _edge(span.get("first")), _edge(span.get("last"))
+    if first or last:
+        s = []
+        if first:
+            s.append(f"<b>Debut:</b> {first}")
+        if last:
+            s.append(f"<b>Most recent:</b> {last}")
+        parts.append("<p class='muted'>" + " &nbsp;·&nbsp; ".join(s) + "</p>")
+
+    # Career tiles
+    tiles = [("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
+             ("Bat avg", _num(bat.get("average"), 2)), ("HS", _num(bat.get("highest_score"))),
+             ("Wickets", _num(bowl.get("wickets", 0))), ("Bowl avg", _num(bowl.get("average"), 2)),
+             ("Catches", _num(field.get("catches", 0))), ("Stumpings", _num(field.get("stumpings", 0))),
+             ("Run-outs", _num(field.get("run_outs", 0)))]
+    parts.append("<div class='cards'>" + "".join(
+        f"<div class='card'><span>{escape(lbl)}</span><b>{val}</b></div>" for lbl, val in tiles) + "</div>")
+
+    # Batting summary
+    if int(bat.get("innings", 0) or 0) > 0:
+        parts.append("<h3>Batting</h3><table><thead><tr>"
+                     "<th>M</th><th>Inns</th><th>NO</th><th>Runs</th><th>HS</th><th>Avg</th>"
+                     "<th>50</th><th>100</th><th>SR</th></tr></thead><tbody><tr>"
+                     f"<td>{_num(bat.get('matches'))}</td><td>{_num(bat.get('innings'))}</td>"
+                     f"<td>{_num(bat.get('not_outs'))}</td><td>{_num(bat.get('runs'))}</td>"
+                     f"<td>{_num(bat.get('highest_score'))}</td><td>{_num(bat.get('average'), 2)}</td>"
+                     f"<td>{_num(bat.get('fifties'))}</td><td>{_num(bat.get('hundreds'))}</td>"
+                     f"<td>{_num(bat.get('strike_rate'), 1)}</td></tr></tbody></table>")
+
+    # Bowling summary
+    if int(bowl.get("innings", 0) or 0) > 0:
+        parts.append("<h3>Bowling</h3><table><thead><tr>"
+                     "<th>M</th><th>Overs</th><th>Mdns</th><th>Runs</th><th>Wkts</th><th>Avg</th>"
+                     "<th>Econ</th><th>5w</th></tr></thead><tbody><tr>"
+                     f"<td>{_num(bowl.get('matches'))}</td><td>{_num(bowl.get('overs'), 1)}</td>"
+                     f"<td>{_num(bowl.get('maidens'))}</td><td>{_num(bowl.get('runs'))}</td>"
+                     f"<td>{_num(bowl.get('wickets'))}</td><td>{_num(bowl.get('average'), 2)}</td>"
+                     f"<td>{_num(bowl.get('economy'), 2)}</td><td>{_num(bowl.get('five_wkt_innings'))}</td>"
+                     "</tr></tbody></table>")
+
+    # Season-by-season
+    seasons = snap.get("seasons") or []
+    if seasons:
+        rows = "".join(
+            f"<tr><td style='text-align:left'>{escape(str(s.get('label') or ''))}</td>"
+            f"<td>{_num(s.get('matches'))}</td><td>{_num(s.get('runs'))}</td>"
+            f"<td>{_num(s.get('batting_average'), 2)}</td><td>{_num(s.get('wickets'))}</td>"
+            f"<td>{_num(s.get('bowling_average'), 2)}</td><td>{_num(s.get('catches'))}</td></tr>"
+            for s in seasons)
+        parts.append("<h3>Season by season</h3><table><thead><tr>"
+                     "<th style='text-align:left'>Season</th><th>M</th><th>Runs</th><th>Bat avg</th>"
+                     f"<th>Wkts</th><th>Bowl avg</th><th>Ct</th></tr></thead><tbody>{rows}</tbody></table>")
+
+    # Records held
+    records = snap.get("records") or []
+    if records:
+        items = "".join(
+            f"<li>{escape(str(r.get('title') or ''))}"
+            + (f" — <b>{_num(r.get('value'))}</b>" if r.get("value") is not None else "")
+            + (" <span class='muted'>(tied)</span>" if r.get("tied") else "") + "</li>"
+            for r in records)
+        parts.append(f"<h3>Records held</h3><ul>{items}</ul>")
+
+    # Service & honours (leadership roles, recognition, and recorded honours)
+    service: list[str] = []
+    for r in (det.get("leadership") or []):
+        seasons_txt = ", ".join(escape(str(x)) for x in (r.get("seasons") or []))
+        service.append(f"<li>{escape(str(r.get('label') or ''))}"
+                       + (f" <span class='muted'>({seasons_txt})</span>" if seasons_txt else "") + "</li>")
+    for r in (det.get("recognition") or []):
+        seasons_txt = ", ".join(escape(str(x)) for x in (r.get("seasons") or []))
+        service.append(f"<li>{escape(str(r.get('label') or ''))}"
+                       + (f" <span class='muted'>({seasons_txt})</span>" if seasons_txt else "") + "</li>")
+    for h in (snap.get("honours") or []):
+        bits = escape(str(h.get("title") or ""))
+        extra = " · ".join(escape(str(x)) for x in (h.get("category"), h.get("season")) if x)
+        service.append(f"<li>{bits}" + (f" <span class='muted'>({extra})</span>" if extra else "") + "</li>")
+    if service:
+        parts.append(f"<h3>Service &amp; honours</h3><ul>{''.join(service)}</ul>")
+
+    # Biography
+    if det.get("biography"):
+        parts.append(f"<h3>Biography</h3><p class='bio'>{escape(str(det['biography']))}</p>")
+
+    return "".join(parts)
 
 
 def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
@@ -97,15 +228,7 @@ def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) 
         if not rows:
             body.append("<p class='muted'>No published data for this report yet.</p>")
     else:
-        c = snap["career"]
-        bat, bowl = c.get("batting", {}), c.get("bowling", {})
-        body.append(f"<h2>{escape(snap['person_name'])}</h2>")
-        body.append("<div class='cards'>"
-                    + f"<div class='card'><span>Matches</span><b>{c.get('matches', 0)}</b></div>"
-                    + f"<div class='card'><span>Runs</span><b>{bat.get('runs', 0)}</b></div>"
-                    + f"<div class='card'><span>Bat avg</span><b>{bat.get('average') if bat.get('average') is not None else '—'}</b></div>"
-                    + f"<div class='card'><span>Wickets</span><b>{bowl.get('wickets', 0)}</b></div>"
-                    + "</div>")
+        body.append(_render_profile_body(snap))
     for q in snap.get("qualifications", []):
         body.append(f"<p class='muted'>{escape(q)}</p>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -116,8 +239,13 @@ body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;co
 header{{border-bottom:3px solid var(--brand);padding:12px 20px}}
 header b{{color:var(--brand)}}
 main{{padding:16px 20px;max-width:1000px;margin:0 auto}}
-h1{{color:var(--brand);font-size:20px;margin:.2em 0}} h2{{color:var(--brand)}}
-table{{border-collapse:collapse;width:100%;font-size:14px}}
+h1{{color:var(--brand);font-size:20px;margin:.2em 0}} h2{{color:var(--brand);margin:.2em 0}}
+h3{{color:var(--brand);font-size:15px;margin:1.1em 0 .4em;border-bottom:1px solid #e5eae7;padding-bottom:3px}}
+.style{{font-size:14px;color:#2c3a33;margin:.2em 0 .4em}}
+.bio{{font-size:14px;line-height:1.5;color:#2c3a33;white-space:pre-wrap}}
+ul{{font-size:14px;margin:.3em 0;padding-left:1.2em}} li{{margin:.15em 0}}
+td:not(:first-child),th:not(:first-child){{text-align:right}}
+table{{border-collapse:collapse;width:100%;font-size:14px;margin:.2em 0}}
 th{{background:var(--brand);color:#fff;padding:6px 8px}} td{{padding:5px 8px;border-bottom:1px solid #e5eae7}}
 tr:nth-child(even) td{{background:#f3f6f4}}
 .cards{{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}}
