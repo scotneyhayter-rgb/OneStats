@@ -99,7 +99,10 @@ def _render_profile_body(snap: dict[str, Any]) -> str:
     det = snap.get("detail") or {}
     span = snap.get("span") or {}
     bat, bowl, field = c.get("batting") or {}, c.get("bowling") or {}, c.get("fielding") or {}
-    parts: list[str] = [f"<h2>{escape(snap['person_name'])}</h2>"]
+    # The page <h1> is the publication title (usually the player's name); only repeat it as a heading
+    # when the title differs, so the name isn't shown twice.
+    name = snap.get("person_name") or "Player"
+    parts: list[str] = [] if (snap.get("title") or "").strip() == name.strip() else [f"<h2>{escape(name)}</h2>"]
 
     # Playing style + squad number (public, club-appropriate)
     style_bits = []
