@@ -11,6 +11,8 @@ import { getUserScoreFormat, setUserScoreFormat } from "../lib/score-format";
 import { APP_VERSION } from "../lib/version";
 import { useWorkspace } from "../lib/workspace-context";
 import { ConnectionSettings } from "./settings/ConnectionSettings";
+import { Appearance } from "./settings/Appearance";
+import { ClubThemeEditor } from "./settings/ClubTheme";
 import { Placeholder } from "./Placeholder";
 
 // Matches and People now have full feature screens (features/scorecard, features/people);
@@ -50,7 +52,7 @@ export function Settings() {
 
   return (
     <AppShell title="Settings" subtitle="Workspace, display and configuration">
-      <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <Card><CardContent className="flex flex-col gap-4">
           <div>
             <h3 className="text-sm font-semibold">Scorecard Display</h3>
@@ -76,6 +78,8 @@ export function Settings() {
             <span className="text-xs text-muted-foreground">Applies to your view across the app; it does not change anyone else's display or any stored data.</span>
           </label>
         </CardContent></Card>
+        <Appearance />
+        <div id="club-theme-editor"><ClubThemeEditor admin={admin} /></div>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
         {admin && <RecalcStatsSettings workspaceId={current?.id ?? null} />}
         {admin && (

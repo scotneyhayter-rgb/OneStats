@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/onestats-icon.png" />
     <title>OneStats — Cricket Statistics Made Simple</title>
+    <script>
+      /* Apply the saved theme + mode before first paint to avoid a flash of the default look. */
+      (function () {
+        try {
+          var r = document.documentElement;
+          var skin = localStorage.getItem("onestats.skin") || "modern";
+          var mode = localStorage.getItem("onestats.theme") || "system";
+          var dark = mode === "dark" || (mode === "system" &&
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          r.dataset.theme = skin;
+          r.dataset.mode = dark ? "dark" : "light";
+          r.classList.toggle("dark", dark);
+          r.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) { /* storage blocked — provider will set it on mount */ }
+      })();
+    </script>
   </head>
 
   <body>

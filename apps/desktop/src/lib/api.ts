@@ -332,6 +332,31 @@ export interface ColourResolved {
   meets_aa_large: boolean;
 }
 
+/** Stored workspace branding row (colours are #RRGGBB hex or null; theme_mode light|dark|system). */
+export interface BrandingRecord {
+  primary_colour: string | null;
+  secondary_colour: string | null;
+  third_colour: string | null;
+  fourth_colour: string | null;
+  accent_colour: string | null;
+  theme_mode: string | null;
+  logo_ref: string | null;
+  tagline: string | null;
+}
+export interface BrandingResolved {
+  theme_mode: string;
+  colours: Record<string, ColourResolved>;
+  warnings: string[];
+}
+export type BrandingUpdate = Partial<
+  Pick<BrandingRecord, "primary_colour" | "secondary_colour" | "third_colour" | "fourth_colour" | "accent_colour" | "theme_mode" | "tagline">
+>;
+export interface BrandingResponse {
+  branding: BrandingRecord | null;
+  resolved: BrandingResolved;
+  published: { theme_mode: string; colours: Record<string, ColourResolved>; logo_ref: string | null; tagline: string | null };
+}
+
 // --- Phase 4 domain types ---
 export interface NameHistory {
   id: string;
@@ -1116,9 +1141,20 @@ export const api = {
       `/api/v1/workspaces/${workspaceId}/branding/preview`, { method: "POST", body: { colours } },
     ),
   getBranding: (workspaceId: string) =>
-    request<{ branding: Record<string, unknown> | null; resolved: unknown; published: unknown }>(
-      `/api/v1/workspaces/${workspaceId}/branding`,
+    request<BrandingResponse>(`/api/v1/workspaces/${workspaceId}/branding`),
+  setBranding: (workspaceId: string, body: BrandingUpdate) =>
+    request<{ branding: BrandingRecord | null; resolved: BrandingResolved }>(
+      `/api/v1/workspaces/${workspaceId}/branding`, { method: "PUT", body },
     ),
+  resetBranding: (workspaceId: string) =>
+    request<{ reset: boolean }>(`/api/v1/workspaces/${workspaceId}/branding/reset`, { method: "POST" }),
+  uploadBrandingLogo: (workspaceId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ logo_ref: string }>(`/api/v1/workspaces/${workspaceId}/branding/logo`, { method: "POST", form });
+  },
+  deleteBrandingLogo: (workspaceId: string) =>
+    request<{ removed: boolean }>(`/api/v1/workspaces/${workspaceId}/branding/logo`, { method: "DELETE" }),
   brandingLogoObjectUrl: async (workspaceId: string): Promise<string | null> => {
     const headers: Record<string, string> = {};
     const t = getToken();

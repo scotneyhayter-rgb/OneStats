@@ -28,6 +28,7 @@ import { AutoSync } from "./features/autosync/AutoSync";
 import { ResearchCentre } from "./features/research/ResearchCentre";
 import { MediaArchive } from "./features/media/MediaArchive";
 import { Records } from "./features/records/Records";
+import { ClubBrandingSync } from "./features/ClubBrandingSync";
 import { useAuth } from "./lib/auth";
 import { LayoutProvider } from "./lib/layout";
 import { WorkspaceProvider } from "./lib/workspace-context";
@@ -44,6 +45,7 @@ function AuthedApp() {
   return (
     <LayoutProvider>
       <WorkspaceProvider>
+        <ClubBrandingSync />
         <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />

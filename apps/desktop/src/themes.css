@@ -1,0 +1,257 @@
+/*
+ * OneStats visual themes.
+ *
+ * Six distinctive cricket-inspired themes, each with a Light and Dark variant. The whole app is
+ * token-driven (index.css maps these CSS variables onto Tailwind colour utilities via @theme inline),
+ * so setting `data-theme` + `data-mode` on <html> re-skins the entire interface — no per-page styling.
+ *
+ * Axes (set by the theme provider, and also used on preview cards so a card can show any theme/mode
+ * without changing the live app):
+ *   [data-theme="<id>"]                  -> that theme's LIGHT tokens
+ *   [data-theme="<id>"][data-mode="dark"]-> that theme's DARK tokens
+ *
+ * Club/workspace branding is applied within theme boundaries: themes that opt in read
+ * `--club-primary` / `--club-accent` (set at runtime from workspace branding) with a theme default
+ * fallback. The Test theme deliberately keeps its ivory/green/gold identity and ignores club colours
+ * for its primary surfaces, as required.
+ *
+ * Each theme block sets: surfaces (background/card/muted), text (foreground/muted-foreground),
+ * lines (border/input/ring), brand + accent, the sidebar family, status colours, decorative --ball-red,
+ * plus --radius (shape language) and --font-sans / --font-heading (typographic identity).
+ */
+
+/* ----------------------------------------------------------------------------- MODERN (default) --- */
+/* Contemporary software: spacious, rounded, crisp blue. Club primary drives the brand. */
+[data-theme="modern"] {
+  --background: #f7f8fa; --foreground: #0f172a;
+  --card: #ffffff; --card-foreground: #0f172a;
+  --muted: #eef1f5; --muted-foreground: #5b6472;
+  --border: #e2e6ec; --input: #e2e6ec; --ring: var(--club-primary, #2563eb);
+  --brand: var(--club-primary, #2563eb); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #0ea5e9);
+  --sidebar: #0f172a; --sidebar-foreground: #e2e8f0; --sidebar-muted: #94a3b8; --sidebar-active: #1e293b;
+  --danger: #dc2626; --success: #16a34a; --warning: #d97706; --ball-red: #c81e1e;
+  --radius: 0.75rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="modern"][data-mode="dark"] {
+  --background: #0b1120; --foreground: #e6eaf2;
+  --card: #111a2e; --card-foreground: #e6eaf2;
+  --muted: #16213a; --muted-foreground: #9aa6bd;
+  --border: #233049; --input: #233049; --ring: var(--club-primary, #3b82f6);
+  --brand: var(--club-primary, #3b82f6); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #38bdf8);
+  --sidebar: #070c17; --sidebar-foreground: #cbd5e1; --sidebar-muted: #64748b; --sidebar-active: #15213a;
+  --danger: #f87171; --success: #4ade80; --warning: #fbbf24; --ball-red: #ef4444;
+}
+
+/* -------------------------------------------------------------------------------- TRADITIONAL --- */
+/* Heritage country cricket: warm cream, deep navy, leather brown; squared, serif headings. */
+[data-theme="traditional"] {
+  --background: #f3efe6; --foreground: #1b2238;
+  --card: #fffdf7; --card-foreground: #1b2238;
+  --muted: #e8e1d2; --muted-foreground: #5c5848;
+  --border: #d6ccb8; --input: #d6ccb8; --ring: #1e3a5f;
+  --brand: #1e3a5f; --brand-foreground: #fdfbf4;
+  --accent: var(--club-accent, #8a5a2b);
+  --sidebar: #1b2238; --sidebar-foreground: #e9e3d4; --sidebar-muted: #9a9a8c; --sidebar-active: #2a3451;
+  --danger: #a4302a; --success: #3d7a3a; --warning: #9a6b1f; --ball-red: #9c2b22;
+  --radius: 0.25rem;
+  --font-sans: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --font-heading: Georgia, "Times New Roman", serif;
+}
+[data-theme="traditional"][data-mode="dark"] {
+  --background: #14161f; --foreground: #e9e3d4;
+  --card: #1c2030; --card-foreground: #e9e3d4;
+  --muted: #232838; --muted-foreground: #a69f8c;
+  --border: #343a4e; --input: #343a4e; --ring: #6f93bd;
+  --brand: #3f618c; --brand-foreground: #fdfbf4;
+  --accent: var(--club-accent, #c0905a);
+  --sidebar: #0f1119; --sidebar-foreground: #ddd6c6; --sidebar-muted: #7d7a6c; --sidebar-active: #1d2231;
+  --danger: #e07a73; --success: #74b06f; --warning: #d2a65a; --ball-red: #d06a60;
+}
+
+/* -------------------------------------------------------------------------------- PROFESSIONAL --- */
+/* Broadcast analytics: dark navy, neutral surfaces, confident. Club drives accent only. */
+[data-theme="professional"] {
+  --background: #eceff4; --foreground: #0b1324;
+  --card: #ffffff; --card-foreground: #0b1324;
+  --muted: #e2e7ef; --muted-foreground: #525d70;
+  --border: #d2d9e4; --input: #d2d9e4; --ring: #0b2447;
+  --brand: #0b2447; --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #1a8fb3);
+  --sidebar: #0b1324; --sidebar-foreground: #dbe2ee; --sidebar-muted: #7e8aa0; --sidebar-active: #152037;
+  --danger: #cf3030; --success: #1c9e5a; --warning: #c47f12; --ball-red: #c22b2b;
+  --radius: 0.4rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="professional"][data-mode="dark"] {
+  --background: #080d18; --foreground: #e8edf5;
+  --card: #0f1626; --card-foreground: #e8edf5;
+  --muted: #141d30; --muted-foreground: #96a2ba;
+  --border: #203049; --input: #203049; --ring: #2e9fd4;
+  --brand: #1d4e89; --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #30c5d2);
+  --sidebar: #05101e; --sidebar-foreground: #cdd6e4; --sidebar-muted: #6c7a92; --sidebar-active: #0f1c31;
+  --danger: #f06b6b; --success: #3fcf7f; --warning: #f0b23c; --ball-red: #ef4444;
+}
+
+/* ---------------------------------------------------------------------------------------- TEST --- */
+/* Test cricket: ivory, rich green, gold. Keeps its identity even with club branding applied. */
+[data-theme="test"] {
+  --background: #f5f1e2; --foreground: #1f3b2c;
+  --card: #fffdf3; --card-foreground: #1f3b2c;
+  --muted: #e8e2cc; --muted-foreground: #5a5a42;
+  --border: #cfc6a4; --input: #cfc6a4; --ring: #1b5e3a;
+  --brand: #1b5e3a; --brand-foreground: #fdfbf0;
+  --accent: #b58b2f;
+  --sidebar: #16492d; --sidebar-foreground: #f1ead3; --sidebar-muted: #a7b79f; --sidebar-active: #1e623c;
+  --danger: #a4302a; --success: #2f7d4f; --warning: #9a7420; --ball-red: #9c2b22;
+  --radius: 0.3rem;
+  --font-sans: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-heading: Georgia, "Times New Roman", serif;
+}
+[data-theme="test"][data-mode="dark"] {
+  --background: #0f1710; --foreground: #ece7d2;
+  --card: #162116; --card-foreground: #ece7d2;
+  --muted: #1d2a1d; --muted-foreground: #a3ac97;
+  --border: #2c3a2c; --input: #2c3a2c; --ring: #4a9b6a;
+  --brand: #2f7d4f; --brand-foreground: #f4f0df;
+  --accent: #d4af37;
+  --sidebar: #0c160d; --sidebar-foreground: #e3dcc5; --sidebar-muted: #7f8c78; --sidebar-active: #152416;
+  --danger: #e07a73; --success: #5fbf85; --warning: #d8b85a; --ball-red: #d06a60;
+}
+
+/* ------------------------------------------------------------------------------------- ONE DAY --- */
+/* Limited-overs broadcast: bold blue + vivid orange, energetic, high-contrast. Club drives brand. */
+[data-theme="oneday"] {
+  --background: #f1f4f9; --foreground: #10203a;
+  --card: #ffffff; --card-foreground: #10203a;
+  --muted: #e4eaf3; --muted-foreground: #4f5e76;
+  --border: #d3dcea; --input: #d3dcea; --ring: var(--club-primary, #0353a4);
+  --brand: var(--club-primary, #0353a4); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #e8590c);
+  --sidebar: #0a2d5c; --sidebar-foreground: #dce7f5; --sidebar-muted: #8ba2c2; --sidebar-active: #113a72;
+  --danger: #d92d2d; --success: #159a5a; --warning: #e07c10; --ball-red: #d81e1e;
+  --radius: 0.6rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="oneday"][data-mode="dark"] {
+  --background: #071426; --foreground: #e9eef6;
+  --card: #0e1d35; --card-foreground: #e9eef6;
+  --muted: #13243f; --muted-foreground: #94a6c2;
+  --border: #203757; --input: #203757; --ring: var(--club-primary, #2b8dff);
+  --brand: var(--club-primary, #2b8dff); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #ff7a2f);
+  --sidebar: #06101f; --sidebar-foreground: #cedcee; --sidebar-muted: #6b7f9c; --sidebar-active: #0f2240;
+  --danger: #f0605f; --success: #3fcf7f; --warning: #ffa23c; --ball-red: #ef4444;
+}
+
+/* ----------------------------------------------------------------------------------------- T20 --- */
+/* T20 spectacle: deep backgrounds, vibrant purple + magenta, high-impact, rounded. Club drives brand. */
+[data-theme="t20"] {
+  --background: #f4f2f8; --foreground: #1a1030;
+  --card: #ffffff; --card-foreground: #1a1030;
+  --muted: #ece7f4; --muted-foreground: #5c5470;
+  --border: #ddd5ec; --input: #ddd5ec; --ring: var(--club-primary, #7b2ff7);
+  --brand: var(--club-primary, #7b2ff7); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #ff2d87);
+  --sidebar: #1a1030; --sidebar-foreground: #ece6f8; --sidebar-muted: #9a8fb3; --sidebar-active: #2a1a48;
+  --danger: #e02d5d; --success: #17a877; --warning: #e08a12; --ball-red: #ff2d87;
+  --radius: 0.95rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="t20"][data-mode="dark"] {
+  --background: #0d0820; --foreground: #efe9ff;
+  --card: #161030; --card-foreground: #efe9ff;
+  --muted: #1d1540; --muted-foreground: #a99fc4;
+  --border: #2d2352; --input: #2d2352; --ring: var(--club-primary, #9d5bff);
+  --brand: var(--club-primary, #9d5bff); --brand-foreground: #ffffff;
+  --accent: var(--club-accent, #ff4d97);
+  --sidebar: #0a0618; --sidebar-foreground: #ded5f4; --sidebar-muted: #7a6f96; --sidebar-active: #170f33;
+  --danger: #ff5f85; --success: #3fd49b; --warning: #ffad3c; --ball-red: #ff4d97;
+}
+
+/* ---------------------------------------------------------------------------------------- CLUB --- */
+/* Your club, your colours: driven by workspace branding (--club-* set at runtime) with a tasteful
+ * neutral fallback when a workspace has no logo/branding yet. Surfaces stay light/neutral so the club
+ * colour accents rather than floods the interface. */
+[data-theme="club"] {
+  --background: #f6f7f9; --foreground: #16202e;
+  --card: #ffffff; --card-foreground: #16202e;
+  --muted: #eceff3; --muted-foreground: #5a6474;
+  --border: #e0e5ec; --input: #e0e5ec; --ring: var(--club-primary, #475569);
+  --brand: var(--club-primary, #334155); --brand-foreground: var(--club-primary-foreground, #ffffff);
+  --accent: var(--club-accent, #0ea5e9);
+  --sidebar: var(--club-sidebar, #1f2937); --sidebar-foreground: var(--club-sidebar-foreground, #e5e9f0);
+  --sidebar-muted: #93a0b2; --sidebar-active: var(--club-sidebar-active, #2b3747);
+  --danger: #dc2626; --success: #16a34a; --warning: #d97706; --ball-red: #c81e1e;
+  --radius: 0.65rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="club"][data-mode="dark"] {
+  --background: #0c1119; --foreground: #e7ebf2;
+  --card: #121a26; --card-foreground: #e7ebf2;
+  --muted: #18212f; --muted-foreground: #9aa6b8;
+  --border: #253142; --input: #253142; --ring: var(--club-primary-dark, var(--club-primary, #64748b));
+  --brand: var(--club-primary-dark, var(--club-primary, #64748b)); --brand-foreground: var(--club-primary-foreground, #ffffff);
+  --accent: var(--club-accent-dark, var(--club-accent, #38bdf8));
+  --sidebar: var(--club-sidebar-dark, #0a0f17); --sidebar-foreground: var(--club-sidebar-foreground, #d5dbe6);
+  --sidebar-muted: #6b7789; --sidebar-active: var(--club-sidebar-active-dark, #141d2b);
+  --danger: #f87171; --success: #4ade80; --warning: #fbbf24; --ball-red: #ef4444;
+}
+
+/* ------------------------------------------------------------------------------------ ONESTATS --- */
+/* The official OneStats brand theme: Navy #071E43, Royal Blue #0755AA, Electric Blue #00A9EB,
+ * Silver #8C929C, Cricket Red #B71F2C. Protected — club branding never replaces these core colours. */
+[data-theme="onestats"] {
+  --background: #f3f6fb; --foreground: #071e43;
+  --card: #ffffff; --card-foreground: #071e43;
+  --muted: #e6ecf5; --muted-foreground: #5a6474;
+  --border: #d3dcea; --input: #d3dcea; --ring: #0755aa;
+  --brand: #0755aa; --brand-foreground: #ffffff;
+  --accent: #00a9eb;
+  --sidebar: #071e43; --sidebar-foreground: #e8eef8; --sidebar-muted: #8c929c; --sidebar-active: #0c2d63;
+  --danger: #b71f2c; --success: #15924f; --warning: #c47f12; --ball-red: #b71f2c;
+  --radius: 0.55rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-heading: var(--font-sans);
+}
+[data-theme="onestats"][data-mode="dark"] {
+  --background: #040d1b; --foreground: #eef3fb;
+  --card: #09213f; --card-foreground: #eef3fb;
+  --muted: #0d2a50; --muted-foreground: #a3adbe;
+  --border: #143a66; --input: #143a66; --ring: #00a9eb;
+  --brand: #1366c4; --brand-foreground: #ffffff;
+  --accent: #00a9eb;
+  --sidebar: #030c18; --sidebar-foreground: #dce4f0; --sidebar-muted: #8c929c; --sidebar-active: #0a2246;
+  --danger: #e14651; --success: #35c77f; --warning: #e8a53c; --ball-red: #d9414d;
+}
+
+/* ---- Typography: apply the theme's heading font to headings (opt-in via token; safe fallback). ---- */
+h1, h2, h3 { font-family: var(--font-heading, inherit); }
+
+/* ---- T20 only: a controlled vibrant gradient on the primary sidebar (dynamic, not noisy). ---- */
+[data-theme="t20"] nav[aria-label="Primary"] {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--sidebar) 100%, transparent) 0%,
+                    color-mix(in srgb, var(--brand) 22%, var(--sidebar)) 100%);
+}
+[data-theme="oneday"] nav[aria-label="Primary"] {
+  background-image: linear-gradient(180deg, var(--sidebar) 0%,
+                    color-mix(in srgb, var(--accent) 14%, var(--sidebar)) 100%);
+}
+/* OneStats: navy → royal-blue depth on the primary sidebar. */
+[data-theme="onestats"] nav[aria-label="Primary"] {
+  background-image: linear-gradient(180deg, var(--sidebar) 0%,
+                    color-mix(in srgb, #0755aa 30%, var(--sidebar)) 100%);
+}
+
+/* ---- Reduced motion: honour the OS setting app-wide. ---- */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

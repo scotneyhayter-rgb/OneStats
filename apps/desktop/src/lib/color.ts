@@ -33,3 +33,27 @@ export function bestForeground(bg: string): string {
 export function meetsAA(bg: string): boolean {
   return contrastRatio(bg, bestForeground(bg)) >= 4.5;
 }
+
+function clamp(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+export function rgbToHex(r: number, g: number, b: number): string {
+  return "#" + [r, g, b].map((c) => clamp(c).toString(16).padStart(2, "0")).join("");
+}
+export function toRgbTuple(hex: string): [number, number, number] {
+  return toRgb(hex);
+}
+/** Linear blend of two hex colours: t=0 → a, t=1 → b. */
+export function mix(a: string, b: string, t: number): string {
+  const [r1, g1, b1] = toRgb(a);
+  const [r2, g2, b2] = toRgb(b);
+  return rgbToHex(r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t);
+}
+/** Lighten toward white by amount (0..1). */
+export function lighten(hex: string, amount: number): string {
+  return mix(hex, "#ffffff", amount);
+}
+/** Darken toward black by amount (0..1). */
+export function darken(hex: string, amount: number): string {
+  return mix(hex, "#000000", amount);
+}
