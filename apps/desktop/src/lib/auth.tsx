@@ -21,6 +21,21 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Poll the backend's health until it responds, or the deadline passes. Lets the packaged standalone
+ * backend finish starting (DB wait + migrations) before the app decides it is unreachable. */
+async function waitForBackend(timeoutMs = 45000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      await api.health();
+      return;
+    } catch {
+      if (Date.now() >= deadline) return; // give up quietly; the normal flow will surface the error
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setBackendError(null);
     try {
+      // Standalone: the packaged backend sidecar may still be starting (DB wait + migrations).
+      // Poll health briefly so the app shows "Starting OneStats…" instead of a backend-down error.
+      await waitForBackend();
       const status = await api.setupStatus();
       setSetupRequired(status.setup_required);
       if (getToken()) {

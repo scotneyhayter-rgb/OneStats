@@ -1,0 +1,2 @@
+# Bundled backend sidecar binaries are build outputs, not source.
+*.exe

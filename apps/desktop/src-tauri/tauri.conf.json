@@ -26,6 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/onestats-server"],
     "publisher": "OneStats",
     "copyright": "© OneStats",
     "category": "Utility",

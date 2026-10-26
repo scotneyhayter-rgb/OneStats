@@ -1,0 +1,5 @@
+
+# Standalone backend packaging (built artifacts — not committed)
+/dist/
+/build/pyi/
+*.spec.bak

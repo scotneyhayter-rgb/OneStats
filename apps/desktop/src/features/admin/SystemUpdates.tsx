@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Modal } from "../../components/ui/dialog";
 import { EmptyState } from "../../components/states/States";
-import { api, ApiError, type PreCheckResult, type SystemUpdateStatus } from "../../lib/api";
+import { api, ApiError, type BackupFile, type PreCheckResult, type SystemUpdateStatus } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 
 function fmtBytes(n: number | null): string {
@@ -25,14 +25,28 @@ export function SystemUpdates() {
   const [msg, setMsg] = useState<string | null>(null);
   const [maintModal, setMaintModal] = useState<null | "on" | "off">(null);
   const [maintMessage, setMaintMessage] = useState("OneStats is being updated. Please try again shortly.");
+  const [backupList, setBackupList] = useState<BackupFile[]>([]);
 
   const load = useCallback(async () => {
     setErr(null);
-    try { setStatus(await api.systemUpdateStatus()); }
+    try {
+      setStatus(await api.systemUpdateStatus());
+      try { setBackupList((await api.systemListBackups()).backups); } catch { /* non-fatal */ }
+    }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Could not load system update status."); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  const createBackup = async () => {
+    setBusy("backup"); setErr(null); setMsg(null);
+    try {
+      const info = await api.systemCreateBackup();
+      setMsg(`Backup created and verified: ${info.file} (${Math.round(info.size_bytes / 1_000_000)} MB).`);
+      await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Backup failed."); }
+    finally { setBusy(null); }
+  };
 
   const runPreCheck = async () => {
     setBusy("pre"); setErr(null); setMsg(null);
@@ -144,6 +158,32 @@ export function SystemUpdates() {
                 </ul>
               </CardContent></Card>
             )}
+
+            {/* Backups */}
+            <Card><CardContent className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4 text-brand" /> Database backups</h3>
+                <Button size="sm" onClick={() => void createBackup()} disabled={busy === "backup"}>
+                  {busy === "backup" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />} Create backup now
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Creates a verified PostgreSQL dump in {status.backup.destination}. Restore is done via the
+                documented command-line tool (destructive; needs confirmation). Take a backup before any update.
+              </p>
+              {backupList.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No backups yet.</p>
+              ) : (
+                <ul className="flex flex-col gap-1 text-xs">
+                  {backupList.slice(0, 8).map((b) => (
+                    <li key={b.file} className="flex items-center justify-between border-t border-border py-1">
+                      <span className="font-medium">{b.file}</span>
+                      <span className="text-muted-foreground">{new Date(b.created_at).toLocaleString()} · {Math.round(b.size_bytes / 1_000_000)} MB</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent></Card>
 
             {/* History */}
             <Card><CardContent className="flex flex-col gap-2">

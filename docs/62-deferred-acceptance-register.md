@@ -290,6 +290,35 @@ signed release + hosting; **DEV+WIN** both. Automated tests passing is not accep
 **Dev-runnable now (with the user):** UP-01..04, UP-14..17, UP-19, UP-20, UP-22, UP-27, UP-30.
 **Deferred to Windows install / signing / hosting:** the remainder (see categories).
 
+## Standalone Windows Install — ST-01..ST-15 (IMPLEMENTED 2026-10-27 — see [75](75-standalone-windows.md))
+
+Standalone single-PC desktop install: double-click → app starts its own backend → connects to the
+local PostgreSQL → log in, no terminal. **Category:** **WIN** = confirmable only on the installed
+Windows build; **DEV** = already proven in the dev environment. None are user-accepted; real-device
+tests are **not** marked passed from automated results.
+
+| # | Test | Category | Expected |
+|---|---|---|---|
+| ST-01 | Installer launches | WIN | `OneStats_..._x64-setup.exe` runs (SmartScreen → Run anyway) |
+| ST-02 | Installs without developer tools | WIN | No Python/Node/PostgreSQL install needed (PG 17 already present on this PC) |
+| ST-03 | Desktop shortcut created | WIN | OneStats shortcut + Start-menu entry with the OneStats icon |
+| ST-04 | Double-click launches OneStats | WIN | App window opens from the icon |
+| ST-05 | Backend starts automatically | DEV✓/WIN | Sidecar `onestats-server.exe` auto-starts (verified standalone in dev) |
+| ST-06 | Database connects automatically | DEV✓/WIN | Backend reaches the local `onestats` DB (verified in dev) |
+| ST-07 | First-run setup works | WIN | On this PC the DB already exists; fresh-PC wizard is a known gap |
+| ST-08 | Super Admin login works | WIN | Existing credentials log in |
+| ST-09 | Existing historical records preserved | DEV✓/WIN | Same DB reused; migrations forward-only (verified in dev) |
+| ST-10 | OneStats runs without Claude | WIN | Works with Claude Code closed |
+| ST-11 | Core functionality works offline | WIN | Local features work with no internet; connectors fail gracefully |
+| ST-12 | App closes and reopens correctly | WIN | Sidecar stops on close; restarts clean on reopen |
+| ST-13 | Computer restart doesn't break it | WIN | PG service auto-starts; app relaunches the sidecar |
+| ST-14 | Backup works | DEV(impl)/WIN | In-app backup creates a verified dump (needs `ONESTATS_PG_SUPERUSER_PASSWORD` set once) |
+| ST-15 | Upgrade preserves data | WIN | Running a newer installer over the install keeps the DB/data |
+
+**Proven in dev (DEV✓):** ST-05, ST-06, ST-09 (sidecar exe started standalone, connected, migrated,
+served). **Backup implemented** (ST-14) — needs the one-time superuser password. **The rest require the
+installed Windows build** and are for the user to confirm.
+
 ## Maintenance
 
 Each phase's completion report updated this register (planned tests → concrete numbered rows). This register

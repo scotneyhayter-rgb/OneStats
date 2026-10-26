@@ -396,6 +396,7 @@ export interface UpdateEvent {
   at: string;
 }
 export interface BackupReadiness { destination: string; writable: boolean; free_bytes: number | null }
+export interface BackupFile { file: string; size_bytes: number; created_at: string }
 export interface PreCheckResult {
   ready: boolean;
   checks: { name: string; ok: boolean; critical: boolean; detail: string }[];
@@ -1234,6 +1235,10 @@ export const api = {
   systemUpdateCheck: () =>
     request<{ configured: boolean; manifest_url: string | null; channel: string; server_version: string; note: string | null }>(
       "/api/v1/system/updates/check", { method: "POST" }),
+  systemListBackups: () => request<{ backups: BackupFile[] }>("/api/v1/system/updates/backups"),
+  systemCreateBackup: () =>
+    request<{ file: string; path: string; size_bytes: number; created_at: string; verified: boolean }>(
+      "/api/v1/system/updates/backup", { method: "POST" }),
 
   // --- Workspace dashboard (home command centre) ---
   workspaceDashboard: (w: string) => request<WorkspaceDashboard>(`/api/v1/workspaces/${w}/dashboard`),

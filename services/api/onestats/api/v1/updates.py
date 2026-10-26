@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import CurrentUser, SettingsDep, require_super_admin
 from onestats.core import version as ver
 from onestats.db.session import get_engine
-from onestats.domain import updates
+from onestats.domain import backups, updates
 
 router = APIRouter(tags=["updates"])
 
@@ -104,6 +104,26 @@ def maintenance(body: MaintenanceRequest, admin: SuperAdmin, settings: SettingsD
     with _engine(settings).begin() as conn:
         state = updates.set_maintenance(conn, str(admin["id"]), on=body.on, message=body.message)
     return {"maintenance": {"mode": bool(state["maintenance_mode"]), "message": state["maintenance_message"]}}
+
+
+@router.get("/system/updates/backups", summary="List local database backups (Super Admin)")
+def list_backups(admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
+    return {"backups": backups.list_backups(settings)}
+
+
+@router.post("/system/updates/backup", summary="Create & verify a local database backup (Super Admin)")
+def create_backup(admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
+    try:
+        info = backups.create_backup(settings)
+    except RuntimeError as exc:
+        with _engine(settings).begin() as conn:
+            updates.record_event(conn, component="database", event="backup", outcome="error",
+                                 actor=str(admin["id"]), detail={"error": str(exc)[:300]})
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    with _engine(settings).begin() as conn:
+        updates.record_event(conn, component="database", event="backup_validated", outcome="ok",
+                             actor=str(admin["id"]), detail={"file": info["file"], "size_bytes": info["size_bytes"]})
+    return info
 
 
 @router.post("/system/updates/check", summary="Report the configured release service (Super Admin)")
