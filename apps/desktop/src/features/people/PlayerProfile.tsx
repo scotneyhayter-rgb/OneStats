@@ -178,6 +178,14 @@ export function PlayerProfile() {
     return () => { revoked = true; };
   }, [tab, current, photos, photoUrls]);
 
+  // load the primary photo for the header avatar (regardless of the active tab)
+  useEffect(() => {
+    if (!current || photos.length === 0 || photoUrls[photos[0].id]) return;
+    const id = photos[0].id;
+    api.personPhotoUrl(current.id, id).then((u) => setPhotoUrls((m) => ({ ...m, [id]: u }))).catch(() => {});
+  }, [current, photos, photoUrls]);
+  const avatarUrl = photos[0] ? photoUrls[photos[0].id] : undefined;
+
   const initials = useMemo(() => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase(), [name]);
 
   if (!current) return <AppShell title="Player Profile" subtitle="Select a workspace"><div /></AppShell>;
@@ -250,8 +258,9 @@ export function PlayerProfile() {
 
         {/* header */}
         <Card><CardContent className="flex flex-wrap items-center gap-4">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full border border-border bg-brand/10 text-2xl font-semibold text-brand">
-            {initials || <User className="h-8 w-8" aria-hidden />}
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-brand/10 text-2xl font-semibold text-brand">
+            {avatarUrl ? <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+              : (initials || <User className="h-8 w-8" aria-hidden />)}
           </div>
           <div className="flex flex-col gap-1">
             <h2 className="text-2xl font-semibold">{name}</h2>

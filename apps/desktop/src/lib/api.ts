@@ -1289,6 +1289,14 @@ export const api = {
     if (!resp.ok) throw new ApiError(`photo ${resp.status}`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+  uploadPersonPhoto: (w: string, id: string, file: File, opts: { isPrimary?: boolean } = {}) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ photo_id: string }>(`/api/v1/workspaces/${w}/people/${id}/photos?is_primary=${opts.isPrimary ? "true" : "false"}`,
+      { method: "POST", form });
+  },
+  deletePersonPhoto: (w: string, photoId: string) =>
+    request<void>(`/api/v1/workspaces/${w}/people/photos/${photoId}`, { method: "DELETE" }),
   addPersonNumber: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/numbers`, { method: "POST", body }),
   addPersonLeadership: (w: string, id: string, body: Record<string, unknown>) =>

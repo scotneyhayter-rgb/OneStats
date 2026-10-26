@@ -209,6 +209,7 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
   const [bowlStyle, setBowlStyle] = useState("");
   const [yearFor, setYearFor] = useState<{ kind: "number" | "leadership" | "recognition"; id: string; body: Record<string, unknown> } | null>(null);
   const [yearSeason, setYearSeason] = useState("");
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<{ candidateId: string; name: string; kind: "merge" | "distinct" } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -226,6 +227,25 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
     finally { setLoading(false); }
   }, [workspaceId, personId]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    (view?.photos ?? []).forEach((p: any) => {
+      if (photoUrls[p.id]) return;
+      api.personPhotoUrl(workspaceId, p.id).then((u) => setPhotoUrls((m) => ({ ...m, [p.id]: u }))).catch(() => {});
+    });
+  }, [view, workspaceId, photoUrls]);
+
+  const uploadPhoto = async (file: File) => {
+    setBusy(true);
+    try {
+      await api.uploadPersonPhoto(workspaceId, personId, file, { isPrimary: (view?.photos ?? []).length === 0 });
+      onChanged("Photo uploaded."); await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Photo upload failed (use a JPEG, PNG or WebP image)."); }
+    finally { setBusy(false); }
+  };
+  const removePhoto = async (photoId: string) => {
+    try { await api.deletePersonPhoto(workspaceId, photoId); onChanged("Photo removed."); await load(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove photo."); }
+  };
 
   const saveBio = async () => {
     setBusy(true);
@@ -318,6 +338,28 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
             className="inline-flex w-fit items-center gap-1 rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
             View full career profile →
           </a>
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Photo</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              {(view?.photos ?? []).map((p: any) => (
+                <div key={p.id} className="relative">
+                  {photoUrls[p.id]
+                    ? <img src={photoUrls[p.id]} alt="" className="h-20 w-20 rounded-full object-cover" />
+                    : <div className="h-20 w-20 rounded-full bg-muted" />}
+                  {canManage && <button type="button" aria-label="Remove photo"
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-xs text-muted-foreground hover:text-danger"
+                    onClick={() => void removePhoto(p.id)}>×</button>}
+                </div>
+              ))}
+              {canManage && (
+                <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-full border-2 border-dashed border-border text-center text-[11px] text-muted-foreground hover:border-brand hover:text-brand">
+                  {busy ? "…" : "+ Add photo"}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={busy}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadPhoto(f); e.target.value = ""; }} />
+                </label>
+              )}
+            </div>
+          </section>
           <section>
             <Detail label="Status">{person.status}</Detail>
             <Detail label="Roles">{(view?.person?.roles ?? []).map((r: string) => humanise(r)).join(", ") || "—"}</Detail>
