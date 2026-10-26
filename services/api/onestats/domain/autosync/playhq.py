@@ -139,8 +139,10 @@ class PlayHQConnector:
     source_system = "playhq"
     format_id = "playhq_json"
 
-    def __init__(self, client_factory=None) -> None:
+    def __init__(self, client_factory=None, org_id: str | None = None) -> None:
         self._client_factory = client_factory
+        # org id override (set when bound to a workspace credential); None → global settings
+        self._org_override = org_id
         # imported lazily to avoid a circular import (connectors registers this connector)
         from onestats.domain.autosync.connectors import STATUS_NEEDS_CREDENTIALS, ConnectorInfo
         self.info = ConnectorInfo(
@@ -162,7 +164,7 @@ class PlayHQConnector:
         return PlayHQClient(api_key=s.playhq_api_key, tenant=s.playhq_tenant, base_url=base)
 
     def _org_id(self) -> str:
-        return get_settings().playhq_org_id or ""
+        return self._org_override or get_settings().playhq_org_id or ""
 
     def collect_rows(self, client: PlayHQClient, org_id: str) -> list[dict[str, Any]]:
         """Traverse organisation → seasons → grades → grade fixture and map each game to a row."""

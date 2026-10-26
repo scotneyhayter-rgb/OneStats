@@ -19,6 +19,7 @@ from onestats.api.v1 import (
     identity,
     imports,
     innings,
+    integrations,
     match_formats,
     matches,
     media,
@@ -59,6 +60,7 @@ api_v1.include_router(playing_conditions.router)
 api_v1.include_router(relationships.router)
 api_v1.include_router(imports.router)
 api_v1.include_router(autosync.router)
+api_v1.include_router(integrations.router)
 api_v1.include_router(research.router)
 api_v1.include_router(media.router)
 api_v1.include_router(dashboard.router)

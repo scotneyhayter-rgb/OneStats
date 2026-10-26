@@ -14,6 +14,7 @@ import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { ChangePassword } from "./features/auth/ChangePassword";
 import { UserManagement } from "./features/admin/UserManagement";
+import { Integrations } from "./features/settings/Integrations";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { Organisations } from "./features/manage/Organisations";
@@ -66,6 +67,7 @@ function AuthedApp() {
         <Route path="/statistics/captaincy-compare" element={<CaptaincyCompare />} />
         <Route path="/ask" element={<Ask />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/integrations" element={<Integrations />} />
         <Route path="/admin/users" element={<UserManagement />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

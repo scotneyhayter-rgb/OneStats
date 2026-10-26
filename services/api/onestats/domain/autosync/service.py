@@ -40,9 +40,16 @@ def _connector_for(source_row: dict[str, Any]):
 def _resolve_or_mark_down(conn, workspace_id, actor, src, scope_key):
     """Resolve the source's connector; if it is unavailable (e.g. interface-only / awaiting access),
     mark the source health 'down' and record failed coverage — a failed access is a health signal,
-    never 'searched, no matches' — then re-raise so the job fails/retries."""
+    never 'searched, no matches' — then re-raise so the job fails/retries.
+
+    When the workspace has stored a credential for this connector's provider, bind the connector to it so
+    the run authenticates with the **workspace's own** credential (decrypted backend-only), not any global
+    configuration."""
     try:
-        return _connector_for(dict(src))
+        connector = _connector_for(dict(src))
+        from onestats.core.config import get_settings
+        from onestats.domain import integrations
+        return integrations.bind_connector(conn, get_settings(), workspace_id, connector)
     except NotImplementedError as exc:
         sources.record_health(conn, workspace_id, actor, src["id"], reliability="down", notes=str(exc)[:200])
         discovery.record_coverage(conn, workspace_id, actor, source_id=src["id"], scope_key=scope_key,

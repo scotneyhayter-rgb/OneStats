@@ -86,6 +86,11 @@ class Settings(BaseSettings):
     # future central service). Display/export only — None when not yet deployed. No recurring cost implied.
     public_base_url: str | None = Field(default=None)
 
+    # Secret-at-rest encryption key(s) for per-workspace API/integration credentials — kept OUT of the
+    # application database (env var / OS keystore). Comma-separated Fernet keys; the first encrypts, any
+    # decrypts (key rotation). None → an insecure development key is used (warned); set in production.
+    encryption_key: str | None = Field(default=None)
+
     def _build_url(self, user: str, password: str) -> str:
         return str(
             PostgresDsn.build(

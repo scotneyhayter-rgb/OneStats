@@ -78,6 +78,13 @@ export function Settings() {
         </CardContent></Card>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
         {admin && <RecalcStatsSettings workspaceId={current?.id ?? null} />}
+        {admin && (
+          <Card><CardContent className="flex items-center justify-between gap-2">
+            <div><h3 className="text-sm font-semibold">API &amp; Integrations</h3>
+              <p className="text-xs text-muted-foreground">Connect external data providers (e.g. PlayHQ). Credentials are encrypted, workspace-isolated and never shown in plaintext.</p></div>
+            <a href="#/settings/integrations" className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">Manage →</a>
+          </CardContent></Card>
+        )}
         {user?.is_super_admin && (
           <Card><CardContent className="flex items-center justify-between gap-2">
             <div><h3 className="text-sm font-semibold">System Administration</h3>

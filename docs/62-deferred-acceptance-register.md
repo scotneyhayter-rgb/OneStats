@@ -125,6 +125,30 @@ Automated coverage: `tests/test_user_management.py` (9); `features/admin/user-ma
 `features/settings/connection-settings.test.tsx` (1). Backend enforcement, Argon2id, single-use/expiring
 temp + recovery tokens, rate limiting, escalation + last-admin guards.
 
+## Workspace API & Integrations Management (IMPLEMENTED 2026-10-26 — see [70](70-api-integrations.md))
+
+Clubs manage their own external-provider API credentials from **Workspace Settings → API & Integrations**
+(no config-file/source edits). Manual acceptance (DEFERRED):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| INT1 | Open the screen | Settings → API & Integrations (admin) | Lists supported providers with status; gated for non-admins |
+| INT2 | Add a credential | Add PlayHQ API key + org id + tenant | Saved; shown *Configured*; secret never displayed (password field; "stored securely") |
+| INT3 | Test connectivity | Click Test connection | Real authenticated request; *Connected* only on genuine success; failure shows a sanitised message (no secret) |
+| INT4 | Enable / disable | Toggle the integration | Disabled credential cannot be used by sync; re-enable restores it |
+| INT5 | Rotate secret | Rotate → enter a new secret | Secret replaced; old one no longer used; still never displayed |
+| INT6 | Revoke | Revoke the credential | Stored secret destroyed; status *Revoked*; unusable |
+| INT7 | Audit history | View Integration activity | create / test / rotate / revoke listed; no secret values |
+| INT8 | Workspace isolation | As another workspace / admin | Cannot see or use the first workspace's credentials; same provider can hold different creds per workspace |
+| INT9 | Permissions | As a non-admin (Viewer) | No access to credential management (backend-enforced `import.configure`) |
+| INT10 | SSRF protection | Custom API with an internal URL (e.g. `https://127.0.0.1`, `169.254.169.254`) | Rejected; cannot reach internal networks |
+| INT11 | Sync uses the stored credential | Configure PlayHQ here → AutoSync | The run authenticates with the **workspace's** credential; imported matches stay draft |
+| INT12 | Backup/restore safety | Inspect a DB backup | Secrets are ciphertext; useless without the separately-held encryption key |
+
+Automated coverage: `tests/test_integrations.py` (28), `features/settings/integrations.test.tsx` (3).
+**INT3/INT11 for PlayHQ remain gated** on a valid API key + live cricket-v2 field validation (see
+[69](69-playhq-connector.md), [70](70-api-integrations.md)).
+
 ## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
 All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one
@@ -143,7 +167,8 @@ blocks above (run those rows); cross-cutting areas add the extra checks listed.
 | 8 | Mobile portal | **MOB1–MOB8** | Responsive on a real phone; read-only |
 | 9 | Windows install / upgrade / uninstall | **INS1–INS9** | USB install; upgrade preserves data; signing decision |
 | 10 | Backup, restoration & disaster recovery | Phase 11 test 18 + a full restore drill | Pre-upgrade backup; recover from a backup |
-| 11 | Permissions, security & workspace isolation | Phase isolation checks + a cross-workspace pass | DB-level RLS (automated suite green); role-scoped views |
+| 11 | Permissions, security & workspace isolation | Phase isolation checks + a cross-workspace pass + **INT8–INT10, INT12** | DB-level RLS (automated suite green); role-scoped views; encrypted credentials; SSRF guard |
+| 11a | API & Integrations management | **INT1–INT12** | Self-service credentials; secrets never shown; test-before-trust; audited |
 | 12 | Accessibility & UX | Keyboard, focus, contrast, scaling across key screens | WCAG AA target |
 | 13 | Performance & stability | Association-scale report + large PDF + repeated use | Startup/shutdown; reconnect; interrupted-op recovery |
 
@@ -153,7 +178,9 @@ public **hosting** (static vs central service), and the **code-signing certifica
 **External dependencies** (not application defects): OneVault API (unverified); **PlayHQ connector now
 implemented** (status `needs_credentials`) — pending the **API key** and **live cricket-v2 response
 validation** (see [69](69-playhq-connector.md)); other online connectors gated; RMCC External-URL
-integration (unverified).
+integration (unverified). Provider credentials are now **self-service** per workspace via
+**Settings → API & Integrations** (encrypted at rest, test-before-trust, audited — see
+[70](70-api-integrations.md)); no config-file or source edits are needed to enter them.
 
 **PlayHQ acceptance (deferred):** enter the API key → AutoSync a PlayHQ season in review mode → verify the
 imported fixtures/results map correctly (field mapping validated against live responses) → approve → stats

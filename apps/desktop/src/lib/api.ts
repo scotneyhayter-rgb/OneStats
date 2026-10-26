@@ -721,6 +721,44 @@ export interface SyncSource {
   last_success_at: string | null;
   auth_required: boolean;
 }
+export interface IntegrationField {
+  key: string;
+  label: string;
+  default?: string | null;
+  required: boolean;
+}
+export interface IntegrationProvider {
+  id: string;
+  name: string;
+  testable: boolean;
+  custom_url: boolean;
+  notes: string | null;
+  secret_fields: IntegrationField[];
+  config_fields: IntegrationField[];
+}
+export interface IntegrationCredential {
+  id: string;
+  provider: string;
+  label: string;
+  enabled: boolean;
+  status: string;
+  config: Record<string, unknown>;
+  has_secret: boolean;
+  last_test_ok: boolean | null;
+  last_test_at: string | null;
+  last_test_message: string | null;
+  last_success_at: string | null;
+  created_at: string | null;
+  // present only on a Test response
+  test_ok?: boolean;
+  test_message?: string;
+}
+export interface IntegrationAuditEntry {
+  action: string;
+  actor: string | null;
+  provider: string | null;
+  at: string | null;
+}
 export interface SyncJob {
   id: string;
   source_system: string;
@@ -1269,6 +1307,24 @@ export const api = {
   autosyncBulk: (w: string, body: { item_ids: string[]; action: "accept" | "reject" }) =>
     request<{ action: string; count: number }>(`/api/v1/workspaces/${w}/autosync/review/bulk`, { method: "POST", body }),
   autosyncCoverage: (w: string) => request<DiscoveryCoverage[]>(`/api/v1/workspaces/${w}/autosync/coverage`),
+
+  // --- API & Integrations management (workspace-scoped; admin-gated) ---
+  integrationProviders: (w: string) =>
+    request<IntegrationProvider[]>(`/api/v1/workspaces/${w}/integrations/providers`),
+  integrationCredentials: (w: string) =>
+    request<IntegrationCredential[]>(`/api/v1/workspaces/${w}/integrations/credentials`),
+  integrationCreate: (w: string, body: { provider: string; label?: string; secrets: Record<string, string>; config: Record<string, unknown> }) =>
+    request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials`, { method: "POST", body }),
+  integrationRotate: (w: string, id: string, secrets: Record<string, string>) =>
+    request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials/${id}/rotate`, { method: "POST", body: { secrets } }),
+  integrationSetEnabled: (w: string, id: string, enabled: boolean) =>
+    request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials/${id}`, { method: "PATCH", body: { enabled } }),
+  integrationRevoke: (w: string, id: string) =>
+    request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials/${id}/revoke`, { method: "POST" }),
+  integrationTest: (w: string, id: string) =>
+    request<IntegrationCredential>(`/api/v1/workspaces/${w}/integrations/credentials/${id}/test`, { method: "POST" }),
+  integrationAudit: (w: string) =>
+    request<IntegrationAuditEntry[]>(`/api/v1/workspaces/${w}/integrations/audit`),
 
   // --- Phase 10: Research Centre ---
   researchDashboard: (w: string) => request<ResearchDashboard>(`/api/v1/workspaces/${w}/research/dashboard`),

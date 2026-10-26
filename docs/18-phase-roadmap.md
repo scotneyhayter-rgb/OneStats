@@ -85,6 +85,16 @@ continues through the approved sequence:
   distribution** (three install paths, dependency-managed, upgrade-safe, repair/uninstall, signed where
   feasible — §31.6).
 
+**Post-Phase-17 capabilities (continuing the authorised sequence):**
+
+- **Super Admin User Management & First-Login Security** (see [68](68-user-management-report.md)).
+- **Workspace API & Integrations Management** (see [70-api-integrations.md](70-api-integrations.md)):
+  clubs/associations configure their own external-provider API credentials from **Settings → API &
+  Integrations** — encrypted at rest with a key kept outside the DB, workspace-isolated (FORCE RLS),
+  role-gated (`import.configure`), SSRF-protected, test-before-trust, rotatable/revocable, and fully
+  audited. No config-file or source edits. This is the reusable secure credential foundation for the
+  import/AutoSync connectors (PlayHQ and future providers).
+
 **Acceptance register:** all deferred Phase 11–13 manual tests (including the Report Catalogue tests
 RC1–RC15 and the integrity/spot-checks) are preserved and maintained in the **deferred acceptance register**
 ([62-deferred-acceptance-register.md](62-deferred-acceptance-register.md)); Phase 14–17 acceptance tests are
