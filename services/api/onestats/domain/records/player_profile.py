@@ -209,17 +209,42 @@ def career_matches_span(conn: Connection, workspace_id: UUID, person_id: UUID) -
     return {"first": _edge("ASC"), "last": _edge("DESC")}
 
 
+def _group_service(rows: list[dict[str, Any]], label_of) -> list[dict[str, Any]]:
+    """Group leadership/recognition rows by their label (role / recognition), collecting the seasons each
+    was held — for a 'Service & Honours' display like 'Secretary 2021-22, 2022-23'. Order preserved."""
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    for r in rows:
+        label = label_of(r)
+        if not label:
+            continue
+        if label not in groups:
+            groups[label] = []
+            order.append(label)
+        season = r.get("season_label")
+        if season and season not in groups[label]:
+            groups[label].append(season)
+    return [{"label": k, "seasons": groups[k]} for k in order]
+
+
 def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, competition_id: UUID | None = None,
                  season_id: UUID | None = None) -> dict[str, Any]:
     """Everything the profile needs in one call (career scope optional), composed from the engines."""
     det = conn.execute(
         text("SELECT batting_style, bowling_style, is_wicketkeeper FROM person_profile WHERE person_id = :p"),
         {"p": person_id}).mappings().first()
+    from onestats.domain import profiles  # player numbers / leadership / recognition
+    nums = profiles.list_numbers(conn, person_id)
+    lead = profiles.list_leadership(conn, person_id)
+    recog = profiles.list_recognition(conn, person_id)
     return {
         "person_id": str(person_id),
         "detail": {"batting_style": (det or {}).get("batting_style"),
                    "bowling_style": (det or {}).get("bowling_style"),
-                   "is_wicketkeeper": bool((det or {}).get("is_wicketkeeper"))},
+                   "is_wicketkeeper": bool((det or {}).get("is_wicketkeeper")),
+                   "numbers": sorted({str(n["number"]) for n in nums if n.get("number")}),
+                   "leadership": _group_service(lead, lambda r: r.get("role")),
+                   "recognition": _group_service(recog, lambda r: r.get("title") or r.get("recognition_type"))},
         "span": career_matches_span(conn, workspace_id, person_id),
         "career": career_summary(conn, workspace_id, person_id, competition_id=competition_id, season_id=season_id),
         "seasons": season_breakdown(conn, workspace_id, person_id),

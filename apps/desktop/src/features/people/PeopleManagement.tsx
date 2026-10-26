@@ -669,6 +669,7 @@ function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
 }) {
   const [orgId, setOrgId] = useState("");
   const [value, setValue] = useState("");
+  const [season, setSeason] = useState("");
   const [busy, setBusy] = useState(false);
   const needsOrg = kind !== "recognition";
   const placeholder = kind === "number" ? "Squad number" : kind === "leadership" ? "Role (e.g. Captain)" : "e.g. Life Member";
@@ -676,11 +677,12 @@ function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
   const add = async () => {
     if (!value.trim() || (needsOrg && !orgId)) return;
     setBusy(true);
+    const sl = season.trim() || undefined;
     try {
-      if (kind === "number") await api.addPersonNumber(workspaceId, personId, { organisation_id: orgId, number: value.trim() });
-      else if (kind === "leadership") await api.addPersonLeadership(workspaceId, personId, { organisation_id: orgId, role: value.trim() });
-      else await api.addPersonRecognition(workspaceId, personId, { recognition_type: value.trim() });
-      setValue(""); setOrgId("");
+      if (kind === "number") await api.addPersonNumber(workspaceId, personId, { organisation_id: orgId, number: value.trim(), season_label: sl });
+      else if (kind === "leadership") await api.addPersonLeadership(workspaceId, personId, { organisation_id: orgId, role: value.trim(), season_label: sl });
+      else await api.addPersonRecognition(workspaceId, personId, { recognition_type: value.trim(), season_label: sl });
+      setValue(""); setOrgId(""); setSeason("");
       onDone(`${kind.charAt(0).toUpperCase()}${kind.slice(1)} added.`);
     } catch (e) {
       onDone(e instanceof ApiError ? e.message : "Could not add.");
@@ -697,9 +699,11 @@ function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
           {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </Select>
       )}
+      <Input value={value} disabled={busy} placeholder={placeholder} className="h-7 text-xs"
+        onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
       <div className="flex gap-1">
-        <Input value={value} disabled={busy} placeholder={placeholder} className="h-7 text-xs"
-          onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+        <Input value={season} disabled={busy} placeholder="Season (e.g. 2023/24, optional)" className="h-7 text-xs"
+          onChange={(e) => setSeason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
         <Button size="sm" variant="outline" disabled={busy || !value.trim() || (needsOrg && !orgId)}
           onClick={() => void add()}>Add</Button>
       </div>

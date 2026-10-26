@@ -323,6 +323,26 @@ export function PlayerProfile() {
                   ));
                 })()}
               </div>
+              {(() => {
+                const d = full?.detail;
+                const service = [...(d?.leadership ?? []), ...(d?.recognition ?? [])];
+                const nums = d?.numbers ?? [];
+                if (service.length === 0 && nums.length === 0) return null;
+                return (
+                  <div className="flex flex-col gap-2">
+                    <h4 className="text-xs font-semibold">Service &amp; Honours</h4>
+                    {nums.length > 0 && (
+                      <div className="text-sm"><span className="text-muted-foreground">Squad number{nums.length > 1 ? "s" : ""}: </span>{nums.join(", ")}</div>
+                    )}
+                    {service.map((s, i) => (
+                      <div key={i} className="text-sm">
+                        <span className="font-medium">{s.label}</span>
+                        {s.seasons.length > 0 && <span className="text-muted-foreground"> {s.seasons.join(", ")}</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               {(full?.records ?? []).length > 0 && (
                 <div className="flex flex-col gap-1">
                   <h4 className="text-xs font-semibold">Records held</h4>
