@@ -193,6 +193,35 @@ def _partnerships(conn: Connection, workspace_id: UUID, ids: list[str], names: d
     return out
 
 
+def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], names: dict[str, str],
+                        limit: int) -> list[dict[str, Any]]:
+    """Career aggregate per partner: total partnership runs put on WITH each other player, the number of
+    recorded stands together, and the best single stand. Pairs are unordered; approved matches only."""
+    rows = conn.execute(
+        text(
+            "SELECT CASE WHEN p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
+            "            THEN p.player2_person_id ELSE p.player1_person_id END AS partner, "
+            " sum(p.runs) AS total, count(*) AS stands, max(p.runs) AS best "
+            "FROM partnership p JOIN innings i ON i.id = p.innings_id JOIN match m ON m.id = i.match_id "
+            f"WHERE p.runs IS NOT NULL AND m.workspace_id = :w AND {_APPROVED} "
+            "  AND p.player1_person_id IS NOT NULL AND p.player2_person_id IS NOT NULL "
+            "  AND (p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
+            "       OR p.player2_person_id = ANY(CAST(:ids AS uuid[]))) "
+            "GROUP BY partner ORDER BY total DESC LIMIT :lim"
+        ),
+        {"w": workspace_id, "ids": ids, "lim": limit},
+    ).mappings().all()
+    idset = set(ids)
+    out = []
+    for r in rows:
+        pid = str(r["partner"])
+        if pid in idset:
+            continue                                   # guard against a self-pair row
+        out.append({"partner": names.get(pid, "Unknown"), "runs": int(r["total"] or 0),
+                    "stands": int(r["stands"]), "best": int(r["best"] or 0)})
+    return out
+
+
 def player_analysis(conn: Connection, workspace_id: UUID, person_id: UUID, *, limit: int = 15) -> dict[str, Any]:
     ids = _merge_ids(conn, person_id)
     names = _names(conn, workspace_id)
@@ -204,6 +233,7 @@ def player_analysis(conn: Connection, workspace_id: UUID, person_id: UUID, *, li
         "best_batting": _best_batting(bat, limit),
         "best_bowling": _best_bowling(bowl, limit),
         "partnerships": _partnerships(conn, workspace_id, ids, names, limit),
+        "partnership_totals": _partnership_totals(conn, workspace_id, ids, names, limit),
         "dismissals": _dismissals(bat, names),
         "scores": _scores(bat),
     }

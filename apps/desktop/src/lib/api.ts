@@ -142,6 +142,7 @@ export interface PlayerAnalysis {
   best_batting: { score: string; runs: number; opposition: string | null; ground: string | null; date: string | null; position: number | null }[];
   best_bowling: { figures: string; wickets: number; runs: number | null; opposition: string | null; ground: string | null; date: string | null }[];
   partnerships: { runs: number; unbroken: boolean; wicket: number | null; partner: string; opposition: string | null; ground: string | null; date: string | null }[];
+  partnership_totals: { partner: string; runs: number; stands: number; best: number }[];
   dismissals: { how_out: { type: string; count: number }[]; dismissed_by: { player: string; count: number }[] };
   scores: { innings: { date: string | null; runs: number; not_out: boolean }[]; frequency: { range: string; count: number }[] };
 }
