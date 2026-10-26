@@ -279,11 +279,13 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
           ))}
       </div>
       {canManage && yearFor && (items ?? []).some((it: any) => it.id === yearFor.id) && (
-        <div className="flex gap-1">
-          <Input value={yearSeason} placeholder="Add season (e.g. 2024/25)" className="h-7 text-xs"
-            onChange={(e) => setYearSeason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addYear(); }} />
-          <Button size="sm" variant="outline" disabled={!yearSeason.trim()} onClick={() => void addYear()}>Add</Button>
-          <Button size="sm" variant="ghost" onClick={() => setYearFor(null)}>Cancel</Button>
+        <div className="flex flex-col gap-1">
+          <Input value={yearSeason} placeholder="Add season (e.g. 2024/25)" className="h-8 w-full text-sm"
+            autoFocus onChange={(e) => setYearSeason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addYear(); }} />
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" disabled={!yearSeason.trim()} onClick={() => void addYear()}>Add</Button>
+            <Button size="sm" variant="ghost" onClick={() => setYearFor(null)}>Cancel</Button>
+          </div>
         </div>
       )}
     </div>
