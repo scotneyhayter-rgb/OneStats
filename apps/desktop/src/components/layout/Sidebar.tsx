@@ -68,7 +68,7 @@ export function Sidebar() {
 
       {!collapsed && <WorkspaceSwitcher />}
 
-      <ul className="flex-1 space-y-1 px-3">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 sidebar-scroll">
         {navItem({ path: "/workspaces", label: "My Workspaces", icon: Building2 })}
         {NAV_SECTIONS.map(navItem)}
 
