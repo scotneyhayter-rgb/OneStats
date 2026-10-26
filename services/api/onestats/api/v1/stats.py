@@ -248,13 +248,17 @@ def report_catalogue(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) ->
 
 @router.get("/formats")
 def used_formats(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[str]:
-    """Distinct match formats actually present on statistics-eligible matches, so the report Format filter
-    offers only values that match stored data (``match.format`` is free text). Empty when none are set."""
+    """Match formats offered in the report Format filter: the workspace's ENABLED configured formats, plus
+    any free-text format actually present on statistics-eligible matches (``match.format`` is free text), so
+    the filter is both always visible and covers imported/custom values. De-duplicated, sorted."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         rows = conn.execute(
-            text("SELECT DISTINCT format FROM match WHERE workspace_id = :w AND format IS NOT NULL "
+            text("SELECT label AS fmt FROM match_format WHERE workspace_id = :w AND enabled = true "
+                 "UNION "
+                 "SELECT DISTINCT format FROM match WHERE workspace_id = :w AND format IS NOT NULL "
                  "AND format <> '' AND approval_status IN ('approved','verified_partial') "
-                 "AND include_in_statistics = true ORDER BY format"),
+                 "AND include_in_statistics = true "
+                 "ORDER BY fmt"),
             {"w": workspace_id}).all()
         return [r[0] for r in rows]
 
