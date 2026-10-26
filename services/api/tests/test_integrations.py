@@ -261,6 +261,7 @@ def test_bind_connector_uses_workspace_credential(conn, monkeypatch):
 
 def test_integration_routes_registered():
     from fastapi.testclient import TestClient
+
     from onestats.main import create_app
     client = TestClient(create_app(Settings(env="test", db_password=None, _env_file=None)))
     paths = set(client.app.openapi()["paths"].keys())
@@ -272,6 +273,7 @@ def test_integration_routes_registered():
 
 def test_integration_requires_authentication():
     from fastapi.testclient import TestClient
+
     from onestats.main import create_app
     client = TestClient(create_app(Settings(env="test", db_password=None, _env_file=None)))
     wid = uuid.uuid4()

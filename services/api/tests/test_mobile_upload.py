@@ -148,6 +148,7 @@ def test_sessions_isolated_across_workspaces(conn):
 # --- API wiring / auth (no DB) ---
 def _client():
     from fastapi.testclient import TestClient
+
     from onestats.main import create_app
     return TestClient(create_app(Settings(env="test", db_password=None, _env_file=None)))
 

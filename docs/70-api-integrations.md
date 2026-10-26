@@ -43,8 +43,10 @@ From one screen, a workspace administrator can:
 
 Credentials live in `workspace_credential`, which has PostgreSQL **FORCE ROW LEVEL SECURITY** keyed on the
 per-transaction `onestats.workspace_id` GUC. One workspace can never read, test or use another's credentials,
-and two workspaces may hold **different** credentials for the **same** provider. A super admin may see status
-across workspaces but does not routinely see plaintext secrets (no path returns them).
+and two workspaces may hold **different** credentials for the **same** provider. No path returns a plaintext
+secret to any caller, super admins included. A dedicated **cross-workspace Super-Admin status view** (read-
+only status across workspaces, still no secrets) is a documented follow-up — today a Super Admin reads
+status per workspace through the same workspace-scoped endpoints.
 
 ## Providers & current status
 

@@ -10,7 +10,7 @@ custom endpoint.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -197,7 +197,11 @@ def bind_connector(conn: Connection, settings: Settings, workspace_id: UUID, con
     if provider == "playhq":
         data = get_secret(conn, settings, workspace_id, "playhq")
         if data is not None:
-            from onestats.domain.autosync.playhq import PlayHQClient, PlayHQConnector, host_for_tenant
+            from onestats.domain.autosync.playhq import (
+                PlayHQClient,
+                PlayHQConnector,
+                host_for_tenant,
+            )
             secrets, config = data["secrets"], data["config"]
             tenant = config.get("tenant") or "ca"
 

@@ -168,7 +168,7 @@ def test_member_portal_includes_non_public_items(seeded, conn):
     """Phase 16 follow-up: the authenticated member portal lists public published items PLUS the non-public
     (unpublished) catalogue, each flagged — and excludes revoked. Branding/club come from the workspace."""
     wid = seeded["wid"]
-    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Public Report", report_id="bat_most_runs")
+    publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Public Report", report_id="bat_most_runs")
     draft = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Draft Report", report_id="bowl_most_wickets")
     publishing.set_status(conn, wid, ACTOR, draft["id"], "unpublished")
     gone = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile", title="Gone", person_id=seeded["p"])
