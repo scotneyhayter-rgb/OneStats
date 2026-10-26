@@ -70,8 +70,10 @@ class Settings(BaseSettings):
     # --- AutoSync connectors (Phase 9) — secrets from env/.env, never committed ---
     # PlayHQ public API key (a UUID "Client ID") and tenant short-name (e.g. 'ca' for cricket).
     # When the key is absent the PlayHQ connector stays interface-only (cannot fetch).
-    playhq_api_key: str | None = Field(default=None)
-    playhq_tenant: str = Field(default="ca")
+    playhq_api_key: str | None = Field(default=None)       # x-api-key (Client ID, a UUID) — entered later
+    playhq_tenant: str = Field(default="ca")                # x-phq-tenant: cricket = "ca"
+    playhq_org_id: str | None = Field(default="2a9c6833-92cb-466b-aea8-16fa8277887d")  # RMCC organisation
+    playhq_base_url: str = Field(default="https://api.playhq.com")
 
     # --- Auth / sessions ---
     session_ttl_hours: int = Field(default=12)

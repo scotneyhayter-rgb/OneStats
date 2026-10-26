@@ -22,6 +22,9 @@ from onestats.domain.importing.tabular import build_match_summary
 STATUS_LIVE = "live"
 STATUS_FIXTURE = "fixture"
 STATUS_INTERFACE_ONLY = "interface_only"
+# implemented against a documented API, but requires credentials (an API key) before it can fetch; it is
+# NOT interface-only (the code exists) and NOT yet live-verified against real responses.
+STATUS_NEEDS_CREDENTIALS = "needs_credentials"
 
 
 @dataclass(slots=True)
@@ -120,9 +123,6 @@ catalog = ConnectorCatalog()
 # Documented real providers — interface-ready, NOT implemented (no verified access/sample yet).
 # Adding a real connector is a verify-then-implement step; these never fetch or fabricate data.
 for _info in (
-    ConnectorInfo("playhq", "PlayHQ", access_method="api", status=STATUS_INTERFACE_ONLY,
-                  countries=["AU"], formats=["One-Day", "T20", "Multi-Day"], auth_required=True,
-                  notes="Official API access + credentials/agreement required; structure unverified."),
     ConnectorInfo("play_cricket", "Play-Cricket (ECB)", access_method="api", status=STATUS_INTERFACE_ONLY,
                   countries=["GB"], formats=["One-Day", "T20", "Multi-Day"], auth_required=True,
                   notes="ECB Play-Cricket API key + site registration required; structure unverified."),
@@ -177,3 +177,10 @@ SAMPLE_NEWS_ROWS = [
 catalog.register(FixtureConnector("onestats_sample_news", SAMPLE_NEWS_ROWS,
                                   countries=["AU"], formats=["One-Day"],
                                   provider="OneStats sample newspaper (fixture)"))
+
+# The real PlayHQ connector (RMCC's platform). Implemented against PlayHQ's documented public API; it
+# fetches only when an API key is configured, otherwise it reports clearly that credentials are needed.
+# Imported here (after the catalog + base classes are defined) to avoid a circular import.
+from onestats.domain.autosync.playhq import PlayHQConnector
+
+catalog.register(PlayHQConnector())

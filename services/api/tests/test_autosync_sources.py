@@ -26,13 +26,16 @@ ROWS = [{"Date": "2024-01-06", "HomeTeam": "Alpha CC", "AwayTeam": "Beta CC", "R
 
 # ---- connectors (no DB) ---------------------------------------------------------------------------
 
-def test_real_providers_are_interface_only_and_cannot_fetch():
+def test_real_providers_are_interface_only_and_cannot_fetch(monkeypatch):
     described = {d["connector_id"]: d for d in catalog.describe()}
-    for cid in ("playhq", "play_cricket", "cricket_archive"):
+    for cid in ("play_cricket", "cricket_archive"):
         assert described[cid]["status"] == STATUS_INTERFACE_ONLY
-    conn = catalog.get("playhq")
-    with pytest.raises(NotImplementedError, match="not implemented"):
-        conn.fetch_new(None)
+    # PlayHQ is implemented but needs an API key; without one it refuses to fetch (never fabricates).
+    assert described["playhq"]["status"] == "needs_credentials"
+    from onestats.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "playhq_api_key", None, raising=False)   # ensure no live call
+    with pytest.raises(NotImplementedError, match="not configured"):
+        catalog.get("playhq").fetch_new(None)
 
 
 def test_fixture_connector_yields_deterministic_batches():

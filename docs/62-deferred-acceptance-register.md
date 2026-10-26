@@ -150,8 +150,14 @@ blocks above (run those rows); cross-cutting areas add the extra checks listed.
 **Blocking decisions before public/production release** (both paid; no cost without user approval):
 public **hosting** (static vs central service), and the **code-signing certificate**.
 
-**External dependencies** (not application defects): OneVault API (unverified), PlayHQ/online connectors
-(gated), RMCC External-URL integration (unverified).
+**External dependencies** (not application defects): OneVault API (unverified); **PlayHQ connector now
+implemented** (status `needs_credentials`) — pending the **API key** and **live cricket-v2 response
+validation** (see [69](69-playhq-connector.md)); other online connectors gated; RMCC External-URL
+integration (unverified).
+
+**PlayHQ acceptance (deferred):** enter the API key → AutoSync a PlayHQ season in review mode → verify the
+imported fixtures/results map correctly (field mapping validated against live responses) → approve → stats
+update. Until the key + validation, the connector reports `needs_credentials` and never fabricates data.
 
 ## Maintenance
 

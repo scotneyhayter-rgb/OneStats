@@ -16,7 +16,7 @@ Legend — **Feasibility:** 🟢 realistic self-serve path · 🟡 possible but 
 
 | Provider | Region / relevance | Data API? | Auth | Formats | Licensing / restrictions | Feasibility | Priority |
 |---|---|---|---|---|---|:--:|:--:|
-| **PlayHQ** | AU/NZ/Scotland — **RMCC's platform** | **Yes.** Public API (visible data only) + Private API (approved partners). Cricket scorecard depth `[UNVERIFIED]` | Public: `x-api-key` + `x-phq-tenant`; Private: + bearer JWT | JSON, cursor pagination (`metadata.nextCursor`) | Key requested from PlayHQ; public returns only admin-visible data; ToS review needed | 🟢 | **1** |
+| **PlayHQ** | AU/NZ/Scotland — **RMCC's platform** | **Yes.** Public API (visible data only) + Private API (approved partners). **Connector implemented 2026-10-26** against the documented flow (org `2a9c6833-…887d`, tenant `ca`); **needs the API key + live cricket-v2 response validation** | Public: `x-api-key` + `x-phq-tenant`; Private: + bearer JWT | JSON, cursor pagination (`metadata.nextCursor`) | Key to be entered by the user; public returns only admin-visible data; ToS review needed | 🟢 | **1** |
 | **Play-Cricket (ECB)** | England & Wales | Yes, for clubs/leagues on-platform | Signed agreement + API key from help desk; per-club tokens | XML/JSON | **Not real-time**; **not onboarding start-up/experimental/educational products**; club-scoped | 🟡 | 4 (not RMCC) |
 | **Play.Cricket Australia** | AU (legacy term) | Treat as **PlayHQ** (AU cricket consolidated on PlayHQ) `[UNVERIFIED]` | — | — | Confirm whether distinct from PlayHQ | 🟡 | 3 |
 | **PlayHQ New Zealand** | NZ | Same platform as PlayHQ AU (regional tenant) | as PlayHQ | JSON | as PlayHQ | 🟢 | 5 |
