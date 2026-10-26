@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from onestats import __version__
 from onestats.api.v1.router import api_v1
@@ -68,6 +69,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     register_error_handlers(app)
+
+    # Maintenance-mode gate (update system): while a controlled server update is in progress, reject
+    # new writes with 503 so no scorecard/data change lands mid-migration. Reads stay available
+    # (preserve read-only access). Auth, setup and the Super-Admin system-update routes are exempt so
+    # an administrator can still sign in and exit maintenance.
+    _MAINT_EXEMPT = ("/system/updates/", "/auth/", "/setup")
+
+    @app.middleware("http")
+    async def maintenance_gate(request: Request, call_next):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            path = request.url.path
+            if not any(seg in path for seg in _MAINT_EXEMPT):
+                from onestats.db.session import get_engine
+                from onestats.domain import updates
+
+                eng = get_engine(settings)
+                if eng is not None and updates.is_maintenance(eng):
+                    return JSONResponse(
+                        status_code=503,
+                        content={"detail": "OneStats is updating (maintenance mode). Please try again shortly.",
+                                 "maintenance": True},
+                    )
+        return await call_next(request)
+
     app.include_router(api_v1, prefix=settings.api_v1_prefix)
 
     @app.get("/", include_in_schema=False)

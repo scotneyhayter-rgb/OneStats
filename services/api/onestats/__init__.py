@@ -1,3 +1,6 @@
 """OneStats backend API package."""
 
-__version__ = "0.1.0"
+from onestats.core.version import SERVER_VERSION
+
+# The server version is defined once in onestats.core.version (the version/compatibility contract).
+__version__ = SERVER_VERSION

@@ -247,6 +247,49 @@ integration (unverified). Provider credentials are now **self-service** per work
 imported fixtures/results map correctly (field mapping validated against live responses) → approve → stats
 update. Until the key + validation, the connector reports `needs_credentials` and never fabricates data.
 
+## Update System — UP-01..UP-30 (IMPLEMENTED IN CODE 2026-10-26 — see [74](74-update-system.md))
+
+Secure automatic update system (desktop updater, server updates, DB protection, compatibility, offline
+USB, release management). **None are user-accepted.** The *Category* says what each needs: **DEV** can be
+run now in the development app; **WIN** requires an installed Windows build; **SIGN/HOST** requires a
+signed release + hosting; **DEV+WIN** both. Automated tests passing is not acceptance.
+
+| # | Test | Category | Expected |
+|---|---|---|---|
+| UP-01 | Update settings screen opens | DEV | Settings → Updates & Version renders |
+| UP-02 | Installed version displayed | DEV | Desktop + server + schema + channel + API shown correctly |
+| UP-03 | Manual update check works | DEV | “Check for updates” re-queries capability/compatibility |
+| UP-04 | No-update-available state | DEV | Shows “up to date” / “no update service configured” honestly |
+| UP-05 | New update notification appears | SIGN/HOST | A published newer release surfaces a notification |
+| UP-06 | Release notes display | SIGN/HOST | Notes from the manifest render |
+| UP-07 | Optional update can be postponed | SIGN/HOST | “Remind me later” defers without blocking |
+| UP-08 | Valid update package accepted | WIN+SIGN | Signed package verifies and installs |
+| UP-09 | Invalid signature rejected | WIN+SIGN | Tampered/unsigned package refused |
+| UP-10 | Interrupted download handled | WIN+SIGN | Partial download recovers safely, no corruption |
+| UP-11 | Updated desktop restarts | WIN | App restarts into the new version |
+| UP-12 | User preferences survive update | WIN | Theme/mode/filters preserved |
+| UP-13 | Scorecards & reports intact | WIN | No data loss after update |
+| UP-14 | Server compatibility checked | DEV | `/capability` + compatibility banner reflect server state |
+| UP-15 | Incompatible clients get a clear message | DEV | Too-old/too-new desktop → explicit required action |
+| UP-16 | Ordinary users cannot initiate server updates | DEV | Non-super-admin: 403 / no System Updates access |
+| UP-17 | Super Admin can review server updates | DEV | System Updates dashboard loads for super admin |
+| UP-18 | Pre-update backup created & validated | DEV(check)/WIN(exec) | Pre-check reports backup readiness; real backup on install |
+| UP-19 | Server maintenance mode works | DEV | Maintenance ON blocks writes (503), reads OK; OFF resumes |
+| UP-20 | Database migration completes | DEV | `alembic upgrade head` applies 0058; schema level 58 |
+| UP-21 | Failed server update → documented recovery | WIN | Recovery runbook (§7) followed; no silent data loss |
+| UP-22 | Update history recorded | DEV | `update_event` rows shown in System Updates |
+| UP-23 | Offline USB update preserves data | WIN | “Update Existing Installation” keeps DB/config/data |
+| UP-24 | Standalone installation updates | WIN | Desktop + local backend + DB updated coherently |
+| UP-25 | Shared server + extra clients update | WIN | Multi-computer upgrade stays compatible |
+| UP-26 | Testing releases don’t reach Stable | SIGN/HOST | Channel isolation enforced |
+| UP-27 | Update checks handle no internet | DEV | Offline → normal local operation continues |
+| UP-28 | Clients recover after server update | DEV+WIN | Clients reconnect after maintenance ends |
+| UP-29 | Recovery & backup restoration tested safely | WIN | Restore into an isolated DB; never over live RMCC data |
+| UP-30 | Release publishing requires authorisation | DEV | Build never auto-publishes; explicit approval required |
+
+**Dev-runnable now (with the user):** UP-01..04, UP-14..17, UP-19, UP-20, UP-22, UP-27, UP-30.
+**Deferred to Windows install / signing / hosting:** the remainder (see categories).
+
 ## Maintenance
 
 Each phase's completion report updated this register (planned tests → concrete numbered rows). This register

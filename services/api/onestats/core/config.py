@@ -89,6 +89,17 @@ class Settings(BaseSettings):
     # future central service). Display/export only — None when not yet deployed. No recurring cost implied.
     public_base_url: str | None = Field(default=None)
 
+    # --- Update system (release management) ---
+    # Release channel this server reports to clients: "stable" (default) or "testing".
+    release_channel: str = Field(default="stable")
+    # HTTPS URL of the update manifest (e.g. Tauri latest.json / release index). None → the update
+    # service is "not configured" and the app simply reports no remote updates (no recurring cost).
+    release_manifest_url: str | None = Field(default=None)
+    # Minutes between automatic (non-blocking) update checks in the desktop app.
+    update_check_interval_minutes: int = Field(default=240)
+    # Directory for pre-update database backups. None → <media_root>/backups.
+    backup_dir: str | None = Field(default=None)
+
     # Secret-at-rest encryption key(s) for per-workspace API/integration credentials — kept OUT of the
     # application database (env var / OS keystore). Comma-separated Fernet keys; the first encrypts, any
     # decrypts (key rotation). None → an insecure development key is used (warned); set in production.

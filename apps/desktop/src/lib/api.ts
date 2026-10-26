@@ -357,6 +357,63 @@ export interface BrandingResponse {
   published: { theme_mode: string; colours: Record<string, ColourResolved>; logo_ref: string | null; tagline: string | null };
 }
 
+// --- Update system (version & compatibility) ---
+export interface SchemaInfo {
+  current_head: string | null;
+  current_level: number | null;
+  expected_head: string;
+  expected_level: number;
+  up_to_date: boolean;
+  migration_pending: boolean;
+}
+export interface ServerCapability {
+  server_version: string;
+  api_version: number;
+  channel: string;
+  database: SchemaInfo;
+  min_desktop_version: string;
+  max_desktop_version: string | null;
+  min_server_for_desktop: string;
+  maintenance: { mode: boolean; message: string | null };
+}
+export interface CompatibilityResult {
+  status: "ok" | "desktop_too_old" | "desktop_too_new" | "maintenance" | "unknown";
+  can_operate: boolean;
+  required_action: "update_desktop" | "update_server" | "wait" | "none";
+  message: string;
+  server_version: string;
+  api_version: number;
+}
+export interface UpdateEvent {
+  component: string;
+  event: string;
+  from_version: string | null;
+  to_version: string | null;
+  channel: string | null;
+  outcome: string | null;
+  actor: string | null;
+  detail: Record<string, unknown> | null;
+  at: string;
+}
+export interface BackupReadiness { destination: string; writable: boolean; free_bytes: number | null }
+export interface PreCheckResult {
+  ready: boolean;
+  checks: { name: string; ok: boolean; critical: boolean; detail: string }[];
+  backup: BackupReadiness;
+  database: SchemaInfo;
+}
+export interface SystemUpdateStatus {
+  server_version: string;
+  api_version: number;
+  channel: string;
+  database: SchemaInfo;
+  maintenance: { mode: boolean; message: string | null };
+  backup: BackupReadiness;
+  release_service: { configured: boolean; manifest_url: string | null };
+  recent_events: UpdateEvent[];
+  last_result: UpdateEvent | null;
+}
+
 // --- Phase 4 domain types ---
 export interface NameHistory {
   id: string;
@@ -1163,6 +1220,20 @@ export const api = {
     if (!resp.ok) return null;
     return URL.createObjectURL(await resp.blob());
   },
+
+  // --- Update system (version & compatibility) ---
+  capability: () => request<ServerCapability>("/api/v1/capability"),
+  updatesCompatibility: (desktopVersion: string) =>
+    request<CompatibilityResult>(`/api/v1/updates/compatibility?desktop_version=${encodeURIComponent(desktopVersion)}`),
+  systemUpdateStatus: () => request<SystemUpdateStatus>("/api/v1/system/updates/status"),
+  updatesHistory: (limit = 100) => request<{ events: UpdateEvent[] }>(`/api/v1/updates/history?limit=${limit}`),
+  systemUpdatePreCheck: () => request<PreCheckResult>("/api/v1/system/updates/pre-check", { method: "POST" }),
+  systemUpdateMaintenance: (on: boolean, message?: string) =>
+    request<{ maintenance: { mode: boolean; message: string | null } }>(
+      "/api/v1/system/updates/maintenance", { method: "POST", body: { on, message } }),
+  systemUpdateCheck: () =>
+    request<{ configured: boolean; manifest_url: string | null; channel: string; server_version: string; note: string | null }>(
+      "/api/v1/system/updates/check", { method: "POST" }),
 
   // --- Workspace dashboard (home command centre) ---
   workspaceDashboard: (w: string) => request<WorkspaceDashboard>(`/api/v1/workspaces/${w}/dashboard`),

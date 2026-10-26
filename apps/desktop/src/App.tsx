@@ -14,6 +14,7 @@ import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { ChangePassword } from "./features/auth/ChangePassword";
 import { UserManagement } from "./features/admin/UserManagement";
+import { SystemUpdates } from "./features/admin/SystemUpdates";
 import { Integrations } from "./features/settings/Integrations";
 import { MemberPortal } from "./features/portal/MemberPortal";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
@@ -73,6 +74,7 @@ function AuthedApp() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/integrations" element={<Integrations />} />
         <Route path="/admin/users" element={<UserManagement />} />
+        <Route path="/admin/system-updates" element={<SystemUpdates />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </WorkspaceProvider>

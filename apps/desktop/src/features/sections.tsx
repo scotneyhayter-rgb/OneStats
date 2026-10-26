@@ -13,6 +13,7 @@ import { useWorkspace } from "../lib/workspace-context";
 import { ConnectionSettings } from "./settings/ConnectionSettings";
 import { Appearance } from "./settings/Appearance";
 import { ClubThemeEditor } from "./settings/ClubTheme";
+import { UpdatesVersion } from "./settings/UpdatesVersion";
 import { Placeholder } from "./Placeholder";
 
 // Matches and People now have full feature screens (features/scorecard, features/people);
@@ -78,6 +79,7 @@ export function Settings() {
             <span className="text-xs text-muted-foreground">Applies to your view across the app; it does not change anyone else's display or any stored data.</span>
           </label>
         </CardContent></Card>
+        <UpdatesVersion />
         <Appearance />
         <div id="club-theme-editor"><ClubThemeEditor admin={admin} /></div>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
