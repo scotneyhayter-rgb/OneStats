@@ -256,6 +256,9 @@ export function PlayerProfile() {
               {honourBadges.map((h, i) => (
                 <Badge key={i} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{String(h.honour_type).replace(/_/g, " ")}</Badge>
               ))}
+              {(full?.detail?.recognition ?? []).filter((r) => /life member/i.test(r.label)).map((r, i) => (
+                <Badge key={`lm${i}`} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{r.label}</Badge>
+              ))}
               {(full?.records ?? []).length > 0 && <Badge variant="warning"><Trophy className="mr-1 h-3 w-3" aria-hidden />Record holder</Badge>}
               {Number(full?.grand_finals?.premierships ?? 0) > 0 && (
                 <Badge variant="brand"><Trophy className="mr-1 h-3 w-3" aria-hidden />
@@ -264,20 +267,15 @@ export function PlayerProfile() {
               {(full?.clubs ?? []).slice(0, 2).map((cl) => <span key={cl.team_id} className="text-muted-foreground">{cl.club}</span>)}
             </div>
           </div>
-          <div className="ml-auto flex flex-col items-end gap-2">
-            {(full?.detail?.numbers ?? []).length > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">No.</span>
-                <span className="rounded-[var(--radius-app)] border-2 border-brand px-2 py-0.5 text-lg font-bold leading-none text-brand">
-                  {full!.detail.numbers.join(", ")}
-                </span>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
-              <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
-              <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
-            </div>
+          {(full?.detail?.numbers ?? []).length > 0 && (
+            <span className="ml-auto flex h-14 min-w-14 items-center justify-center rounded-[var(--radius-app)] border-2 border-brand px-3 text-3xl font-bold leading-none text-brand">
+              {full!.detail.numbers.join(", ")}
+            </span>
+          )}
+          <div className={`flex gap-2 ${(full?.detail?.numbers ?? []).length > 0 ? "" : "ml-auto"}`}>
+            <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
+            <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
+            <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
           </div>
         </CardContent></Card>
 
@@ -319,6 +317,11 @@ export function PlayerProfile() {
                 {c?.has_bowling ? `, taking ${num(bowl.wickets)} wickets at ${num(bowl.average, 2)}` : ""}.
                 {" "}Figures are from approved scorecards; unknown values are never counted as zero.
               </p>
+              {full?.detail?.biography && (
+                <p className="whitespace-pre-line rounded-[var(--radius-app)] border border-border bg-muted/20 px-3 py-2 text-sm">
+                  {full.detail.biography}
+                </p>
+              )}
               <div className="grid gap-2 sm:grid-cols-2">
                 {(() => {
                   const span = full?.span;
@@ -340,7 +343,7 @@ export function PlayerProfile() {
               </div>
               {(() => {
                 const d = full?.detail;
-                const service = [...(d?.leadership ?? []), ...(d?.recognition ?? [])];
+                const service = [...(d?.leadership ?? []), ...(d?.recognition ?? []).filter((r) => !/life member/i.test(r.label))];
                 if (service.length === 0) return null;
                 return (
                   <div className="flex flex-col gap-2">

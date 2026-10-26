@@ -231,7 +231,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
                  season_id: UUID | None = None) -> dict[str, Any]:
     """Everything the profile needs in one call (career scope optional), composed from the engines."""
     det = conn.execute(
-        text("SELECT batting_style, bowling_style, is_wicketkeeper FROM person_profile WHERE person_id = :p"),
+        text("SELECT batting_style, bowling_style, is_wicketkeeper, biography FROM person_profile WHERE person_id = :p"),
         {"p": person_id}).mappings().first()
     from onestats.domain import profiles  # player numbers / leadership / recognition
     nums = profiles.list_numbers(conn, person_id)
@@ -241,6 +241,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
         "person_id": str(person_id),
         "detail": {"batting_style": (det or {}).get("batting_style"),
                    "bowling_style": (det or {}).get("bowling_style"),
+                   "biography": (det or {}).get("biography"),
                    "is_wicketkeeper": bool((det or {}).get("is_wicketkeeper")),
                    "numbers": sorted({str(n["number"]) for n in nums if n.get("number")}),
                    "leadership": _group_service(lead, lambda r: r.get("role")),

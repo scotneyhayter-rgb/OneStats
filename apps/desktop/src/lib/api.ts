@@ -148,7 +148,7 @@ export interface PlayerAnalysis {
 }
 export interface PlayerFullProfile {
   person_id: string;
-  detail: { batting_style: string | null; bowling_style: string | null; is_wicketkeeper: boolean;
+  detail: { batting_style: string | null; bowling_style: string | null; biography: string | null; is_wicketkeeper: boolean;
     numbers: string[]; leadership: { label: string; seasons: string[] }[]; recognition: { label: string; seasons: string[] }[] };
   span: {
     first: { date: string | null; opposition: string | null } | null;
