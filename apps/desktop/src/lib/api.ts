@@ -110,6 +110,24 @@ export interface User {
   username: string;
   display_name: string | null;
   is_super_admin: boolean;
+  must_change_password?: boolean;
+}
+export interface ManagedUser {
+  id: string;
+  username: string;
+  display_name: string | null;
+  status: string;
+  is_super_admin: boolean;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  created_at: string | null;
+}
+export interface UserInvitation {
+  id: string;
+  user_id: string;
+  username: string;
+  status: string;
+  expires_at: string | null;
 }
 export interface PlayerFullProfile {
   person_id: string;
@@ -941,6 +959,27 @@ export const api = {
     }),
   logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
   me: () => request<User>("/api/v1/auth/me"),
+  changePassword: (current_password: string, new_password: string) =>
+    request<void>("/api/v1/auth/change-password", { method: "POST", body: { current_password, new_password } }),
+  acceptInvitation: (token: string, new_password: string) =>
+    request<{ user_id: string; username: string }>("/api/v1/invitations/accept", { method: "POST", auth: false, body: { token, new_password } }),
+  // --- System Administration: user management (Super Admin) ---
+  usersList: () => request<ManagedUser[]>("/api/v1/users"),
+  userCreate: (body: { username: string; display_name?: string; is_super_admin?: boolean }) =>
+    request<{ user_id: string; username: string; temp_password: string; temp_password_expires_at: string }>("/api/v1/users", { method: "POST", body }),
+  userUpdate: (id: string, body: { display_name?: string; status?: string; is_super_admin?: boolean }) =>
+    request<{ updated: boolean }>(`/api/v1/users/${id}`, { method: "PATCH", body }),
+  userResetPassword: (id: string) =>
+    request<{ user_id: string; temp_password: string; temp_password_expires_at: string }>(`/api/v1/users/${id}/reset-password`, { method: "POST" }),
+  userAudit: (id: string) =>
+    request<{ logins: { success: boolean; ip: string | null; at: string | null }[]; admin_events: { action: string; actor: string | null; at: string | null }[] }>(`/api/v1/users/${id}/audit`),
+  userAssignWorkspaceRole: (id: string, workspace_id: string, role: string) =>
+    request<{ granted: boolean }>(`/api/v1/users/${id}/workspace-roles`, { method: "POST", body: { workspace_id, role } }),
+  invitationsList: () => request<UserInvitation[]>("/api/v1/invitations"),
+  invitationCreate: (body: { username: string; display_name?: string; is_super_admin?: boolean }) =>
+    request<{ invitation_id: string; user_id: string; username: string; token: string; expires_at: string }>("/api/v1/invitations", { method: "POST", body }),
+  invitationRevoke: (id: string) =>
+    request<{ revoked: boolean }>(`/api/v1/invitations/${id}/revoke`, { method: "POST" }),
 
   // workspaces
   myWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),

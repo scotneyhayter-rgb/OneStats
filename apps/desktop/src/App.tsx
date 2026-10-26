@@ -12,6 +12,8 @@ import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
 import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
+import { ChangePassword } from "./features/auth/ChangePassword";
+import { UserManagement } from "./features/admin/UserManagement";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { Organisations } from "./features/manage/Organisations";
@@ -64,6 +66,7 @@ function AuthedApp() {
         <Route path="/statistics/captaincy-compare" element={<CaptaincyCompare />} />
         <Route path="/ask" element={<Ask />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/admin/users" element={<UserManagement />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </WorkspaceProvider>
@@ -84,5 +87,6 @@ export default function App() {
   if (backendError) return <BackendDown message={backendError} />;
   if (!user && setupRequired) return <Setup />;
   if (!user) return <Login />;
+  if (user.must_change_password) return <ChangePassword />;   // forced first-login change
   return <AuthedApp />;
 }

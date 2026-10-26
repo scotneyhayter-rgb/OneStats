@@ -122,8 +122,40 @@ a supported Windows machine; tested **additional-client** install against an exi
 tests join the deferred acceptance register (deliverable 62). Several of these require real Windows
 hardware/USB media and are **manual** acceptance items.
 
+## 31.7 User management & first-login workflow (added 2026-10-26)
+
+**Super Admin user management** (System Administration → User Management): create/edit/suspend accounts,
+assign system (Super Admin) and workspace roles, assign users to one or more workspaces, issue **temporary
+single-use expiring passwords** (changed on first login), send **time-limited invitation** links (and
+revoke them), reset passwords, view a user's **login + admin audit history**, and promote/demote Super
+Admins. All of this is **Super-Admin-gated in the backend** (not just the UI).
+
+**New additional-client installation workflow:**
+1. Install OneStats (installer or USB).
+2. First run → **Connect to a server** (Settings → Server Connection, or the "backend unreachable" screen).
+3. Enter the authorised **server address**; **Test connection** validates it (`/api/v1/health`) before saving.
+4. On success the **login screen** appears (no new database is created when connecting to an existing server).
+5. The user signs in with their issued credentials; a **temporary password forces a password change** before
+   anything loads.
+6. The app then loads **only the workspaces and features the user is authorised for** (backend permissions).
+
+**New standalone / main-server installation:** the first-run **setup-token bootstrap** (deliverable 26)
+creates the initial Super Admin — **no hard-coded default credentials**; the token is generated on first
+run and written to a local operator-only file.
+
+**Security guarantees (enforced in the backend):** passwords are **Argon2id** (never plaintext);
+temporary/recovery credentials are **single-use and expire**; a **password-strength** floor applies; login
+is **rate-limited**; **admin actions and login attempts are audited**; a **Club Admin can never grant
+system-wide Super Admin** (escalation guard) and the **last active Super Admin cannot be removed/demoted**.
+
+**Secure Super Admin account recovery:** an operator with **host access** runs a server-side command to
+issue a one-time **recovery token** (hash in DB, plaintext in a local file); `POST /api/v1/setup/recover-
+super-admin` then uses it to restore/reset a Super Admin (forcing a password change). Because it requires
+the server-side token file, recovery **cannot be triggered remotely** and never bypasses authentication or
+workspace isolation.
+
 ## 31.5 Phasing
 
 Foundation built in **Phase 2** (Windows Desktop & Server Foundation); server/client
 split and remote access hardened through Phase 17 (Release). The production installer & USB distribution
-(§31.6) is a mandatory Phase 17 deliverable.
+(§31.6) and the user-management/first-login workflow (§31.7) are mandatory Phase 17 deliverables.

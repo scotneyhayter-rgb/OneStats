@@ -78,6 +78,13 @@ export function Settings() {
         </CardContent></Card>
         <MatchFormatsSettings workspaceId={current?.id ?? null} admin={admin} />
         {admin && <RecalcStatsSettings workspaceId={current?.id ?? null} />}
+        {user?.is_super_admin && (
+          <Card><CardContent className="flex items-center justify-between gap-2">
+            <div><h3 className="text-sm font-semibold">System Administration</h3>
+              <p className="text-xs text-muted-foreground">Manage user accounts, roles, temporary passwords and invitations.</p></div>
+            <a href="#/admin/users" className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">User Management →</a>
+          </CardContent></Card>
+        )}
         <Card><CardContent className="flex flex-col gap-4">
           <ConnectionSettings />
         </CardContent></Card>

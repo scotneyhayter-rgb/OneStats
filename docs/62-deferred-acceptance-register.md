@@ -102,6 +102,29 @@ Automated coverage: `features/settings/connection-settings.test.tsx`; `tauri.con
 sync. **Decisions required:** public hosting (static vs central) and code-signing certificate (both paid;
 no cost without approval).
 
+## User Management & First-Login Security (IMPLEMENTED 2026-10-26 — see [68](68-user-management-report.md))
+
+Super-Admin user management + secure first-login (deliverable 31 §31.7). Manual acceptance (DEFERRED):
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| USR1 | User Management screen | Settings → User Management (Super Admin) | List/create/edit users; gated for non-super-admins |
+| USR2 | Create + temp password | Create a user | A one-time temporary password is shown; login forces a change |
+| USR3 | First-login change | Sign in with a temp password | Forced change-password screen before anything loads |
+| USR4 | Invitation | Invite a user; accept the token | Account activates on setting a password; single-use; revocable |
+| USR5 | Suspend / reactivate | Toggle a user's status | Suspended users can't sign in; sessions revoked |
+| USR6 | Reset password | Reset a user's password | New temp password; old sessions revoked |
+| USR7 | Roles | Assign workspace roles; promote/demote Super Admin | Backend-enforced; a Club Admin can't grant Super Admin |
+| USR8 | Last-admin guard | Try to suspend/demote the only Super Admin | Blocked |
+| USR9 | Rate limiting | Repeated failed logins | Temporarily blocked; a success resets |
+| USR10 | Audit history | View a user's history | Login attempts + admin actions listed |
+| USR11 | Recovery | Operator issues a recovery token → recover | Super Admin restored; forced change; token single-use; can't be done remotely |
+| USR12 | Connect-to-server first run | Additional client → Connect to a server | Validates connection; no new DB; loads only authorised workspaces |
+
+Automated coverage: `tests/test_user_management.py` (9); `features/admin/user-management.test.tsx` (2);
+`features/settings/connection-settings.test.tsx` (1). Backend enforcement, Argon2id, single-use/expiring
+temp + recovery tokens, rate limiting, escalation + last-admin guards.
+
 ## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
 All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one

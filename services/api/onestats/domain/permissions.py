@@ -25,6 +25,10 @@ def grant_role(conn: Connection, user_id: UUID, workspace_id: UUID, role_key: st
     """Assign a built-in role to a user in the current workspace (idempotent).
 
     Requires the workspace context to be set (RLS WITH CHECK enforces workspace_id)."""
+    # escalation guard: "super_admin" is a system-wide role (the app_user.is_super_admin flag), never a
+    # workspace membership. A workspace/club admin must not be able to grant it via membership.
+    if role_key == "super_admin":
+        raise ValueError("cannot_grant_super_admin")
     role_id = builtin_role_id(conn, role_key)
     if role_id is None:
         raise ValueError(f"unknown_role:{role_key}")

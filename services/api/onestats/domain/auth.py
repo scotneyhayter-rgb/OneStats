@@ -48,7 +48,8 @@ def setup_required(conn: Connection) -> bool:
 def get_user_by_username(conn: Connection, username: str) -> dict[str, Any] | None:
     row = conn.execute(
         text(
-            "SELECT id, username, display_name, status, is_super_admin, password_hash "
+            "SELECT id, username, display_name, status, is_super_admin, password_hash, "
+            "must_change_password, password_expires_at "
             "FROM app_user WHERE lower(username) = lower(:u)"
         ),
         {"u": username},
@@ -79,6 +80,10 @@ def authenticate(conn: Connection, username: str, password: str) -> dict[str, An
         return None
     if not security.verify_password(user["password_hash"], password):
         return None
+    # a temporary password that has expired can no longer be used — an admin must re-issue it
+    exp = user.get("password_expires_at")
+    if user.get("must_change_password") and exp is not None and exp < datetime.now(UTC):
+        return None
     if security.password_needs_rehash(user["password_hash"]):
         conn.execute(
             text("UPDATE app_user SET password_hash = :p WHERE id = :id"),
@@ -89,6 +94,47 @@ def authenticate(conn: Connection, username: str, password: str) -> dict[str, An
     )
     user.pop("password_hash", None)
     return user
+
+
+def verify_current_password(conn: Connection, user_id: UUID, password: str) -> bool:
+    row = conn.execute(text("SELECT password_hash FROM app_user WHERE id = :id"), {"id": user_id}).mappings().first()
+    return bool(row and row["password_hash"] and security.verify_password(row["password_hash"], password))
+
+
+def change_password(conn: Connection, user_id: UUID, new_password: str) -> None:
+    """Set a new password and clear the temporary/first-login flag (single-use temp passwords)."""
+    err = security.password_strength_error(new_password)
+    if err:
+        raise ValueError(err)
+    conn.execute(
+        text("UPDATE app_user SET password_hash = :p, must_change_password = false, "
+             "password_expires_at = NULL WHERE id = :id"),
+        {"p": security.hash_password(new_password), "id": user_id},
+    )
+
+
+# --- login attempts: rate limiting + login history (no secrets stored) ---
+_MAX_FAILURES = 8
+_WINDOW_MINUTES = 15
+
+
+def record_attempt(conn: Connection, username: str, user_id: UUID | None, ip: str | None, success: bool) -> None:
+    conn.execute(
+        text("INSERT INTO login_attempt(username, app_user_id, ip, success) VALUES (:u, :uid, :ip, :s)"),
+        {"u": username[:150], "uid": user_id, "ip": (ip or "")[:64] or None, "s": success},
+    )
+
+
+def is_rate_limited(conn: Connection, username: str) -> bool:
+    """True when too many recent FAILED attempts for this username — a successful login resets the window."""
+    n = conn.execute(
+        text("SELECT count(*) FROM login_attempt WHERE lower(username) = lower(:u) AND success = false "
+             f"AND at > now() - interval '{_WINDOW_MINUTES} minutes' "
+             "AND at > coalesce((SELECT max(at) FROM login_attempt WHERE lower(username) = lower(:u) "
+             "AND success = true), 'epoch')"),
+        {"u": username},
+    ).scalar_one()
+    return int(n) >= _MAX_FAILURES
 
 
 # --- sessions ---
@@ -108,7 +154,8 @@ def create_session(conn: Connection, user_id: UUID, ttl_hours: int) -> tuple[str
 def validate_session(conn: Connection, token: str) -> dict[str, Any] | None:
     row = conn.execute(
         text(
-            "SELECT u.id, u.username, u.display_name, u.status, u.is_super_admin, s.id AS session_id "
+            "SELECT u.id, u.username, u.display_name, u.status, u.is_super_admin, "
+            "u.must_change_password, s.id AS session_id "
             "FROM session s JOIN app_user u ON u.id = s.app_user_id "
             "WHERE s.token_hash = :h AND s.revoked_at IS NULL "
             "AND s.expires_at > now() AND u.status = 'active'"

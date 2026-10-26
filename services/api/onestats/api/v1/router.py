@@ -39,6 +39,7 @@ from onestats.api.v1 import (
     setup,
     stats,
     teams,
+    users,
     venues,
     workspaces,
 )
@@ -80,3 +81,4 @@ api_v1.include_router(premierships.router)
 api_v1.include_router(ask.router)
 api_v1.include_router(publications.router)
 api_v1.include_router(public.router)
+api_v1.include_router(users.router)

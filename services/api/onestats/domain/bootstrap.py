@@ -21,6 +21,7 @@ from onestats.domain import auth
 log = get_logger("onestats.bootstrap")
 
 _SETUP_HASH_KEY = "setup_token_hash"
+_RECOVERY_HASH_KEY = "recovery_token_hash"
 
 
 def ensure_setup_token(conn: Connection, settings: Settings) -> None:
@@ -64,5 +65,60 @@ def create_super_admin(
     try:
         if os.path.exists(settings.setup_token_file):
             os.remove(settings.setup_token_file)
+    except OSError:
+        pass
+
+
+# --- secure Super Admin account recovery (operator/server access required) ---------------------
+
+def _recovery_file(settings: Settings) -> str:
+    return settings.setup_token_file + ".recovery"
+
+
+def issue_recovery_token(conn: Connection, settings: Settings) -> str:
+    """Generate a one-time recovery token (hash stored in the DB, plaintext written to a local operator-
+    only file). Run server-side by an operator with host access — this is what makes recovery safe: it
+    needs server/file access, so it can never bypass authentication remotely, and it only ever affects the
+    GLOBAL Super Admin role (never workspace-isolated data). Returns the token for the operator."""
+    token = security.generate_token()
+    auth.set_setting(conn, _RECOVERY_HASH_KEY, security.hash_token(token))
+    try:
+        with open(_recovery_file(settings), "w", encoding="utf-8") as fh:
+            fh.write(token)
+    except OSError as exc:
+        log.error("Could not write recovery token file: %s", type(exc).__name__)
+        raise
+    log.warning("Super Admin recovery token written to %s", _recovery_file(settings))
+    return token
+
+
+def verify_recovery_token(conn: Connection, token: str) -> bool:
+    stored = auth.get_setting(conn, _RECOVERY_HASH_KEY)
+    return bool(stored) and security.tokens_equal(stored, security.hash_token(token))
+
+
+def recover_super_admin(conn: Connection, settings: Settings, token: str, username: str, new_password: str) -> None:
+    """Reset/restore a Super Administrator using a valid recovery token: the named user is set active, made
+    a Super Admin, given the new password, and required to change it on next login. Single-use."""
+    err = security.password_strength_error(new_password)
+    if err:
+        raise ValueError(err)
+    if not verify_recovery_token(conn, token):
+        raise ValueError("invalid_recovery_token")
+    user = auth.get_user_by_username(conn, username)
+    if user is None:
+        raise ValueError("user_not_found")
+    from sqlalchemy import text
+    conn.execute(
+        text("UPDATE app_user SET password_hash = :p, is_super_admin = true, status = 'active', "
+             "must_change_password = true WHERE id = :id"),
+        {"p": security.hash_password(new_password), "id": user["id"]},
+    )
+    conn.execute(text("INSERT INTO admin_audit(actor, action, target_user_id) "
+                      "VALUES ('recovery', 'user.recover_super_admin', :id)"), {"id": user["id"]})
+    auth.set_setting(conn, _RECOVERY_HASH_KEY, None)
+    try:
+        if os.path.exists(_recovery_file(settings)):
+            os.remove(_recovery_file(settings))
     except OSError:
         pass

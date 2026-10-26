@@ -48,3 +48,23 @@ def hash_token(token: str) -> str:
 def tokens_equal(a: str, b: str) -> bool:
     """Constant-time comparison for token hashes."""
     return hmac.compare_digest(a, b)
+
+
+MIN_PASSWORD_LENGTH = 10
+
+
+def password_strength_error(password: str) -> str | None:
+    """Return an error string if the password is too weak, else None. Minimum length plus at least one
+    letter and one digit — a sensible floor without frustrating club volunteers."""
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return "Password must include at least one letter and one number."
+    return None
+
+
+def generate_temp_password() -> str:
+    """A high-entropy but human-typable temporary password (letters + digits, ~12 chars)."""
+    # token_urlsafe gives URL-safe chars; keep alphanumerics so it is easy to read/type, then ensure a digit
+    raw = "".join(c for c in secrets.token_urlsafe(16) if c.isalnum())[:11]
+    return raw + str(secrets.randbelow(10))
