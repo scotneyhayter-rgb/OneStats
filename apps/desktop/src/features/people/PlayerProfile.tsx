@@ -15,6 +15,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { api, ApiError, type PlayerFullProfile } from "../../lib/api";
+import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 type Tab = "overview" | "batting" | "bowling" | "fielding" | "captaincy" | "seasons" | "grandfinals" | "matches" | "records" | "awards" | "media";
@@ -157,7 +158,7 @@ export function PlayerProfile() {
 
   const exportPdf = async () => {
     try {
-      window.open(await api.profilePdfUrl(current.id, personId!), "_blank");
+      openBlobUrl(await api.profilePdfUrl(current.id, personId!), `${name || "player"}-profile.pdf`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "PDF export failed.");
     }

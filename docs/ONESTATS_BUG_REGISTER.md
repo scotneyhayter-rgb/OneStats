@@ -86,6 +86,18 @@ Severity key: **CRITICAL** (data corruption / security / workspace leakage / maj
 - **Verification:** `rls_audit.py` (every other workspace table is FORCE RLS + policy) + endpoint
   review. **Status:** Documented risk; see `ONESTATS_REMAINING_RISKS.md`.
 
+## BUG-006 — PDF/CSV exports did not open (popup-blocked) — found in acceptance 2026-10-26
+
+- **Symptom:** The player-profile PDF (and other exports) "does not open" when the button is clicked.
+- **Cause:** The export fetches the file (auth header) and makes a blob URL, then called
+  `window.open(blobURL, "_blank")` **after the `await`** — outside the click gesture — so the browser's
+  popup blocker silently stopped it. The request itself returned **200 OK** (valid PDF).
+- **Fix:** Added `openBlobUrl()` (lib/utils) — a programmatic anchor with `download`, which is not
+  popup-blocked and works in the browser and the Tauri webview. Applied to the profile PDF, Club Record
+  Book PDF, report PDF/CSV export and the catalogue index PDF. (Publishing already used an anchor.)
+- **Verification:** typecheck clean; retest in the app (exports now download/open). **Status:** FIXED,
+  awaiting user retest.
+
 ---
 
 ## Observations (not defects — logged for a future phase)

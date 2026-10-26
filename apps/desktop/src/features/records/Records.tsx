@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type RecordCategory } from "../../lib/api";
+import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 type Seasonal = Awaited<ReturnType<typeof api.recordsSeasonal>>;
@@ -60,7 +61,7 @@ export function Records() {
 
   const exportBook = async () => {
     try {
-      window.open(await api.recordBookPdfUrl(current.id), "_blank");
+      openBlobUrl(await api.recordBookPdfUrl(current.id), "Club Record Book.pdf");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Record book export failed.");
     }

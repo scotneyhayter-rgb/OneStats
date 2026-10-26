@@ -12,6 +12,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type CatalogueReport, type ReportCatalogue as Catalogue, type StatColumn, type StatReport } from "../../lib/api";
+import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 const FAV_KEY = "onestats.reportFavourites";
@@ -118,7 +119,7 @@ export function ReportCatalogue() {
       const url = kind === "pdf"
         ? await api.statsReportPdfUrl(current.id, open.id, q)
         : await api.statsReportCsvUrl(current.id, open.id, q);
-      window.open(url, "_blank");
+      openBlobUrl(url, `${open.name}.${kind}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export failed.");
     }
@@ -127,7 +128,7 @@ export function ReportCatalogue() {
   const printIndex = useCallback(async () => {
     if (!current) return;
     try {
-      window.open(await api.statsCatalogueIndexUrl(current.id), "_blank");
+      openBlobUrl(await api.statsCatalogueIndexUrl(current.id), "Report Catalogue.pdf");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not open the catalogue index.");
     }
