@@ -515,15 +515,15 @@ export function PlayerProfile() {
                 <div className="flex flex-col gap-4">
                   <div>
                     <h3 className="mb-1 text-sm font-semibold">Highest partnerships</h3>
-                    {table([{ key: "runs_disp", label: "Runs", align: "right" }, { key: "wicket", label: "Wkt", align: "right" }, { key: "partner", label: "Partner" },
+                    {table([{ key: "rank", label: "#", align: "right" }, { key: "runs_disp", label: "Runs", align: "right" }, { key: "wicket", label: "Wkt", align: "right" }, { key: "partner", label: "Partner" },
                       { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" }, { key: "date", label: "Date" }],
-                      analysis.partnerships.map((r) => ({ ...r, runs_disp: `${r.runs}${r.unbroken ? "*" : ""}`, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}
+                      analysis.partnerships.map((r, i) => ({ ...r, rank: i + 1, runs_disp: `${r.runs}${r.unbroken ? "*" : ""}`, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}
                   </div>
                   <div>
                     <h3 className="mb-1 text-sm font-semibold">Partnership runs by partner (career total)</h3>
-                    {table([{ key: "partner", label: "Partner" }, { key: "runs", label: "Total runs", align: "right" },
+                    {table([{ key: "rank", label: "#", align: "right" }, { key: "partner", label: "Partner" }, { key: "runs", label: "Total runs", align: "right" },
                       { key: "stands", label: "Stands", align: "right" }, { key: "best", label: "Best", align: "right" }],
-                      analysis.partnership_totals as unknown as Record<string, unknown>[])}
+                      analysis.partnership_totals.map((r, i) => ({ ...r, rank: i + 1 })) as unknown as Record<string, unknown>[])}
                   </div>
                 </div>
               )}
