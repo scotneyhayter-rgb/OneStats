@@ -1491,6 +1491,8 @@ export const api = {
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<StatReport>(`/api/v1/workspaces/${w}/stats/reports/${report}${qs2 ? `?${qs2}` : ""}`);
   },
+  statsUsedFormats: (w: string) =>
+    request<string[]>(`/api/v1/workspaces/${w}/stats/formats`),
   statsSavedList: (w: string) =>
     request<{ id: string; name: string; report: string; config: Record<string, unknown> | null; shared: boolean; created_by: string | null }[]>(`/api/v1/workspaces/${w}/stats/saved-reports`),
   statsSaveReport: (w: string, body: { name: string; report: string; config?: Record<string, unknown>; shared?: boolean }) =>

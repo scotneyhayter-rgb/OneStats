@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
@@ -243,6 +244,19 @@ def list_reports(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> lis
 def report_catalogue(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
     """The full, categorised Report Catalogue (every report uses the one engine; scope is a filter)."""
     return catalogue.catalogue_metadata()
+
+
+@router.get("/formats")
+def used_formats(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[str]:
+    """Distinct match formats actually present on statistics-eligible matches, so the report Format filter
+    offers only values that match stored data (``match.format`` is free text). Empty when none are set."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        rows = conn.execute(
+            text("SELECT DISTINCT format FROM match WHERE workspace_id = :w AND format IS NOT NULL "
+                 "AND format <> '' AND approval_status IN ('approved','verified_partial') "
+                 "AND include_in_statistics = true ORDER BY format"),
+            {"w": workspace_id}).all()
+        return [r[0] for r in rows]
 
 
 @router.get("/captaincy/compare")

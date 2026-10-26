@@ -4,7 +4,7 @@
  * filtering and PDF / CSV export. Favourites and recently-used persist per viewer (localStorage).
  */
 import { Download, FileText, Search, Star, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -56,6 +56,8 @@ export function ReportCatalogue() {
   const [recent, setRecent] = useState<string[]>(() => loadIds(RECENT_KEY));
   const [open, setOpen] = useState<CatalogueReport | null>(null);
   const [split, setSplit] = useState("");
+  const [format, setFormat] = useState("");
+  const [formats, setFormats] = useState<string[]>([]);
   const [data, setData] = useState<StatReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +65,7 @@ export function ReportCatalogue() {
     if (!current) return;
     api.statsCatalogue(current.id).then(setCat).catch((e) =>
       setError(e instanceof ApiError ? e.message : "Could not load the report catalogue."));
+    api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
   }, [current]);
 
   const allReports = useMemo(() => (cat?.categories ?? []).flatMap((c) => c.reports), [cat]);
@@ -76,11 +79,11 @@ export function ReportCatalogue() {
     });
   }, []);
 
-  const loadReport = useCallback(async (r: CatalogueReport, sp: string) => {
+  const loadReport = useCallback(async (r: CatalogueReport, sp: string, fmt: string) => {
     if (!current) return;
     setError(null);
     try {
-      const d = await api.statsReport(current.id, r.id, { split: sp || undefined });
+      const d = await api.statsReport(current.id, r.id, { split: sp || undefined, format: fmt || undefined });
       setData(d);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not open the report.");
@@ -92,8 +95,9 @@ export function ReportCatalogue() {
     if (r.id === "capt_compare") { window.location.hash = "#/statistics/captaincy-compare"; return; }
     setOpen(r);
     setSplit("");
+    setFormat("");
     setData(null);
-    void loadReport(r, "");
+    void loadReport(r, "", "");
     setRecent((prev) => {
       const next = [r.id, ...prev.filter((x) => x !== r.id)];
       saveIds(RECENT_KEY, next);
@@ -101,10 +105,16 @@ export function ReportCatalogue() {
     });
   }, [loadReport]);
 
+  // The opened report renders below the catalogue list; bring it into view so it isn't missed off-screen.
+  const reportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open && reportRef.current) reportRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [open?.id]);
+
   const exportUrl = useCallback(async (kind: "pdf" | "csv") => {
     if (!current || !open) return;
     try {
-      const q = { split: split || undefined };
+      const q = { split: split || undefined, format: format || undefined };
       const url = kind === "pdf"
         ? await api.statsReportPdfUrl(current.id, open.id, q)
         : await api.statsReportCsvUrl(current.id, open.id, q);
@@ -112,7 +122,7 @@ export function ReportCatalogue() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export failed.");
     }
-  }, [current, open, split]);
+  }, [current, open, split, format]);
 
   const printIndex = useCallback(async () => {
     if (!current) return;
@@ -215,14 +225,21 @@ export function ReportCatalogue() {
         {visibleCategories.length === 0 && cat && <p className="text-sm text-muted-foreground">No reports match “{query}”.</p>}
 
         {open && (
-          <Card><CardContent className="flex flex-col gap-3">
+          <div ref={reportRef}><Card><CardContent className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold">{open.name}</h3>
               <Badge variant="muted">{open.category}</Badge>
               <div className="ml-auto flex items-center gap-2">
-                <Select value={split} onChange={(e) => { setSplit(e.target.value); void loadReport(open, e.target.value); }}>
+                <Select value={split} onChange={(e) => { setSplit(e.target.value); void loadReport(open, e.target.value, format); }}>
                   {SPLITS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </Select>
+                {formats.length > 0 && (
+                  <Select value={format} aria-label="Match format"
+                    onChange={(e) => { setFormat(e.target.value); void loadReport(open, split, e.target.value); }}>
+                    <option value="">All formats</option>
+                    {formats.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
+                  </Select>
+                )}
                 {open.pdf && <Button size="sm" variant="outline" onClick={() => void exportUrl("pdf")}><Download className="h-4 w-4" aria-hidden /> PDF</Button>}
                 {open.csv && <Button size="sm" variant="outline" onClick={() => void exportUrl("csv")}><Download className="h-4 w-4" aria-hidden /> CSV</Button>}
                 <Button size="sm" variant="ghost" onClick={() => { setOpen(null); setData(null); }} aria-label="Close"><X className="h-4 w-4" aria-hidden /></Button>
@@ -257,7 +274,7 @@ export function ReportCatalogue() {
                   </tbody>
                 </table>
               </div>}
-          </CardContent></Card>
+          </CardContent></Card></div>
         )}
       </div>
     </AppShell>
