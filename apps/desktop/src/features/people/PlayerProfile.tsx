@@ -293,6 +293,25 @@ export function PlayerProfile() {
                 {c?.has_bowling ? `, taking ${num(bowl.wickets)} wickets at ${num(bowl.average, 2)}` : ""}.
                 {" "}Figures are from approved scorecards; unknown values are never counted as zero.
               </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(() => {
+                  const span = full?.span;
+                  const fmt = (e: { date: string | null; opposition: string | null } | null | undefined) =>
+                    e?.date ? `${new Date(e.date).toLocaleDateString()}${e.opposition ? ` v ${e.opposition}` : ""}` : null;
+                  const rows: [string, string | null][] = [
+                    ["First match", fmt(span?.first)],
+                    ["Most recent match", fmt(span?.last)],
+                    ["Batting", full?.detail?.batting_style ?? null],
+                    ["Bowling", full?.detail?.bowling_style ?? null],
+                  ];
+                  return rows.map(([label, value]) => (
+                    <div key={label} className="flex items-baseline justify-between gap-2 rounded-[var(--radius-app)] border border-border px-3 py-2 text-sm">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <span className="text-right">{value ?? <span className="italic text-muted-foreground">—</span>}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
               {(full?.records ?? []).length > 0 && (
                 <div className="flex flex-col gap-1">
                   <h4 className="text-xs font-semibold">Records held</h4>

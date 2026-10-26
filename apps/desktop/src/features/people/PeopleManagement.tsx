@@ -205,6 +205,8 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [bio, setBio] = useState("");
+  const [batStyle, setBatStyle] = useState("");
+  const [bowlStyle, setBowlStyle] = useState("");
   const [confirm, setConfirm] = useState<{ candidateId: string; name: string; kind: "merge" | "distinct" } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -214,6 +216,8 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
       const v = await api.getProfile(workspaceId, personId);
       setView(v);
       setBio(((v.profile as any)?.biography as string) ?? "");
+      setBatStyle(((v.profile as any)?.batting_style as string) ?? "");
+      setBowlStyle(((v.profile as any)?.bowling_style as string) ?? "");
       try { setOrgs(await api.listOrganisations(workspaceId)); } catch { setOrgs([]); }
       try { setCandidates(await api.identityCandidates(workspaceId, personId)); } catch { setCandidates([]); }
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to load profile"); }
@@ -223,7 +227,11 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
 
   const saveBio = async () => {
     setBusy(true);
-    try { await api.upsertProfile(workspaceId, personId, { biography: bio }); onChanged("Profile saved."); await load(); }
+    try {
+      await api.upsertProfile(workspaceId, personId,
+        { biography: bio, batting_style: batStyle || null, bowling_style: bowlStyle || null });
+      onChanged("Profile saved."); await load();
+    }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Save failed"); }
     finally { setBusy(false); }
   };
@@ -326,8 +334,18 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
 
           {canManage && (
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Biography</h3>
-              <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+              <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Profile &amp; playing style</h3>
+              <div className="mb-2 grid gap-2 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs">Batting
+                  <Input value={batStyle} placeholder="e.g. Right Handed" onChange={(e) => setBatStyle(e.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">Bowling
+                  <Input value={bowlStyle} placeholder="e.g. Right Arm Pace" onChange={(e) => setBowlStyle(e.target.value)} />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs">Biography
+                <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+              </label>
               <div className="mt-2"><Button size="sm" onClick={() => void saveBio()} disabled={busy}>Save profile</Button></div>
             </section>
           )}

@@ -131,6 +131,11 @@ export interface UserInvitation {
 }
 export interface PlayerFullProfile {
   person_id: string;
+  detail: { batting_style: string | null; bowling_style: string | null; is_wicketkeeper: boolean };
+  span: {
+    first: { date: string | null; opposition: string | null } | null;
+    last: { date: string | null; opposition: string | null } | null;
+  };
   career: {
     matches: number;
     batting: Record<string, number | null>;

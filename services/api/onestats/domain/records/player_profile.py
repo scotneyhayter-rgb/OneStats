@@ -180,11 +180,47 @@ def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[
     }
 
 
+def career_matches_span(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
+    """The player's first and most recent recorded match — date + opposition (the other team's club).
+    From approved/stats-eligible matches they featured in; missing dates are excluded. Opposition is the
+    match's other team; unknown if it can't be resolved — never invented."""
+    ids = _merge_ids(conn, person_id)
+
+    def _edge(order: str) -> dict[str, Any] | None:
+        r = conn.execute(
+            text(
+                "SELECT m.match_date, "
+                " (SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt "
+                "  JOIN team t ON t.id = mt.team_id JOIN organisation o ON o.id = t.organisation_id "
+                "  WHERE mt.match_id = m.id AND mt.team_id <> pm.team_id LIMIT 1) AS opposition "
+                "FROM (SELECT DISTINCT match_id, team_id FROM match_stat_contribution "
+                "      WHERE workspace_id = :w AND subject_id = ANY(CAST(:ids AS uuid[])) "
+                "        AND team_id IS NOT NULL) pm "
+                "JOIN match m ON m.id = pm.match_id "
+                "WHERE m.match_date IS NOT NULL "
+                f"ORDER BY m.match_date {order} LIMIT 1"
+            ),
+            {"w": workspace_id, "ids": ids},
+        ).mappings().first()
+        if r is None:
+            return None
+        return {"date": r["match_date"].isoformat() if r["match_date"] else None, "opposition": r["opposition"]}
+
+    return {"first": _edge("ASC"), "last": _edge("DESC")}
+
+
 def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, competition_id: UUID | None = None,
                  season_id: UUID | None = None) -> dict[str, Any]:
     """Everything the profile needs in one call (career scope optional), composed from the engines."""
+    det = conn.execute(
+        text("SELECT batting_style, bowling_style, is_wicketkeeper FROM person_profile WHERE person_id = :p"),
+        {"p": person_id}).mappings().first()
     return {
         "person_id": str(person_id),
+        "detail": {"batting_style": (det or {}).get("batting_style"),
+                   "bowling_style": (det or {}).get("bowling_style"),
+                   "is_wicketkeeper": bool((det or {}).get("is_wicketkeeper"))},
+        "span": career_matches_span(conn, workspace_id, person_id),
         "career": career_summary(conn, workspace_id, person_id, competition_id=competition_id, season_id=season_id),
         "seasons": season_breakdown(conn, workspace_id, person_id),
         "clubs": clubs_and_teams(conn, workspace_id, person_id),
