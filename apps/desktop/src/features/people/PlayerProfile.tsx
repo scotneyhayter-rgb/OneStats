@@ -522,7 +522,7 @@ export function PlayerProfile() {
                   <div>
                     <h3 className="mb-1 text-sm font-semibold">Partnership runs by partner (career total)</h3>
                     {table([{ key: "rank", label: "#", align: "right" }, { key: "partner", label: "Partner" }, { key: "runs", label: "Total runs", align: "right" },
-                      { key: "matches", label: "Mts", align: "right" }, { key: "stands", label: "Stands", align: "right" },
+                      { key: "matches", label: "Mts", align: "right" },
                       { key: "average", label: "Avg", align: "right", dp: 2 }, { key: "best", label: "Best", align: "right" }],
                       analysis.partnership_totals.map((r, i) => ({ ...r, rank: i + 1 })) as unknown as Record<string, unknown>[])}
                   </div>
