@@ -68,14 +68,22 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
             "ranking": [{"rank": i + 1, "player": r["player"], "subject_id": r["subject_id"],
                          "value": r.get(metric)} for i, r in enumerate(rows[:top])],
         }
-    # highest partnership (from partnership data)
+    # highest partnership (from partnership data). batter1/batter2 are person IDs; resolve to names and
+    # present the pair together ("A & B") so the record names BOTH batsmen, not just the value.
     bp = partnerships.batting_partnerships(conn, filters, limit=top)
+
+    def _pair(row: dict[str, Any]) -> str:
+        return f"{names.get(row['batter1'], 'Unknown')} & {names.get(row['batter2'], 'Unknown')}"
+
     out["highest_partnership"] = {
         "title": "Highest Partnership", "metric": "runs",
         "value": bp[0]["runs"] if bp else None,
-        "holder": ({"runs": bp[0]["runs"], "batter1": bp[0]["batter1"], "batter2": bp[0]["batter2"],
+        "holder": ({"player": _pair(bp[0]), "value": bp[0]["runs"], "tied": False, "known_minimum": False,
+                    "runs": bp[0]["runs"], "batter1": bp[0]["batter1"], "batter2": bp[0]["batter2"],
+                    "batter1_name": names.get(bp[0]["batter1"], "Unknown"),
+                    "batter2_name": names.get(bp[0]["batter2"], "Unknown"),
                     "wicket": bp[0]["wicket"], "match_id": bp[0]["match_id"]} if bp else None),
-        "ranking": bp,
+        "ranking": [{"rank": i + 1, "player": _pair(r), "value": r["runs"]} for i, r in enumerate(bp)],
     }
     return out
 

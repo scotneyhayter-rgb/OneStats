@@ -63,10 +63,19 @@ def test_all_time_records_holder_and_ties(conn):
     batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=rival, batting_position=2,
                          runs=40, balls_faced=50, dismissal_type="bowled", bowler_person_id=bowler)
     bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bowler, legal_balls=30, runs_conceded=25, wickets=6)
+    # a recorded partnership between the two batters, to check the record names BOTH of them
+    conn.execute(text("INSERT INTO partnership(workspace_id, innings_id, wicket_number, runs, "
+                      "player1_person_id, player2_person_id, unbroken) VALUES (:w,:i,1,55,:a,:b,false)"),
+                 {"w": wid, "i": i1, "a": star, "b": rival})
     matches.set_approval(conn, wid, ACTOR, mid, status="approved")
 
     rec = records.all_time_records(conn, wid, {"workspace_id": wid})
     assert rec["most_runs"]["holder"]["player"] == "Star Batter" and rec["most_runs"]["value"] == 150
+    # the highest-partnership record names both batsmen (not just the value)
+    hp = rec["highest_partnership"]
+    assert hp["value"] == 55 and hp["holder"]["player"] == "Star Batter & Rival"
+    assert hp["holder"]["batter1_name"] == "Star Batter" and hp["holder"]["batter2_name"] == "Rival"
+    assert hp["ranking"][0]["player"] == "Star Batter & Rival"
     assert rec["highest_score"]["value"] == 150
     assert rec["most_wickets"]["holder"]["player"] == "Spearhead" and rec["most_wickets"]["value"] == 6
     assert rec["most_five_fors"]["value"] == 1
