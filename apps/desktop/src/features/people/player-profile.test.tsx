@@ -49,7 +49,7 @@ describe("PlayerProfile", () => {
       <Routes><Route path="/people/:personId" element={<PlayerProfile />} /></Routes>
     </MemoryRouter>);
     await screen.findByText("A G Steel");
-    expect(screen.getByText("all-rounder")).toBeTruthy();
+    expect(screen.getByText("All-rounder")).toBeTruthy();   // derived role is title-cased for display
     expect(screen.getByText("Record holder")).toBeTruthy();
     expect(screen.getByText("2× premierships")).toBeTruthy();
     expect(screen.getAllByText("1,850".replace(",", "") === "1850" ? "1850" : "1850").length).toBeGreaterThan(0);

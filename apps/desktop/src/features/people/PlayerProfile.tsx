@@ -36,6 +36,11 @@ function num(v: unknown, dp?: number): string {
   return String(v);
 }
 
+/** Title-case a code/label for display: "all_rounder" -> "All Rounder", "bowler" -> "Bowler". */
+function titleCase(s: string | null | undefined): string {
+  return (s ?? "").split(/[_\s]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
 type ChartPoint = { label: string; value: number | null };
 
 /** A compact, theme-aware bar chart (SVG, no dependency). Null values render as an empty slot, never 0. */
@@ -251,7 +256,7 @@ export function PlayerProfile() {
           <div className="flex flex-col gap-1">
             <h2 className="text-2xl font-semibold">{name}</h2>
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {c?.derived_role && <Badge variant="brand">{c.derived_role}</Badge>}
+              {c?.derived_role && <Badge variant="brand">{titleCase(c.derived_role)}</Badge>}
               {c?.has_captaincy && <Badge variant="muted"><Shield className="mr-1 h-3 w-3" aria-hidden />Captain</Badge>}
               {honourBadges.map((h, i) => (
                 <Badge key={i} variant="success"><Medal className="mr-1 h-3 w-3" aria-hidden />{String(h.honour_type).replace(/_/g, " ")}</Badge>
@@ -312,72 +317,86 @@ export function PlayerProfile() {
         <Card><CardContent className="flex flex-col gap-3">
           {tab === "overview" && (
             <>
-              <h3 className="text-sm font-semibold">Career overview</h3>
-              <p className="text-xs text-muted-foreground">
-                {name} has played {c?.matches ?? 0} recorded match{(c?.matches ?? 0) === 1 ? "" : "es"}
-                {c?.has_batting ? `, scoring ${num(bat.runs)} runs at ${num(bat.average, 2)}` : ""}
-                {c?.has_bowling ? `, taking ${num(bowl.wickets)} wickets at ${num(bowl.average, 2)}` : ""}.
-                {" "}Figures are from approved scorecards; unknown values are never counted as zero.
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {name} has played <span className="font-medium text-foreground">{c?.matches ?? 0}</span> recorded match{(c?.matches ?? 0) === 1 ? "" : "es"}
+                {c?.has_batting ? <>, scoring <span className="font-medium text-foreground">{num(bat.runs)}</span> runs at {num(bat.average, 2)}</> : null}
+                {c?.has_bowling ? <>, taking <span className="font-medium text-foreground">{num(bowl.wickets)}</span> wickets at {num(bowl.average, 2)}</> : null}.
+                <span className="block pt-1 text-xs">Figures are from approved scorecards; unknown values are never counted as zero.</span>
               </p>
               {full?.detail?.biography && (
-                <p className="whitespace-pre-line rounded-[var(--radius-app)] border border-border bg-muted/20 px-3 py-2 text-sm">
+                <p className="whitespace-pre-line border-l-2 border-brand/50 pl-3 text-sm italic leading-relaxed text-foreground/90">
                   {full.detail.biography}
                 </p>
               )}
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(() => {
-                  const span = full?.span;
-                  const fmt = (e: { date: string | null; opposition: string | null } | null | undefined) =>
-                    e?.date ? `${new Date(e.date).toLocaleDateString()}${e.opposition ? ` v ${e.opposition}` : ""}` : null;
-                  const rows: [string, string | null][] = [
-                    ["First match", fmt(span?.first)],
-                    ["Most recent match", fmt(span?.last)],
-                    ["Batting", full?.detail?.batting_style ?? null],
-                    ["Bowling", full?.detail?.bowling_style ?? null],
-                  ];
-                  return rows.map(([label, value]) => (
-                    <div key={label} className="flex items-baseline justify-between gap-2 rounded-[var(--radius-app)] border border-border px-3 py-2 text-sm">
-                      <span className="text-xs text-muted-foreground">{label}</span>
-                      <span className="text-right">{value ?? <span className="italic text-muted-foreground">—</span>}</span>
-                    </div>
-                  ));
-                })()}
-              </div>
+
+              {(() => {
+                const span = full?.span;
+                const fmt = (e: { date: string | null; opposition: string | null } | null | undefined) =>
+                  e?.date ? `${new Date(e.date).toLocaleDateString()}${e.opposition ? ` v ${e.opposition}` : ""}` : null;
+                const facts: [string, string | null][] = [
+                  ["First match", fmt(span?.first)],
+                  ["Most recent match", fmt(span?.last)],
+                  ["Batting", full?.detail?.batting_style ?? null],
+                  ["Bowling", full?.detail?.bowling_style ?? null],
+                ];
+                return (
+                  <section>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Career at a glance</h4>
+                    <dl className="grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
+                      {facts.map(([label, value]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-3 border-b border-border/50 pb-1.5">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+                          <dd className="text-right text-sm font-medium">{value ?? <span className="font-normal italic text-muted-foreground">Unknown</span>}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                );
+              })()}
+
               {(() => {
                 const d = full?.detail;
                 const service = [...(d?.leadership ?? []), ...(d?.recognition ?? []).filter((r) => !/life member/i.test(r.label))];
                 if (service.length === 0) return null;
                 return (
-                  <div className="flex flex-col gap-2">
-                    <h4 className="text-xs font-semibold">Service &amp; Honours</h4>
-                    {service.map((s, i) => (
-                      <div key={i} className="text-sm">
-                        <span className="font-medium">{s.label}</span>
-                        {s.seasons.length > 0 && <span className="text-muted-foreground"> {s.seasons.join(", ")}</span>}
-                      </div>
-                    ))}
-                  </div>
+                  <section>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Service &amp; Honours</h4>
+                    <ul className="flex flex-col gap-1.5">
+                      {service.map((s, i) => (
+                        <li key={i} className="text-sm">
+                          <span className="font-semibold">{s.label}</span>
+                          {s.seasons.length > 0 && <span className="text-muted-foreground"> — {s.seasons.join(", ")}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 );
               })()}
+
               {(full?.records ?? []).length > 0 && (
-                <div className="flex flex-col gap-1">
-                  <h4 className="text-xs font-semibold">Records held</h4>
-                  {full!.records.map((r, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <Trophy className="h-4 w-4 text-brand" aria-hidden />{r.title}
-                      <span className="ml-auto font-semibold tabular-nums">{num(r.value)}</span>
-                      {r.known_minimum && <Badge variant="warning">min.</Badge>}
-                    </div>
+                <section>
+                  <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Records held</h4>
+                  <ul className="flex flex-col divide-y divide-border/50">
+                    {full!.records.map((r, i) => (
+                      <li key={i} className="flex items-center gap-2 py-1.5 text-sm">
+                        <Trophy className="h-4 w-4 shrink-0 text-brand" aria-hidden /><span>{r.title}</span>
+                        <span className="ml-auto font-semibold tabular-nums">{num(r.value)}</span>
+                        {r.known_minimum && <Badge variant="warning">min.</Badge>}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {(full?.badges.calculated.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
+                  {full!.badges.calculated.slice(0, 12).map((b, i) => (
+                    <Badge key={i} variant={b.state === "achieved_confirmed" ? "success" : "warning"}>
+                      <Award className="mr-1 h-3 w-3" aria-hidden />{b.label}
+                    </Badge>
                   ))}
                 </div>
               )}
-              <div className="flex flex-wrap gap-1.5">
-                {full?.badges.calculated.slice(0, 12).map((b, i) => (
-                  <Badge key={i} variant={b.state === "achieved_confirmed" ? "success" : "warning"}>
-                    <Award className="mr-1 h-3 w-3" aria-hidden />{b.label}
-                  </Badge>
-                ))}
-              </div>
             </>
           )}
 
