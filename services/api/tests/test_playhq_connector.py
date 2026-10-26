@@ -76,6 +76,13 @@ def test_missing_api_key_refuses_to_fetch(monkeypatch):
         conn.fetch_new(None)
 
 
+def test_host_resolves_by_tenant():
+    from onestats.domain.autosync.playhq import host_for_tenant
+    assert host_for_tenant("ca") == "https://api.caprod.playhq.com"   # Cricket Australia region
+    assert host_for_tenant("eu") == "https://api.euprod.playhq.com"
+    assert host_for_tenant("au") == "https://api.playhq.com"          # AU/NZ default
+
+
 def test_pagination_follows_cursor():
     seen = {"n": 0}
 

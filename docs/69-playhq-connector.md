@@ -21,6 +21,24 @@ response validation**. Nothing is fabricated: without a key it refuses to fetch.
 - **Catalogue:** PlayHQ is now registered as a live connector with status **`needs_credentials`** (not
   interface-only); AutoSync will use it once a key is configured, and reports clearly if the key is missing.
 
+## Live validation attempt (2026-10-26)
+
+With the credentials from PlayHQ's email entered (API key in the gitignored `.env`, tenant `ca`, org
+`2a9c6833-…887d`), the **region-specific CA host** was identified and fixed: Cricket Australia uses
+**`https://api.caprod.playhq.com`** (not the generic `api.playhq.com`), so the host is now derived from the
+tenant (`host_for_tenant`: ca → caprod, eu → euprod, else api.playhq.com).
+
+A read-only call to `/v1/organisations/{org}/seasons` on the CA host returned **HTTP 401
+`{"message":"Client ID is Invalid"}`** for both `ca` and `CA` tenant casings. The request reached the right
+endpoint and PlayHQ validated the header — so the **connector, host, headers and endpoint are correct**, but
+the **API key is being rejected**. The key value matches the email exactly (verified), so the likely cause
+is that the newly-issued key is **not yet active / not yet enabled for the public API on PlayHQ's side**
+(the email was sent earlier the same day). No further live calls were made (to respect rate limits/ToS).
+
+**Action for the user:** confirm with PlayHQ that the Client ID (`47527697-…`) is active and authorised for
+the public API for this organisation, or re-issue it; once it authenticates, the connector is ready to run
+(the response field mapping should still be validated against the first live responses).
+
 ## What remains (needs your input / a real key)
 
 - **Enter the PlayHQ API key** (`PLAYHQ_API_KEY`, the Client ID UUID). Stored per PlayHQ's docs; OneStats

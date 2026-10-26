@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     playhq_api_key: str | None = Field(default=None)       # x-api-key (Client ID, a UUID) — entered later
     playhq_tenant: str = Field(default="ca")                # x-phq-tenant: cricket = "ca"
     playhq_org_id: str | None = Field(default="2a9c6833-92cb-466b-aea8-16fa8277887d")  # RMCC organisation
-    playhq_base_url: str = Field(default="https://api.playhq.com")
+    # host is region-specific; None → derived from the tenant (CA → api.caprod.playhq.com). Override to pin.
+    playhq_base_url: str | None = Field(default=None)
 
     # --- Auth / sessions ---
     session_ttl_hours: int = Field(default=12)

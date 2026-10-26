@@ -30,6 +30,13 @@ _SEASONS = "/v1/organisations/{org}/seasons"
 _GRADES = "/v1/seasons/{season}/grades"
 _FIXTURE = "/v2/grades/{grade}/fixture"
 
+# region-specific hosts (from PlayHQ's credentials email): AU/NZ default, EU and CA have their own.
+_HOSTS = {"ca": "https://api.caprod.playhq.com", "eu": "https://api.euprod.playhq.com"}
+
+
+def host_for_tenant(tenant: str) -> str:
+    return _HOSTS.get((tenant or "").lower(), "https://api.playhq.com")
+
 
 class PlayHQClient:
     """Thin httpx wrapper: authenticated GET + cursor pagination. Imported lazily so the module loads
@@ -151,7 +158,8 @@ class PlayHQConnector:
             raise NotImplementedError("playhq: PLAYHQ_API_KEY not configured — enter the PlayHQ API key to enable live sync")
         if not s.playhq_org_id:
             raise NotImplementedError("playhq: organisation id not configured")
-        return PlayHQClient(api_key=s.playhq_api_key, tenant=s.playhq_tenant, base_url=s.playhq_base_url)
+        base = s.playhq_base_url or host_for_tenant(s.playhq_tenant)
+        return PlayHQClient(api_key=s.playhq_api_key, tenant=s.playhq_tenant, base_url=base)
 
     def _org_id(self) -> str:
         return get_settings().playhq_org_id or ""
