@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type Competition, type StatColumn, type StatReport } from "../../lib/api";
+import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 const REPORTS = [
@@ -43,6 +44,8 @@ export function Statistics() {
   const [competitionId, setCompetitionId] = useState("");
   const [split, setSplit] = useState("");
   const [venue, setVenue] = useState("");
+  const [format, setFormat] = useState("");
+  const [formats, setFormats] = useState<string[]>([]);
   const [minThreshold, setMinThreshold] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
@@ -56,6 +59,7 @@ export function Statistics() {
   }, [current]);
   useEffect(() => {
     if (current) api.listCompetitions(current.id).then(setCompetitions).catch(() => {});
+    if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
     loadSaved();
   }, [current, loadSaved]);
 
@@ -68,6 +72,7 @@ export function Statistics() {
     setCompetitionId(String(cfg.competition_id ?? ""));
     setSplit(String(cfg.split ?? ""));
     setVenue(String(cfg.venue ?? ""));
+    setFormat(String(cfg.format ?? ""));
     setMinThreshold(String(cfg.min_runs ?? cfg.min_wickets ?? cfg.min_eligible ?? ""));
   };
 
@@ -76,7 +81,7 @@ export function Statistics() {
     const name = window.prompt("Save this report as:");
     if (!name) return;
     const config: Record<string, unknown> = { competition_id: competitionId || undefined,
-      split: split || undefined, venue: venue || undefined };
+      split: split || undefined, venue: venue || undefined, format: format || undefined };
     if (minThreshold) {
       if (report === "batting") config.min_runs = Number(minThreshold);
       else if (report === "bowling") config.min_wickets = Number(minThreshold);
@@ -104,6 +109,7 @@ export function Statistics() {
   const query = useMemo(() => {
     const q: Record<string, string | number | undefined> = {
       competition_id: competitionId || undefined, split: split || undefined, venue: venue || undefined,
+      format: format || undefined,
     };
     if (minThreshold) {
       if (report === "batting") q.min_runs = Number(minThreshold);
@@ -111,7 +117,7 @@ export function Statistics() {
       else if (report === "captaincy") q.min_eligible = Number(minThreshold);
     }
     return q;
-  }, [competitionId, split, venue, minThreshold, report]);
+  }, [competitionId, split, venue, format, minThreshold, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -132,8 +138,7 @@ export function Statistics() {
   const exportPdf = async () => {
     if (!current) return;
     try {
-      const url = await api.statsReportPdfUrl(current.id, report, query);
-      window.open(url, "_blank");
+      openBlobUrl(await api.statsReportPdfUrl(current.id, report, query), `${report}.pdf`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "PDF export failed.");
     }
@@ -230,6 +235,15 @@ export function Statistics() {
                 <option value="away">Away</option>
               </Select>
             </label>
+            {formats.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Format</span>
+                <Select value={format} onChange={(e) => setFormat(e.target.value)} className="w-44">
+                  <option value="">All formats</option>
+                  {formats.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
+                </Select>
+              </label>
+            )}
             {(report === "batting" || report === "bowling" || report === "captaincy") && (
               <label className="flex flex-col gap-1">
                 <span className="text-muted-foreground">
