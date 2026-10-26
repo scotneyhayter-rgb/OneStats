@@ -154,8 +154,35 @@ super-admin` then uses it to restore/reset a Super Admin (forcing a password cha
 the server-side token file, recovery **cannot be triggered remotely** and never bypasses authentication or
 workspace isolation.
 
+## 31.8 Deferred connectivity, TLS, QR, hosting & remote-upload requirements (added 2026-10-26)
+
+Recorded per the user's direction: OneStats will eventually support **both** secure local-network (LAN)
+and secure **remote** uploads/access, but the development server must **never** be exposed to the public
+internet and insecure network access must never be enabled. The following are approved **requirements**,
+each gated by a decision and/or real-hardware testing — none may claim "done" until the artifact exists and
+is verified.
+
+| # | Requirement | Depends on | Status |
+|---|---|---|---|
+| D-1 | **Packaged backend + PostgreSQL sidecar** so the installer sets up a standalone/server PC with no manual Python/PG/Node (§31.3a) | build-engineering | Designed (§31.3a); **not in the bundle config**; outstanding |
+| D-2 | **Build the installer** (`tauri build` → `.exe`/`.msi`), checksums, assemble USB | Windows build machine | **Not built**; steps in `OneStats-USB-Installation/` |
+| D-3 | **LAN connectivity**: server binds the LAN interface for clients; firewall/profile guidance; discovery of the server address | D-1/D-2 | Design recorded; LAN binding **not enabled by default**; outstanding |
+| D-4 | **HTTPS/TLS on the LAN** (self-signed/enterprise cert install + trust) so client↔server traffic is encrypted; the dev server stays loopback-only until this exists | D-3 | Required; **not implemented**; outstanding |
+| D-5 | **Mobile-upload LAN binding** (deliverable 20a): the upload endpoint is exposed on the LAN **only while a pairing session is active**, over TLS, never on the public internet | D-3/D-4 | Token/session mechanism done; LAN exposure + TLS outstanding |
+| D-6 | **QR-code presentation** of the pairing URL on the desktop (token stays local; no external QR service) | D-5 | Pairing URL + token returned; **QR rendering not built** |
+| D-7 | **Hosted portal reachability** (Phase 15/16): static hosting **vs** a central OneStats service | **hosting decision (paid)** | Edge/portal built; reachability **pending decision**; no cost without approval |
+| D-8 | **Secure remote uploads/access** via an authenticated remote service (VPN/secure tunnel or a hosted service) — explicitly a **later release**, never the dev server | D-4/D-7 + decision | Designed as later release (20a §20a.2/§20a.9); outstanding |
+| D-9 | **Code-signing certificate** so installers aren't flagged by SmartScreen | **certificate purchase (paid)** | Unsigned; **pending approval**; no purchase without it |
+
+Security invariants for all of the above: the database is never on the public internet; LAN/remote
+exposure is TLS-encrypted and, for uploads, session-gated and revocable; tokens are hashed at rest and
+never logged; uploads enter the review queue (never auto-published). These requirements are mirrored in the
+consolidated acceptance register ([62](62-deferred-acceptance-register.md)).
+
 ## 31.5 Phasing
 
 Foundation built in **Phase 2** (Windows Desktop & Server Foundation); server/client
 split and remote access hardened through Phase 17 (Release). The production installer & USB distribution
-(§31.6) and the user-management/first-login workflow (§31.7) are mandatory Phase 17 deliverables.
+(§31.6) and the user-management/first-login workflow (§31.7) are mandatory Phase 17 deliverables. The
+deferred connectivity/TLS/QR/hosting/remote-upload requirements (§31.8) are tracked for release engineering
+and the hosting/signing decisions.

@@ -1,0 +1,90 @@
+===========================================================================
+ OneStats — How to install from a USB stick  (plain-English guide)
+===========================================================================
+
+NOTE: This guide applies ONCE the installer file has been built and placed
+in the PLACE-INSTALLER-HERE folder (see HOW-TO-BUILD-THE-INSTALLER.txt).
+Until then there is nothing to double-click.
+
+-------------------------------------------------------------------
+STEP 1 — Prepare the USB stick
+-------------------------------------------------------------------
+
+* Any ordinary USB stick with ~1 GB free is enough for the app installer.
+* Formatting: use exFAT (recommended) or NTFS. Both handle large files and
+  are read by Windows 10/11. Avoid FAT32 only if a file is larger than 4 GB.
+* You do NOT need to make the USB "bootable". OneStats installs from inside
+  Windows, not by starting the computer from the USB.
+* To format (only if you want a clean stick): in File Explorer, right-click
+  the USB drive -> Format -> choose exFAT -> Start. (This erases the stick.)
+
+-------------------------------------------------------------------
+STEP 2 — Put OneStats on the USB
+-------------------------------------------------------------------
+
+Copy the ENTIRE "OneStats-USB-Installation" folder onto the USB stick
+(not just one file), so the installer and these guides travel together.
+
+-------------------------------------------------------------------
+STEP 3 — Install on another Windows computer
+-------------------------------------------------------------------
+
+1. Plug the USB into the other computer and open it in File Explorer.
+2. Open the OneStats-USB-Installation\PLACE-INSTALLER-HERE folder.
+3. Double-click the OneStats Setup file (OneStats_..._x64-setup.exe).
+4. Windows may show a blue "Windows protected your PC" box because the
+   installer is not code-signed yet. Click "More info" -> "Run anyway".
+   (Code signing needs a paid certificate - a decision still pending.)
+5. Follow the prompts and finish. OneStats is added to the Start menu.
+
+-------------------------------------------------------------------
+STEP 4 — First run: which kind of computer is this?
+-------------------------------------------------------------------
+
+When OneStats first opens it asks how to connect. You can change this
+later under Settings -> Server Connection.
+
+* "This computer (standalone)" - everything is on this one PC.
+  (Requires the database/backend to be present - see the limitation note
+   in HOW-TO-BUILD-THE-INSTALLER.txt; today this needs the packaged
+   database, which the current installer does not yet include.)
+
+* "Connect to a server" - this PC is an ADDITIONAL computer that uses the
+  data on your main OneStats server.
+     - Enter the main server's address (ask whoever set up the server;
+       it looks like  http://SERVER-NAME:8000  on your local network).
+     - Click "Test connection", then "Save & reconnect".
+
+-------------------------------------------------------------------
+STEP 5 — Logging in with your credentials
+-------------------------------------------------------------------
+
+* On a brand-new MAIN SERVER, the very first screen creates the Super
+  Administrator using the one-time setup code the server generated.
+* Everyone else logs in with the username and temporary password an
+  administrator gave them. On first login OneStats forces you to set your
+  own new password before anything else loads.
+
+-------------------------------------------------------------------
+WORKING WITHOUT INTERNET
+-------------------------------------------------------------------
+
+* The installer is designed for offline use (it carries the Microsoft
+  WebView2 component with it), so installing does not need the internet.
+* "Connect to a server" works over your LOCAL network with no internet.
+* A fully self-contained "standalone" PC also needs the bundled database;
+  see the limitation note above.
+
+-------------------------------------------------------------------
+UPDATING LATER WITHOUT LOSING DATA
+-------------------------------------------------------------------
+
+* To update, run the NEWER installer over the existing OneStats.
+* OneStats takes a BACKUP before making any database change, and database
+  updates only move forward - it never overwrites or erases your existing
+  database without an explicit, recoverable step.
+* Uninstalling the app (Windows Settings -> Apps) does NOT delete your
+  database or backups unless you explicitly confirm.
+
+(These upgrade protections are built into the design; upgrading from a real
+USB on a real second PC has not yet been tested on hardware.)

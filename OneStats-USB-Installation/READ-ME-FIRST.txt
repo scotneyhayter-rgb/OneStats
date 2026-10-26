@@ -1,0 +1,66 @@
+===========================================================================
+ OneStats — USB Installation folder  (READ ME FIRST)
+===========================================================================
+
+PLEASE READ THIS FIRST. It is written in plain English.
+
+-------------------------------------------------------------------
+IMPORTANT — THE INSTALLER HAS NOT BEEN BUILT YET
+-------------------------------------------------------------------
+
+As of 26 October 2026, the OneStats Windows installer (the "Setup"
+program you would double-click to install OneStats) DOES NOT EXIST yet
+on this computer. It has not been generated.
+
+We checked the actual project files and confirmed:
+
+  * There is NO finished installer file (no OneStats-Setup.exe and no
+    .msi file) anywhere in the project.
+  * Only a developer "debug" build of the app shell exists. That is not
+    an installer and cannot be given to other people.
+
+So this folder CANNOT yet be copied to a USB stick to install OneStats
+on another computer. There is nothing to install with yet.
+
+This folder currently contains ONLY instructions:
+
+  * READ-ME-FIRST.txt ................ this file
+  * INSTALL-GUIDE.txt ............... how to install, once the installer
+                                      file has been built and placed here
+  * HOW-TO-BUILD-THE-INSTALLER.txt .. the exact steps a developer (or you,
+                                      following them carefully) run ONCE on
+                                      a Windows build computer to create the
+                                      installer file
+  * PLACE-INSTALLER-HERE\ ........... the empty folder where the finished
+                                      installer file must be put after it
+                                      is built
+
+-------------------------------------------------------------------
+WHAT STILL HAS TO HAPPEN BEFORE A USB WILL WORK
+-------------------------------------------------------------------
+
+1. The installer must be BUILT on a Windows computer that has the build
+   tools installed (see HOW-TO-BUILD-THE-INSTALLER.txt).
+
+2. IMPORTANT LIMITATION: in its current form, the installer that those
+   steps produce installs the OneStats APP ONLY. It does NOT yet install
+   the database (PostgreSQL) or the background service automatically.
+   That "installs everything by itself" behaviour is designed but has not
+   been added to the build yet. Until it is, OneStats on a brand-new
+   standalone PC still needs those parts set up separately, OR the PC must
+   connect to an existing OneStats server that already has them.
+
+3. Once the installer genuinely installs everything (or once you accept
+   the app-only installer for "connect to a server" use), the finished
+   installer file is copied into PLACE-INSTALLER-HERE\, and THEN this
+   whole folder can be copied onto a USB stick.
+
+-------------------------------------------------------------------
+NOTHING HERE WILL CHANGE OR DELETE YOUR DATA
+-------------------------------------------------------------------
+
+These are text instructions only. Opening or copying this folder does
+nothing to any OneStats database.
+
+Questions 1-12 you asked are answered in full in the message from Claude
+that accompanies this folder.

@@ -1,8 +1,16 @@
 # Phase 17 — Windows, Website & Mobile Release: Implementation Report
 
-**Status: IMPLEMENTED (app-level release engineering + installer configuration & artifacts) — AWAITING
-COMBINED MANUAL ACCEPTANCE (deferred, now due: this is the last development phase before acceptance).**
-Not recorded as formally user-accepted.
+**Status: IMPLEMENTED (app-level release engineering + installer *configuration*) — INSTALLER NOT YET BUILT;
+AWAITING COMBINED MANUAL ACCEPTANCE (deferred, now due: this is the last development phase before
+acceptance).** Not recorded as formally user-accepted.
+
+> **Verified build status (26 Oct 2026):** No installer artifact has been generated. There is no
+> `.exe`/`.msi` and no `target/release/bundle/` — only a developer *debug* build of the Rust shell. The
+> bundle configuration also does **not** yet package PostgreSQL or the FastAPI backend (no `resources` /
+> `externalBin` / sidecar in `tauri.conf.json`), so a built installer today would install the **app only**
+> (fine for a connect-to-server *client*, not yet a self-contained *standalone/server* install). Building
+> the installer, and completing the §31.3a packaged-sidecar work so it installs the database/backend, are
+> outstanding. See `OneStats-USB-Installation/` for a plain-English guide and the exact build steps.
 
 Phase 17 hardens and packages OneStats for release (deliverable 31 §31.6). The parts that are **software**
 are built and tested; the parts that are **build/release-engineering or real-hardware** (actually building,

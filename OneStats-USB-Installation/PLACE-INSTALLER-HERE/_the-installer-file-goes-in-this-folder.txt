@@ -1,0 +1,15 @@
+This folder is intentionally empty for now.
+
+After the installer is built (see ..\HOW-TO-BUILD-THE-INSTALLER.txt), copy
+the finished files into THIS folder:
+
+    OneStats_1.0.0-beta.1_x64-setup.exe     (the NSIS Setup program)
+    OneStats_1.0.0-beta.1_x64_en-US.msi     (optional, the .msi version)
+    SHA256SUMS.txt                          (the integrity checksums)
+
+Once those files are here, the whole OneStats-USB-Installation folder can
+be copied onto a USB stick and used to install OneStats on another PC.
+
+As of 26 October 2026 these files DO NOT exist yet - the installer has not
+been built. Do not distribute this folder as an installer until the files
+above are present.

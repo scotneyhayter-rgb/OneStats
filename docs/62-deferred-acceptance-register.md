@@ -184,6 +184,27 @@ Manual acceptance (DEFERRED):
 
 Automated coverage: `tests/test_stats_engine.py` (2 R-3 tests). Backend regression **637 passed, 2 skipped**.
 
+## Deferred connectivity, TLS, QR, hosting, installer build & remote upload (added 2026-10-26 — see [31](31-windows-deployment.md) §31.8)
+
+Approved requirements for secure LAN **and** secure remote operation, each gated by a build step, a
+real-device test, and/or a paid decision. None is "done" until its artifact exists and is verified; the dev
+server must never be exposed to the public internet and insecure access is never enabled.
+
+| # | Requirement / test | Blocked by | Expected |
+|---|---|---|---|
+| DEP1 | Build the installer (`tauri build`) → `.exe`/`.msi`, checksums | Windows build machine | Installer artifact exists (today it does **not**); see `OneStats-USB-Installation/` |
+| DEP2 | Packaged PostgreSQL + backend sidecar (§31.3a) | build-engineering | A standalone/server install needs no manual Python/PG/Node (today the bundle is **app-only**) |
+| DEP3 | LAN connectivity for clients | DEP1/DEP2 | Clients reach the server over the LAN; server address discoverable; firewall guidance |
+| DEP4 | HTTPS/TLS on the LAN | DEP3 | client↔server traffic encrypted; dev server stays loopback-only until TLS exists |
+| DEP5 | Mobile-upload LAN exposure (20a) | DEP3/DEP4 | Upload endpoint on the LAN **only during a pairing session**, over TLS, never public |
+| DEP6 | QR-code presentation of the pairing URL | DEP5 | Desktop shows a scannable QR (token stays local; no external QR service) |
+| DEP7 | Hosted portal reachability | **hosting decision (paid)** | Public portal reachable (static vs central); no recurring cost without approval |
+| DEP8 | Secure remote uploads/access (later release) | DEP4/DEP7 + decision | Authenticated remote path (VPN/tunnel or hosted service); never the dev server |
+| DEP9 | Code-signing the installer | **certificate (paid)** | No SmartScreen warning; no purchase without approval |
+
+These are design-complete where noted but **not implemented/built/tested**; they do not block the
+software-only acceptance below.
+
 ## THE CONSOLIDATED ACCEPTANCE PROGRAMME (assembled 2026-10-26, after Phase 17)
 
 All development through Phase 17 is complete. The outstanding **manual** tests are organised below into one
@@ -201,15 +222,19 @@ blocks above (run those rows); cross-cutting areas add the extra checks listed.
 | 7 | Website publishing & public URLs | **PUB1–PUB10** | RMCC External-URL (hosting-gated); privacy |
 | 8 | Mobile portal | **MOB1–MOB8** + member view **MP1–MP4** | Responsive on a real phone; read-only; members-only privacy; Ask-on-portal |
 | 8a | Mobile media upload | **MU1–MU7** | QR-paired short-lived tokens; review-queue; isolation; never auto-published |
-| 9 | Windows install / upgrade / uninstall | **INS1–INS9** | USB install; upgrade preserves data; signing decision |
+| 9 | Windows install / upgrade / uninstall | **INS1–INS9** + **DEP1–DEP6, DEP9** | Build the installer first (DEP1) + sidecar (DEP2); USB install; upgrade preserves data; TLS/QR; signing decision |
 | 10 | Backup, restoration & disaster recovery | Phase 11 test 18 + a full restore drill | Pre-upgrade backup; recover from a backup |
 | 11 | Permissions, security & workspace isolation | Phase isolation checks + a cross-workspace pass + **INT8–INT10, INT12** | DB-level RLS (automated suite green); role-scoped views; encrypted credentials; SSRF guard |
 | 11a | API & Integrations management | **INT1–INT12** | Self-service credentials; secrets never shown; test-before-trust; audited |
 | 12 | Accessibility & UX | Keyboard, focus, contrast, scaling across key screens | WCAG AA target |
 | 13 | Performance & stability | Association-scale report + large PDF + repeated use | Startup/shutdown; reconnect; interrupted-op recovery |
 
-**Blocking decisions before public/production release** (both paid; no cost without user approval):
-public **hosting** (static vs central service), and the **code-signing certificate**.
+**Blocking decisions before public/production release:** public **hosting** (static vs central service,
+paid) and the **code-signing certificate** (paid) — no cost without user approval. **Build prerequisites**
+(not paid, but not yet done): **build the installer** (DEP1) and complete the **PostgreSQL + backend
+sidecar** packaging (DEP2) before the USB/standalone/server install experience is real; **LAN + HTTPS/TLS**
+(DEP3/DEP4) and **mobile-upload LAN exposure + QR** (DEP5/DEP6) for secure on-network use; **secure remote
+upload/access** (DEP8) is a later release. The installer is **not built** today (verified 26 Oct 2026).
 
 **External dependencies** (not application defects): OneVault API (unverified); **PlayHQ connector now
 implemented** (status `needs_credentials`) — pending the **API key** and **live cricket-v2 response

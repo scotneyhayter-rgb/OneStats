@@ -1,0 +1,94 @@
+===========================================================================
+ How to BUILD the OneStats Windows installer  (one-time, on a build PC)
+===========================================================================
+
+This produces the installer file (OneStats-Setup.exe / .msi). You only
+need to do this ONCE per release, on a Windows computer set up for
+building. It is a technical step; follow it exactly, or give this file to
+whoever maintains OneStats.
+
+-------------------------------------------------------------------
+A. WHAT THE BUILD COMPUTER NEEDS (one-time setup)
+-------------------------------------------------------------------
+
+  1. Windows 10 or 11 (64-bit).
+  2. Node.js 20+               -> https://nodejs.org  (LTS)
+  3. Rust (stable)            -> https://www.rust-lang.org/tools/install
+  4. The Visual Studio C++ "Desktop development with C++" build tools
+     (the Tauri prerequisite) -> https://tauri.app/start/prerequisites/
+  Tauri downloads the NSIS installer tool automatically the first time.
+
+-------------------------------------------------------------------
+B. BUILD THE APP INSTALLER
+-------------------------------------------------------------------
+
+Open PowerShell and run:
+
+    cd C:\OneProjects\OneStats\apps\desktop
+    npm install
+    npm run tauri build
+
+This compiles the app in "release" mode (it can take 10-20 minutes the
+first time) and then creates the installer.
+
+-------------------------------------------------------------------
+C. WHERE THE FINISHED INSTALLER APPEARS
+-------------------------------------------------------------------
+
+After a successful build, the installer files are written to:
+
+    C:\OneProjects\OneStats\apps\desktop\src-tauri\target\release\bundle\
+
+    -> nsis\OneStats_1.0.0-beta.1_x64-setup.exe      (the Setup .exe)
+    -> msi\OneStats_1.0.0-beta.1_x64_en-US.msi        (the .msi version)
+
+(The exact names follow the version 1.0.0-beta.1. If the version changes,
+the numbers in the filename change too.)
+
+-------------------------------------------------------------------
+D. MAKE CHECKSUMS (so people can verify the file is intact)
+-------------------------------------------------------------------
+
+    cd C:\OneProjects\OneStats
+    powershell -ExecutionPolicy Bypass -File scripts\compute-installer-checksums.ps1
+
+This creates SHA256SUMS.txt listing a fingerprint for each installer.
+
+-------------------------------------------------------------------
+E. ASSEMBLE THE USB FOLDER
+-------------------------------------------------------------------
+
+Copy the built installer(s) and SHA256SUMS.txt into:
+
+    C:\OneProjects\OneStats\OneStats-USB-Installation\PLACE-INSTALLER-HERE\
+
+Then the whole OneStats-USB-Installation folder is ready to copy to a USB.
+
+===========================================================================
+ IMPORTANT LIMITATION (do not skip)
+===========================================================================
+
+The build above produces an installer for the OneStats APP ONLY.
+
+It does NOT yet bundle:
+  * PostgreSQL (the database engine), or
+  * the OneStats backend service.
+
+The project's bundle settings (apps\desktop\src-tauri\tauri.conf.json)
+contain no "resources", "externalBin" or sidecar entries for those parts.
+The "installer sets up everything, including the database, with no manual
+steps" experience is DESIGNED (deliverable 31 section 31.3a, the packaged-
+sidecar plan) but has NOT been added to the build configuration.
+
+Consequences until that packaging work is done:
+
+  * An app-only installer is fine for "ADDITIONAL CLIENT" PCs that connect
+    to an existing OneStats server (the server already has the database).
+  * It is NOT yet enough for a true "STANDALONE" or "MAIN SERVER" PC to run
+    with no other setup, because the database engine and backend are not
+    installed by it.
+
+So: building the installer is step one. Packaging PostgreSQL + the backend
+into it (the sidecar work) is a separate development task that must be done
+before the "install everything on one PC from USB, offline" promise is real.
+This is flagged for a decision in Claude's accompanying message.
