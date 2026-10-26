@@ -1,50 +1,82 @@
 // OneStats desktop shell.
 //
-// In the standalone Windows build, the app launches the packaged backend as a *sidecar*
-// (onestats-server.exe) on startup and terminates it on exit, so the user never starts Python,
-// FastAPI or a terminal. The backend binds to loopback only and brings up the local database and
-// migrations itself (see services/api/onestats/standalone/launcher.py).
+// In the standalone Windows build, the app launches the packaged backend (onestats-server.exe, sitting
+// next to this app binary) on startup and stops it on exit, so the user never starts Python, FastAPI or
+// a terminal. The backend binds to loopback only and brings up the local database and migrations itself
+// (see services/api/onestats/standalone/launcher.py).
 //
-// In development the sidecar binary is not bundled; spawning is skipped and the app talks to the
-// separately-running dev backend, so `npm run tauri dev` keeps working unchanged.
+// We spawn it directly with std::process::Command (no shell-plugin scope to misconfigure) and record the
+// outcome to %LOCALAPPDATA%/OneStats/logs/sidecar.log for diagnostics. In development the sidecar binary
+// is not present next to the dev exe, so spawning is skipped and the app uses the separately-running dev
+// backend — `npm run tauri dev` keeps working unchanged.
 
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Child;
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
 
-/// Holds the backend sidecar child so it can be shut down cleanly when the app exits.
-struct BackendProcess(Mutex<Option<CommandChild>>);
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Holds the backend child process so it can be shut down cleanly when the app exits.
+struct BackendProcess(Mutex<Option<Child>>);
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+fn log_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("LOCALAPPDATA").or_else(|| std::env::var_os("APPDATA"))?;
+    let dir = PathBuf::from(base).join("OneStats").join("logs");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+fn sidecar_log(line: &str) {
+    if let Some(dir) = log_dir() {
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(dir.join("sidecar.log")) {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+}
+
+/// Resolve the packaged backend exe sitting next to this application binary.
+fn sidecar_path() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let candidate = dir.join("onestats-server.exe");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 fn spawn_backend(app: &tauri::AppHandle) {
-    match app.shell().sidecar("onestats-server") {
-        Ok(cmd) => match cmd.spawn() {
-            Ok((mut rx, child)) => {
-                if let Some(state) = app.try_state::<BackendProcess>() {
-                    *state.0.lock().unwrap() = Some(child);
-                }
-                // Drain the backend's output so the pipe never blocks; useful for diagnostics.
-                tauri::async_runtime::spawn(async move {
-                    while let Some(event) = rx.recv().await {
-                        match event {
-                            CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
-                                eprint!("[onestats-server] {}", String::from_utf8_lossy(&bytes));
-                            }
-                            _ => {}
-                        }
-                    }
-                });
+    let path = match sidecar_path() {
+        Some(p) => p,
+        None => {
+            sidecar_log("sidecar not found next to app binary (dev mode?) — skipping spawn");
+            return;
+        }
+    };
+    let mut cmd = std::process::Command::new(&path);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    match cmd.spawn() {
+        Ok(child) => {
+            sidecar_log(&format!("started backend sidecar: {} (pid {})", path.display(), child.id()));
+            if let Some(state) = app.try_state::<BackendProcess>() {
+                *state.0.lock().unwrap() = Some(child);
             }
-            Err(e) => eprintln!("OneStats: failed to start backend sidecar: {e}"),
-        },
-        // No bundled sidecar (development) — the app uses the separately-running dev backend.
-        Err(e) => eprintln!("OneStats: backend sidecar not bundled (dev mode): {e}"),
+        }
+        Err(e) => sidecar_log(&format!("FAILED to start backend sidecar {}: {}", path.display(), e)),
     }
 }
 
@@ -52,7 +84,6 @@ fn spawn_backend(app: &tauri::AppHandle) {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
             spawn_backend(app.handle());
@@ -63,10 +94,10 @@ pub fn run() {
         .expect("error while running tauri application");
 
     app.run(|app_handle, event| {
-        // On exit, stop the backend sidecar so no orphaned process is left running.
+        // On exit, stop the backend so no orphaned process is left running.
         if let RunEvent::ExitRequested { .. } = event {
             if let Some(state) = app_handle.try_state::<BackendProcess>() {
-                if let Some(child) = state.0.lock().unwrap().take() {
+                if let Some(mut child) = state.0.lock().unwrap().take() {
                     let _ = child.kill();
                 }
             }
