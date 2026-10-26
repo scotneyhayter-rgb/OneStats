@@ -236,6 +236,28 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
     finally { setBusy(false); }
   };
 
+  const removeAttr = async (kind: "number" | "leadership" | "recognition", attrId: string) => {
+    try {
+      if (kind === "number") await api.deletePersonNumber(workspaceId, personId, attrId);
+      else if (kind === "leadership") await api.deletePersonLeadership(workspaceId, personId, attrId);
+      else await api.deletePersonRecognition(workspaceId, personId, attrId);
+      onChanged("Removed."); await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove."); }
+  };
+
+  const attrChips = (kind: "number" | "leadership" | "recognition", items: any[], label: (x: any) => string) => (
+    <div className="flex flex-wrap gap-1 text-sm">
+      {(items ?? []).length === 0 ? <span className="text-muted-foreground">—</span> :
+        (items ?? []).map((it: any) => (
+          <span key={it.id} className="inline-flex items-center gap-1 rounded-[var(--radius-app)] border border-border px-1.5 py-0.5 text-xs">
+            {label(it)}{it.season_label ? ` (${it.season_label})` : ""}
+            {canManage && <button type="button" aria-label="Remove" className="text-muted-foreground hover:text-danger"
+              onClick={() => void removeAttr(kind, it.id)}>×</button>}
+          </span>
+        ))}
+    </div>
+  );
+
   const runConfirm = async () => {
     if (!confirm) return;
     setBusy(true);
@@ -303,19 +325,19 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
           <section className="grid gap-3 sm:grid-cols-3">
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Numbers</h3>
-              <div className="text-sm">{(view?.numbers ?? []).map((n: any) => n.number ?? "?").join(", ") || "—"}</div>
+              {attrChips("number", view?.numbers ?? [], (n) => String(n.number ?? "?"))}
               {canManage && <AttrAdder kind="number" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Leadership</h3>
-              <div className="text-sm">{(view?.leadership ?? []).map((l: any) => humanise(l.role)).join(", ") || "—"}</div>
+              {attrChips("leadership", view?.leadership ?? [], (l) => humanise(l.role))}
               {canManage && <AttrAdder kind="leadership" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>
             <div>
               <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Recognition</h3>
-              <div className="text-sm">{(view?.recognition ?? []).map((r: any) => humanise(r.recognition_type)).join(", ") || "—"}</div>
+              {attrChips("recognition", view?.recognition ?? [], (r) => r.title || humanise(r.recognition_type))}
               {canManage && <AttrAdder kind="recognition" workspaceId={workspaceId} personId={personId} orgs={orgs}
                 onDone={(m) => { onChanged(m); void load(); }} />}
             </div>

@@ -226,6 +226,33 @@ def add_recognition(workspace_id: UUID, person_id: UUID, body: RecognitionAdd, s
         return {"recognition_id": str(rid)}
 
 
+@router.delete("/{person_id}/numbers/{attr_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_number(workspace_id: UUID, person_id: UUID, attr_id: UUID, settings: SettingsDep, ctx: PCtx) -> None:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            profiles.delete_attribute(conn, workspace_id, str(ctx.user["id"]), person_id, "number", attr_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.delete("/{person_id}/leadership/{attr_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_leadership(workspace_id: UUID, person_id: UUID, attr_id: UUID, settings: SettingsDep, ctx: PCtx) -> None:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            profiles.delete_attribute(conn, workspace_id, str(ctx.user["id"]), person_id, "leadership", attr_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.delete("/{person_id}/recognition/{attr_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_recognition(workspace_id: UUID, person_id: UUID, attr_id: UUID, settings: SettingsDep, ctx: PCtx) -> None:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            profiles.delete_attribute(conn, workspace_id, str(ctx.user["id"]), person_id, "recognition", attr_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
 @router.get("/{person_id}/photos")
 def list_photos(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: PCtx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

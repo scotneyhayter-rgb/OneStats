@@ -1295,6 +1295,12 @@ export const api = {
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/leadership`, { method: "POST", body }),
   addPersonRecognition: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/recognition`, { method: "POST", body }),
+  deletePersonNumber: (w: string, id: string, attrId: string) =>
+    request<void>(`/api/v1/workspaces/${w}/people/${id}/numbers/${attrId}`, { method: "DELETE" }),
+  deletePersonLeadership: (w: string, id: string, attrId: string) =>
+    request<void>(`/api/v1/workspaces/${w}/people/${id}/leadership/${attrId}`, { method: "DELETE" }),
+  deletePersonRecognition: (w: string, id: string, attrId: string) =>
+    request<void>(`/api/v1/workspaces/${w}/people/${id}/recognition/${attrId}`, { method: "DELETE" }),
 
   // affiliations
   listAffiliations: (w: string, opts: { person_id?: string; organisation_id?: string } = {}) =>

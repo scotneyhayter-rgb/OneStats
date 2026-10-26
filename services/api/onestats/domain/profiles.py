@@ -213,6 +213,25 @@ def list_recognition(conn: Connection, person_id: UUID) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+_ATTR_TABLE = {"number": "person_number", "leadership": "person_leadership", "recognition": "person_recognition"}
+
+
+def delete_attribute(conn: Connection, workspace_id: UUID, actor: str, person_id: UUID, kind: str,
+                     attr_id: UUID) -> None:
+    """Delete one squad number / leadership / recognition entry (so they can be corrected as years change
+    or new information comes in). Scoped to the workspace and person; audited."""
+    table = _ATTR_TABLE.get(kind)
+    if table is None:
+        raise ValueError("invalid_kind")
+    res = conn.execute(
+        text(f"DELETE FROM {table} WHERE id = :id AND workspace_id = :w AND person_id = :p RETURNING id"),
+        {"id": attr_id, "w": workspace_id, "p": person_id}).first()
+    if res is None:
+        raise ValueError("not_found")
+    audit.write_audit(conn, workspace_id, actor, f"person_{kind}.delete", entity="person",
+                      entity_id=str(person_id), after={"deleted": str(attr_id)})
+
+
 # --------------------------------------------------------------------------- photos (metadata)
 
 
