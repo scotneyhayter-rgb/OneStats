@@ -279,8 +279,13 @@ export function PlayerProfile() {
           {c?.has_batting && statCard("Highest", bat.highest_score)}
           {c?.has_bowling && statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
           {c?.has_bowling && statCard("Bowl average", bowl.average, 2)}
-          {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_outs ?? 0) > 0 &&
-            statCard("Ct / St / RO", `${field.catches ?? 0} / ${field.stumpings ?? 0} / ${field.run_outs ?? 0}`)}
+          {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_outs ?? 0) > 0 && (
+            <>
+              {statCard("Catches", field.catches ?? 0)}
+              {statCard("Stumpings", field.stumpings ?? 0)}
+              {statCard("Run outs", field.run_outs ?? 0)}
+            </>
+          )}
           {c?.has_captaincy && statCard("Captained", capt.captained)}
         </div>
 
