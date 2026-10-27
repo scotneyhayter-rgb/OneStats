@@ -98,7 +98,7 @@ def list_matches(
         params["dt"] = date_to
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY match_date NULLS FIRST, created_at"
+    sql += " ORDER BY match_date DESC NULLS LAST, created_at DESC"
     return [dict(r) for r in conn.execute(text(sql), params).mappings().all()]
 
 
