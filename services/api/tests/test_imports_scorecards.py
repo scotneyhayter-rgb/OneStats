@@ -198,6 +198,92 @@ def test_import_auto_generates_partnerships_from_fow(conn):
     assert conn.execute(text("SELECT count(*) FROM partnership")).scalar_one() == before  # no duplicates
 
 
+# intra-club / same-team-both-sides match (CricketStatz listed one team id on both sides). Two
+# disjoint XIs, a full two-innings card — a team can never bat against itself, so the importer gives
+# the away side a distinct, flagged opponent identity instead of failing or dropping the match.
+SAME_TEAM = {
+    "clubs": [{"ClubID": 1, "Name": "Alpha CC"}],
+    "teams": [{"TeamID": 100, "Name": "Alpha", "ClubID": 1}],   # ONLY one team in the source
+    "venues": [{"GroundID": 10, "Name": "Alpha Oval"}],
+    "divisions": [{"GradeID": 50, "Name": "B Grade"}],
+    "matches": [{"MatchID": 900, "HomeTeam": 100, "AwayTeam": 100, "DatePlayed": "2024-02-10",
+                 "Ground": 10, "Grade": 50, "Result": 1, "matchtype": 1}],
+    "innings": [{"MatchID": 900, "cricket_Innings": [
+        {"InningsID": 910, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 100, "iresult": 1},
+        {"InningsID": 920, "InnsNumber": 2, "battingteam": 100, "bowlingteam": 100, "iresult": 2},
+    ]}],
+    "batting": [{"MatchID": 900, "cricket_Innings": [
+        {"InningsID": 910, "InnsNumber": 1, "cricket_batting": [
+            {"Batpos": 1, "BatsmanID": 10, "Howout": 2, "Bowler": 30, "Fielder": 0, "Score": 40,
+             "Balls": 50, "mins": 0, "sixes": 0, "fours": 5, "FOW": 0, "FOWPos": 1, "FOWBatID": 0, "FOWOvers": 0.0},
+            {"Batpos": 2, "BatsmanID": 11, "Howout": 1, "Bowler": 0, "Fielder": 0, "Score": 20,
+             "Balls": 30, "mins": 0, "sixes": 0, "fours": 2, "FOW": 0, "FOWPos": 2, "FOWBatID": 0, "FOWOvers": 0.0},
+        ]},
+        {"InningsID": 920, "InnsNumber": 2, "cricket_batting": [
+            {"Batpos": 1, "BatsmanID": 30, "Howout": 2, "Bowler": 10, "Fielder": 0, "Score": 15,
+             "Balls": 22, "mins": 0, "sixes": 0, "fours": 1, "FOW": 0, "FOWPos": 1, "FOWBatID": 0, "FOWOvers": 0.0},
+            {"Batpos": 2, "BatsmanID": 31, "Howout": 1, "Bowler": 0, "Fielder": 0, "Score": 5,
+             "Balls": 10, "mins": 0, "sixes": 0, "fours": 0, "FOW": 0, "FOWPos": 2, "FOWBatID": 0, "FOWOvers": 0.0},
+        ]},
+    ]}],
+    "bowling": [{"MatchID": 900, "cricket_Innings": [
+        {"InningsID": 910, "InnsNumber": 1, "cricket_bowling": [
+            {"bowlerID": 30, "Maidens": 0, "Overs": 8.0, "Wickets": 1, "RunsA": 35, "wides": 0, "noballs": 0}]},
+        {"InningsID": 920, "InnsNumber": 2, "cricket_bowling": [
+            {"bowlerID": 10, "Maidens": 1, "Overs": 8.0, "Wickets": 1, "RunsA": 20, "wides": 0, "noballs": 0}]},
+    ]}],
+}
+
+
+def test_same_team_match_splits_into_a_distinct_flagged_opponent(conn):
+    """A match the source listed with the same team on both sides imports as a valid two-team fixture:
+    the away side gets a distinct, flagged opponent (never auto-merged), and the two innings are split
+    by parity so each has distinct batting/bowling sides — no ``teams_must_differ``, nothing dropped."""
+    wid = _ws(conn, "SC INTRACLUB")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=SAME_TEAM)["batch_id"]
+    res = imports.promote_batch(conn, wid, ACTOR, bid)
+    assert res["created"]["innings"] == 2            # both innings imported (no rollback / no error)
+    assert res["created"]["batting_entry"] == 4
+
+    t100 = conn.execute(text("SELECT id FROM team WHERE source_ref = '100'")).scalar_one()
+    opp = conn.execute(text("SELECT id, name FROM team WHERE source_ref = '100~opp~900'")).mappings().one()
+    assert opp["id"] != t100 and "opponent" in opp["name"].lower()
+
+    # the synthetic opponent is flagged for review, never silently merged
+    flagged = conn.execute(
+        text("SELECT issues::text FROM import_staging_record "
+             "WHERE batch_id = :b AND entity_type = 'team' AND source_ref = '100~opp~900'"),
+        {"b": bid}).scalar_one()
+    assert "intra_club_opponent" in flagged
+
+    # odd innings: original side bats, opponent bowls; even innings: the reverse
+    inn1 = conn.execute(text("SELECT batting_team_id, bowling_team_id FROM innings WHERE source_ref = '910'")).mappings().one()
+    inn2 = conn.execute(text("SELECT batting_team_id, bowling_team_id FROM innings WHERE source_ref = '920'")).mappings().one()
+    assert inn1["batting_team_id"] == t100 and inn1["bowling_team_id"] == opp["id"]
+    assert inn2["batting_team_id"] == opp["id"] and inn2["bowling_team_id"] == t100
+
+    # the match itself now has two distinct sides (home vs the opponent)
+    sides = conn.execute(text("SELECT team_id, is_home FROM match_team mt "
+                              "JOIN match m ON m.id = mt.match_id WHERE m.source_ref = '900'")).mappings().all()
+    by_home = {s["is_home"]: s["team_id"] for s in sides}
+    assert by_home[True] == t100 and by_home[False] == opp["id"]
+
+
+def test_same_team_match_reimport_is_idempotent(conn):
+    """Re-importing an intra-club match creates no duplicate opponent team, innings or entries."""
+    wid = _ws(conn, "SC INTRACLUB2")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=SAME_TEAM)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid)
+    counts = {t: conn.execute(text(f"SELECT count(*) FROM {t}")).scalar_one()
+              for t in ("team", "innings", "batting_entry", "bowling_entry", "match")}
+    bid2 = imports.parse_and_stage(conn, wid, ACTOR, payload=SAME_TEAM)["batch_id"]
+    res2 = imports.promote_batch(conn, wid, ACTOR, bid2)
+    assert res2["created"]["innings"] == 0 and res2["matched"]["innings"] == 2
+    after = {t: conn.execute(text(f"SELECT count(*) FROM {t}")).scalar_one()
+             for t in ("team", "innings", "batting_entry", "bowling_entry", "match")}
+    assert after == counts  # opponent team + scorecard not duplicated
+
+
 def test_howout_legend_mapping():
     """The verified legend maps exactly the approved/mandated codes; everything else stays None."""
     m = imports.map_howout

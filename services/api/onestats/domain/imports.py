@@ -238,6 +238,21 @@ def parse_and_stage(
                        resolution="new")
     counts["team"] = len(payload.get("teams") or [])
 
+    # Intra-club / one-sided matches: the source listed the same team on both sides. Stage a distinct,
+    # flagged opponent side per such match so the fixture imports as a valid two-team match (a team can
+    # never bat against itself). Reviewable and mergeable later in Teams — never auto-merged.
+    opponents = _intra_club_opponents(payload)
+    for info in opponents.values():
+        _insert_record(
+            conn, workspace_id, batch_id, "team", info["ref"],
+            {"synthetic_opponent_of": info["orig_ref"]},
+            {"name": info["name"], "club_source_ref": info["club_ref"]},
+            resolution="new",
+            issues=["intra_club_opponent: the source listed the same team on both sides; this distinct "
+                    "opponent side was created so the match imports — rename or merge to the correct side"],
+        )
+    counts["team"] += len(opponents)
+
     for row in payload.get("matches") or []:
         ref = row.get("MatchID")
         if ref is None:
@@ -250,6 +265,10 @@ def parse_and_stage(
         # Classification is ALWAYS 'unclassified'/unverified at import — the round label is a
         # non-authoritative hint only, and a missing classification is never Home & Away.
         issues.append("classification_unresolved: round is a hint only; admin must classify")
+        opp = opponents.get(_s(ref))
+        if opp is not None:
+            issues.append("intra_club_match: home and away were the same source team; a distinct "
+                          "opponent side was created — review home/away and the opponent team")
         norm = {
             "date_played": row.get("DatePlayed"),
             "home_team_source_ref": _s(row.get("HomeTeam")),
@@ -285,12 +304,15 @@ def parse_and_stage(
             # left unknown and never inferred from the batting order or result.
             "toss_won_by_code": row.get("tosswonby"),
         }
+        # Intra-club match: point the away side at the distinct opponent so home/away are two teams.
+        if opp is not None:
+            norm["away_team_source_ref"] = opp["ref"]
         # Matches are staged structurally only; never promoted in Stage 6 (no canonical match table).
         _insert_record(conn, workspace_id, batch_id, "match", ref, row, norm,
                        status="staged", resolution="staged_only", issues=issues)
     counts["match"] = len(payload.get("matches") or [])
 
-    _stage_scorecards(conn, workspace_id, batch_id, payload, counts)
+    _stage_scorecards(conn, workspace_id, batch_id, payload, counts, opponents)
 
     conn.execute(
         text("UPDATE import_batch SET counts = CAST(:c AS jsonb) WHERE id = :id"),
@@ -320,8 +342,44 @@ def _toss_winner_team(code: Any, home_id: UUID | None, away_id: UUID | None) -> 
     return None
 
 
+def _intra_club_opponents(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Find matches whose source lists the SAME team on both sides and describe a distinct opponent
+    side for each.
+
+    CricketStatz sometimes records both sides of a match under one team id — an intra-club game the
+    source could not tell apart (e.g. two sides of a club before they merged), or a one-sided card.
+    A team can never bat against itself in the model, so rather than drop such a match (losing a real
+    scorecard) we give its away side its own distinct, clearly-flagged identity that carries the same
+    club as the original side. It is deterministic (idempotent on re-import), per-match (so each gets
+    its own review), and never auto-merged — an administrator renames or merges it to the correct side.
+    Returns ``{match_source_ref: {ref, name, club_ref, orig_ref}}``."""
+    team_meta: dict[str, tuple[str | None, str | None]] = {}
+    for t in payload.get("teams") or []:
+        ref = _s(t.get("TeamID"))
+        if ref is not None:
+            team_meta[ref] = (t.get("Name"), _s(t.get("ClubID")))
+    opponents: dict[str, dict[str, Any]] = {}
+    for m in payload.get("matches") or []:
+        mref = _s(m.get("MatchID"))
+        home = _s(m.get("HomeTeam"))
+        away = _s(m.get("AwayTeam"))
+        if mref is None or home is None or home != away:
+            continue  # a genuine two-team fixture, or no teams at all — nothing to split
+        orig_name, club_ref = team_meta.get(home, (None, None))
+        date = _s(m.get("DatePlayed")) or ""
+        day = date[:10] if date else mref
+        opponents[mref] = {
+            "ref": f"{home}~opp~{mref}",
+            "name": f"{orig_name or f'team {home}'} (opponent {day})",
+            "club_ref": club_ref,
+            "orig_ref": home,
+        }
+    return opponents
+
+
 def _stage_scorecards(
-    conn: Connection, wid: UUID, batch_id: UUID, payload: dict[str, Any], counts: dict[str, int]
+    conn: Connection, wid: UUID, batch_id: UUID, payload: dict[str, Any], counts: dict[str, int],
+    opponents: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Stage the nested CricketStatz scorecard body (``innings`` / ``batting`` / ``bowling``) verbatim.
 
@@ -333,17 +391,34 @@ def _stage_scorecards(
     Fall of wickets come from the parallel FOW fields on the batting rows (row N = the Nth wicket:
     ``FOW`` score, ``FOWBatID`` the batter out) — factual source values, never inferred."""
     n_inn = n_bat = n_bowl = n_fow = 0
+    opponents = opponents or {}
 
     for wrap in payload.get("innings") or []:
         mref = _s(wrap.get("MatchID"))
+        opp = opponents.get(mref)
         for inn in wrap.get("cricket_Innings") or []:
             iid = inn.get("InningsID")
             if iid is None:
                 continue
+            bat_ref = _ref0(inn.get("battingteam"))
+            bowl_ref = _ref0(inn.get("bowlingteam"))
+            # Intra-club match (same team both sides in the source): split by innings parity so each
+            # innings has two distinct sides — odd innings the original side bats, even the opponent.
+            # This keeps every player on one side throughout the match (their batting and bowling
+            # innings stay together); the home/away label is flagged for review.
+            if opp is not None:
+                try:
+                    even = int(inn.get("InnsNumber") or 1) % 2 == 0
+                except (TypeError, ValueError):
+                    even = False
+                if even:
+                    bat_ref = opp["ref"]
+                else:
+                    bowl_ref = opp["ref"]
             _insert_record(conn, wid, batch_id, "innings", _s(iid), inn, {
                 "match_source_ref": mref, "inns_number": inn.get("InnsNumber"),
-                "batting_team_source_ref": _ref0(inn.get("battingteam")),
-                "bowling_team_source_ref": _ref0(inn.get("bowlingteam")),
+                "batting_team_source_ref": bat_ref,
+                "bowling_team_source_ref": bowl_ref,
                 "byes": inn.get("Byes"), "legbyes": inn.get("Legbyes"),
                 "wides": inn.get("Wides"), "noballs": inn.get("Noballs"),
                 "iresult_raw": _s(inn.get("iresult")),
