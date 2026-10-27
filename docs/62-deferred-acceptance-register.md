@@ -319,6 +319,49 @@ tests are **not** marked passed from automated results.
 served). **Backup implemented** (ST-14) — needs the one-time superuser password. **The rest require the
 installed Windows build** and are for the user to confirm.
 
+## Test Cricket Workspace (added 2026-10-28, user request) — DEFERRED / PENDING
+
+A permanent **International Test Cricket** workspace (men's & women's), isolated from the
+Rhymney / Moyston / Rhymney-Moyston club workspaces. **No row below is passed.** TC-09/10/11/12/13
+depend on data the user supplies or on licensed/permitted sources — OneStats has **no implemented
+automated web-discovery connector** for any Test-cricket source (`autosync/connectors.py`:
+CricketArchive/Play-Cricket/Trove are `interface_only` and never fetch; only PlayHQ is live, club-only).
+
+| # | Test | Where / How | Expected |
+|---|---|---|---|
+| TC-01 | Create Test Cricket workspace | My Workspaces → Create workspace → type **International** | Workspace created; user is Super Admin of it |
+| TC-02 | Configure international org structure | Onboarding → Organisation/Branding/Programs | Name, short name, Test theme, programs saved |
+| TC-03 | Men's & women's distinguished | Programs tick Seniors + Women's; formats per match | Both lines kept distinct, not merged |
+| TC-04 | Create historical international teams | Manage → Organisations (kind: International Team / Historical Club) | Teams created with original/historical names |
+| TC-05 | Create seasons & series | Competitions / seasons | Season + series structures exist |
+| TC-06 | Open Historical Research Centre | Research Centre | Dashboard, projects, sources, gaps load |
+| TC-07 | Discover recognised Test matches | — | **GAP**: no bundled authoritative Test index; matches are user-entered/imported |
+| TC-08 | Build initial master match index | Create matches / import a structured list the user supplies | Match records exist; gaps tracked against them |
+| TC-09 | Search legitimate scorecard sources | — | **GAP**: no implemented automated source search |
+| TC-10 | Locate a genuine historical Test scorecard | User supplies (upload / permitted dataset) | Source stored in Source Library with citation |
+| TC-11 | Extract batting scorecard | Structured import (CricketStatz-style JSON) or manual entry | Batting lines recorded; unknowns stay unknown |
+| TC-12 | Extract bowling scorecard | As TC-11 | Bowling figures recorded; unknowns stay unknown |
+| TC-13 | Extract available fielding info | As TC-11 | Catches/stumpings/run-outs recorded where known |
+| TC-14 | Preserve unknown historical values | Any import/entry | Missing ≠ zero; placeholder DOBs become unknown |
+| TC-15 | Identify & reconcile players | People / identity tools | No auto-merge on name alone; suggestions only |
+| TC-16 | Detect duplicate match sources | Source Library (content-hash) | Duplicate flagged, not auto-removed |
+| TC-17 | Review extracted scorecard | Approval workflow | Draft → review surfaces fields/conflicts |
+| TC-18 | Approve verified match | Approval workflow | Match approval_status → approved (audited) |
+| TC-19 | Official statistics update | Reports / records | Approved data only feeds official stats |
+| TC-20 | Player profiles update | Profiles | Appearances & figures appear on profiles |
+| TC-21 | Team records update | Records | Team records reflect approved matches |
+| TC-22 | Historical over calculations | Stats engine (mixed over-length) | Economy etc. correct for documented over length |
+| TC-23 | Resume interrupted research | Projects / tasks | Progress persists; work resumable |
+| TC-24 | Batch historical import | Import Wizard | Controlled staged batch import (as CricketStatz) |
+| TC-25 | Workspace isolation | Switch workspaces | No Rhymney/Moyston data visible in Test Cricket |
+| TC-26 | Research progress dashboard | Research Centre dashboard | Real counts: sources, gaps, draft/verified, conflicts |
+| TC-27 | Women's Test cricket populated | Women's matches/teams | Women's Tests coexist, kept distinct |
+| TC-28 | Incomplete / conflicting source handling | Provenance / conflicts | Conflicts flagged for review; no silent overwrite |
+
+**Known gaps recorded above (not defects):** TC-07/TC-09 — no automated Test-match index or web
+scorecard discovery exists; TC-10 — scorecards must be supplied by the user or a licensed/permitted
+source; manual document OCR→scorecard extraction is not automatic.
+
 ## Maintenance
 
 Each phase's completion report updated this register (planned tests → concrete numbered rows). This register
