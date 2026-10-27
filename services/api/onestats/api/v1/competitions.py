@@ -231,6 +231,23 @@ def update_competition(workspace_id: UUID, competition_id: UUID, body: Competiti
         return updated
 
 
+@router.delete("/{competition_id}", status_code=status.HTTP_200_OK)
+def delete_competition(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx: CompCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            competitions.delete_competition(conn, workspace_id, str(ctx.user["id"]), competition_id)
+        except ValueError as exc:
+            msg = str(exc)
+            if msg.startswith("competition_has_matches:"):
+                n = msg.split(":", 1)[1]
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"This competition has {n} match(es). Reassign or remove those matches before deleting it.",
+                ) from exc
+            raise _value_error(exc) from exc
+    return {"deleted": True}
+
+
 @router.get("/{competition_id}/duplicate-candidates")
 def duplicate_candidates(workspace_id: UUID, competition_id: UUID, settings: SettingsDep, ctx: CompCtx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

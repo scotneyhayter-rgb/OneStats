@@ -169,6 +169,29 @@ def update_competition(
     return after
 
 
+def delete_competition(conn: Connection, workspace_id: UUID, actor: str, competition_id: UUID) -> None:
+    """Delete a competition. Refuses if any matches reference it (to protect match data and
+    competition-scoped statistics) — those must be reassigned or removed first. For a competition
+    with no matches, its grades/seasons/divisions and name history are removed with it. Audited."""
+    before = get_competition(conn, competition_id)
+    if before is None:
+        raise ValueError("competition_not_found")
+    n_matches = conn.execute(
+        text("SELECT count(*) FROM match WHERE competition_id = :c"), {"c": competition_id}
+    ).scalar() or 0
+    if n_matches:
+        raise ValueError(f"competition_has_matches:{n_matches}")
+    # grade / season / division (and team entries via grade) are ON DELETE CASCADE from competition;
+    # match / affiliation links are SET NULL. Remove name history explicitly, then the competition.
+    conn.execute(text("DELETE FROM competition_name_history WHERE competition_id = :c"), {"c": competition_id})
+    conn.execute(text("DELETE FROM competition WHERE id = :c AND workspace_id = :w"),
+                 {"c": competition_id, "w": workspace_id})
+    audit.write_audit(
+        conn, workspace_id, actor, "competition.delete", entity="competition",
+        entity_id=str(competition_id), before=before, after=None,
+    )
+
+
 def list_name_history(conn: Connection, competition_id: UUID) -> list[dict[str, Any]]:
     rows = conn.execute(
         text(

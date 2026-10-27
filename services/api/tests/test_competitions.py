@@ -297,3 +297,32 @@ def test_invalid_inputs(conn):
         competitions.create_season(conn, wid, ACTOR, cid, label="")
     with pytest.raises(ValueError, match="team_not_found"):
         competitions.enter_team(conn, wid, ACTOR, team_id=uuid.uuid4(), grade_id=uuid.uuid4(), season_id=uuid.uuid4())
+
+
+def test_delete_competition_removes_empty_competition_and_children(conn):
+    """An empty competition (no matches) deletes, taking its grades with it. Audited."""
+    wid = _ws(conn, "COMP DEL1")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="To Delete")
+    competitions.create_grade(conn, wid, ACTOR, cid, name="A Grade", program="senior_mens")
+    competitions.delete_competition(conn, wid, ACTOR, cid)
+    assert competitions.get_competition(conn, cid) is None
+    assert competitions.list_grades(conn, cid) == []
+
+
+def test_delete_competition_not_found_raises(conn):
+    wid = _ws(conn, "COMP DEL2")
+    with pytest.raises(ValueError, match="competition_not_found"):
+        competitions.delete_competition(conn, wid, ACTOR, uuid.uuid4())
+
+
+def test_delete_competition_refuses_when_it_has_matches(conn):
+    """A competition referenced by a match is protected: delete raises competition_has_matches."""
+    wid = _ws(conn, "COMP DEL3")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="Has Matches")
+    conn.execute(
+        text("INSERT INTO match(workspace_id, competition_id, status) "
+             "VALUES (current_setting('onestats.workspace_id',true)::uuid, :c, 'draft')"),
+        {"c": cid},
+    )
+    with pytest.raises(ValueError, match="competition_has_matches"):
+        competitions.delete_competition(conn, wid, ACTOR, cid)

@@ -119,7 +119,8 @@ export function Competitions() {
           canManage={canManage}
           orgName={orgName}
           onClose={() => setDetail(null)}
-          onChanged={(m) => setMsg(m)}
+          onChanged={(m) => { setMsg(m); void load(); }}
+          onDeleted={(m) => { setMsg(m); setDetail(null); void load(); }}
         />
       )}
     </AppShell>
@@ -280,6 +281,7 @@ function CompetitionDetailModal({
   orgName,
   onClose,
   onChanged,
+  onDeleted,
 }: {
   workspaceId: string;
   competitionId: string;
@@ -287,6 +289,7 @@ function CompetitionDetailModal({
   orgName: (id: string | null) => string | null;
   onClose: () => void;
   onChanged: (msg: string) => void;
+  onDeleted: (msg: string) => void;
 }) {
   const [comp, setComp] = useState<CompetitionDetail | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -296,6 +299,29 @@ function CompetitionDetailModal({
   const [newSeason, setNewSeason] = useState("");
   const [entry, setEntry] = useState({ team_id: "", grade_id: "", season_id: "" });
   const [busy, setBusy] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const rename = async () => {
+    const next = nameDraft.trim();
+    if (!next || next === comp?.name) return;
+    setBusy(true); setErr(null);
+    try { await api.updateCompetition(workspaceId, competitionId, { name: next }); await load(); onChanged("Competition renamed."); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to rename"); }
+    finally { setBusy(false); }
+  };
+  const setStatus = async (next: string) => {
+    setBusy(true); setErr(null);
+    try { await api.updateCompetition(workspaceId, competitionId, { status: next }); await load(); onChanged(`Competition marked ${next}.`); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to update status"); }
+    finally { setBusy(false); }
+  };
+  const remove = async () => {
+    setBusy(true); setErr(null);
+    try { await api.deleteCompetition(workspaceId, competitionId); onDeleted(`Competition "${comp?.name ?? ""}" deleted.`); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to delete competition"); setConfirmDelete(false); }
+    finally { setBusy(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -303,6 +329,7 @@ function CompetitionDetailModal({
     try {
       const [c, t] = await Promise.all([api.getCompetition(workspaceId, competitionId), api.listTeams(workspaceId)]);
       setComp(c);
+      setNameDraft(c.name);
       setTeams(t);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Failed to load competition");
@@ -366,10 +393,25 @@ function CompetitionDetailModal({
       {!loading && comp && (
         <div className="flex flex-col gap-5">
           <section>
+            {canManage && (
+              <Detail label="Name">
+                <div className="flex items-center gap-2">
+                  <Input value={nameDraft} disabled={busy} onChange={(e) => setNameDraft(e.target.value)} className="max-w-xs" />
+                  <Button size="sm" variant="outline" disabled={busy || !nameDraft.trim() || nameDraft.trim() === comp.name} onClick={() => void rename()}>Rename</Button>
+                </div>
+              </Detail>
+            )}
             <Detail label="Association">
               <Unknown value={orgName(comp.association_id) ?? (comp.association_id ? "—" : "Independent")} />
             </Detail>
-            <Detail label="Status">{comp.status}</Detail>
+            <Detail label="Status">
+              {canManage ? (
+                <Select value={comp.status} disabled={busy} className="max-w-xs" onChange={(e) => void setStatus(e.target.value)}>
+                  <option value="active">active</option>
+                  <option value="archived">archived</option>
+                </Select>
+              ) : comp.status}
+            </Detail>
             <Detail label="Season rule">
               {canManage ? (
                 <Select value={comp.season_model ?? "unknown"} disabled={busy}
@@ -486,6 +528,25 @@ function CompetitionDetailModal({
                   Assign
                 </Button>
               </div>
+            </section>
+          )}
+
+          {canManage && (
+            <section className="border-t border-border pt-3">
+              <h3 className="mb-2 text-xs font-semibold uppercase text-danger">Danger zone</h3>
+              {!confirmDelete ? (
+                <Button size="sm" variant="outline" className="text-danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                  Delete competition
+                </Button>
+              ) : (
+                <div className="flex flex-col gap-2 rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 p-3">
+                  <p className="text-sm">Delete <b>{comp.name}</b>? This removes its grades, seasons and team entries. It can&apos;t be undone. (A competition with matches can&apos;t be deleted — reassign those first.)</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                    <Button size="sm" className="bg-danger text-brand-foreground hover:opacity-90" disabled={busy} onClick={() => void remove()}>Yes, delete</Button>
+                  </div>
+                </div>
+              )}
             </section>
           )}
         </div>

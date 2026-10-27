@@ -1309,6 +1309,8 @@ export const api = {
   updateCompetition: (w: string, id: string, body: Record<string, unknown>) =>
     request<Competition & { seasons_reassigned?: { matches: number; assigned: number } }>(
       `/api/v1/workspaces/${w}/competitions/${id}`, { method: "PATCH", body }),
+  deleteCompetition: (w: string, id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/workspaces/${w}/competitions/${id}`, { method: "DELETE" }),
   createDivision: (w: string, cid: string, body: Record<string, unknown>) =>
     request<{ division_id: string }>(`/api/v1/workspaces/${w}/competitions/${cid}/divisions`, { method: "POST", body }),
   createGrade: (w: string, cid: string, body: Record<string, unknown>) =>
