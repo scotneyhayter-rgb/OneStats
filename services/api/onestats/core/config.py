@@ -31,9 +31,11 @@ class Settings(BaseSettings):
     # --- Local security / CORS (dev defaults; localhost only) ---
     cors_origins: list[str] = Field(
         default=[
-            "http://localhost:1420",  # Tauri dev (Vite)
-            "http://localhost:5173",  # Vite default
-            "tauri://localhost",      # Tauri production webview
+            "http://localhost:1420",   # Tauri dev (Vite)
+            "http://localhost:5173",   # Vite default
+            "tauri://localhost",       # Tauri production webview (macOS/Linux)
+            "http://tauri.localhost",  # Tauri 2 production webview (Windows WebView2)
+            "https://tauri.localhost", # Tauri 2 production webview (Windows, https variant)
         ]
     )
 

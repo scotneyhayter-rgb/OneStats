@@ -54,21 +54,61 @@ def _configure_logging(dir_: Path) -> None:
     root.addHandler(stderr)
 
 
+def _config_candidates(dir_: Path) -> list[Path]:
+    """Every place the standalone config (onestats.env) might live, in priority order. We check more
+    than just the per-user data dir because, depending on how the app is launched, that location may
+    not be the one the launched process can read; the install directory (next to this executable)
+    always is, since the backend loads itself from there."""
+    cands: list[Path] = []
+    explicit = os.environ.get("ONESTATS_CONFIG")
+    if explicit:
+        cands.append(Path(explicit))
+    cands.append(dir_ / "onestats.env")
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        cands.append(exe_dir / "onestats.env")          # install dir / onestats-server-dist
+        cands.append(exe_dir.parent / "onestats.env")   # install dir (next to the app exe)
+    except Exception:  # noqa: BLE001
+        pass
+    up = os.environ.get("USERPROFILE")
+    if up:
+        cands.append(Path(up) / "AppData" / "Local" / "OneStats" / "onestats.env")
+    # de-duplicate while preserving order
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for c in cands:
+        s = str(c).lower()
+        if s not in seen:
+            seen.add(s)
+            uniq.append(c)
+    return uniq
+
+
 def load_config(dir_: Path) -> None:
-    """Load `<data_dir>/onestats.env` (KEY=VALUE lines) into os.environ without overriding values
-    already set in the environment. Secrets live only in this per-user file, never in source."""
-    cfg = dir_ / "onestats.env"
-    if not cfg.exists():
-        log.info("No per-user config at %s (using environment/defaults).", cfg)
-        return
-    for raw in cfg.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    """Load onestats.env (KEY=VALUE lines) into os.environ without overriding values already set in the
+    environment. Tries several locations; secrets live only in these files, never in source."""
+    for cfg in _config_candidates(dir_):
+        try:
+            if not cfg.exists():
+                continue
+            for raw in cfg.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+            log.info("Loaded per-user config from %s", cfg)
+            return
+        except OSError:
             continue
-        key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
-    log.info("Loaded per-user config from %s", cfg)
+    # Nothing found — log what this process actually sees, to diagnose launch-context differences.
+    try:
+        listing = ", ".join(sorted(p.name for p in dir_.iterdir())) if dir_.exists() else "<dir missing>"
+    except OSError as e:
+        listing = f"<listing failed: {e}>"
+    log.warning("No config file found. LOCALAPPDATA=%s USERPROFILE=%s data_dir=%s contents=[%s] tried=%s",
+                os.environ.get("LOCALAPPDATA"), os.environ.get("USERPROFILE"), dir_, listing,
+                [str(c) for c in _config_candidates(dir_)])
 
 
 def _ensure_dirs(dir_: Path) -> None:

@@ -1,14 +1,17 @@
 // OneStats desktop shell.
 //
-// In the standalone Windows build, the app launches the packaged backend (onestats-server.exe, sitting
-// next to this app binary) on startup and stops it on exit, so the user never starts Python, FastAPI or
-// a terminal. The backend binds to loopback only and brings up the local database and migrations itself
-// (see services/api/onestats/standalone/launcher.py).
+// In the standalone Windows build, the app launches the packaged backend (a PyInstaller *onedir*
+// build bundled as a Tauri resource: onestats-server-dist/onestats-server.exe) on startup and stops it
+// on exit, so the user never starts Python, FastAPI or a terminal. The backend binds to loopback only
+// and brings up the local database and migrations itself (services/api/onestats/standalone/launcher.py).
 //
-// We spawn it directly with std::process::Command (no shell-plugin scope to misconfigure) and record the
-// outcome to %LOCALAPPDATA%/OneStats/logs/sidecar.log for diagnostics. In development the sidecar binary
-// is not present next to the dev exe, so spawning is skipped and the app uses the separately-running dev
-// backend — `npm run tauri dev` keeps working unchanged.
+// Onedir (not onefile) is used because a onefile exe unpacks to a temp folder and re-executes at
+// runtime, which fails when the exe is spawned by a GUI process with no console. We also route the
+// child's stdio to a real log file (not null/inherited) so it always has valid handles regardless of
+// how the app itself was launched. The spawn outcome is recorded to sidecar.log for diagnostics.
+//
+// In development the bundled backend is not present, so spawning is skipped and the app uses the
+// separately-running dev backend — `npm run tauri dev` keeps working unchanged.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -46,43 +49,52 @@ fn sidecar_log(line: &str) {
     }
 }
 
-/// Resolve the packaged backend exe sitting next to this application binary.
-fn sidecar_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let candidate = dir.join("onestats-server.exe");
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        None
+/// Find the packaged backend exe. Tries the bundled resource location first, then locations next to
+/// the app binary, so it works whether Tauri places resources in the install dir or a subfolder.
+fn find_backend(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(res) = app.path().resource_dir() {
+        candidates.push(res.join("onestats-server-dist").join("onestats-server.exe"));
+        candidates.push(res.join("resources").join("onestats-server-dist").join("onestats-server.exe"));
     }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("onestats-server-dist").join("onestats-server.exe"));
+            candidates.push(dir.join("onestats-server.exe")); // legacy onefile layout
+        }
+    }
+    candidates.into_iter().find(|p| p.exists())
 }
 
 fn spawn_backend(app: &tauri::AppHandle) {
-    let path = match sidecar_path() {
+    let path = match find_backend(app) {
         Some(p) => p,
         None => {
-            sidecar_log("sidecar not found next to app binary (dev mode?) — skipping spawn");
+            sidecar_log("backend not found (dev mode?) — skipping spawn");
             return;
         }
     };
     let mut cmd = std::process::Command::new(&path);
-    // Give the child explicit null stdio. When the app is launched from the Windows desktop/Start
-    // menu (a GUI process with no console), inherited stdout/stderr handles are invalid, and the
-    // packaged Python backend would fail on its first stderr write before it could start. The backend
-    // logs to its own file (server.log), so it needs no console. (It worked when launched from a shell
-    // only because the shell supplied valid pipes.)
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // Real file handles for the child's stdio. A GUI app has no console, so inherited/null handles can
+    // break the packaged Python process on its first write; a log file is always valid.
+    if let Some(dir) = log_dir() {
+        if let Ok(out) = OpenOptions::new().create(true).append(true).open(dir.join("backend-out.log")) {
+            if let Ok(err) = out.try_clone() {
+                cmd.stdout(Stdio::from(out)).stderr(Stdio::from(err));
+            }
+        }
+    }
+    cmd.stdin(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     match cmd.spawn() {
         Ok(child) => {
-            sidecar_log(&format!("started backend sidecar: {} (pid {})", path.display(), child.id()));
+            sidecar_log(&format!("started backend: {} (pid {})", path.display(), child.id()));
             if let Some(state) = app.try_state::<BackendProcess>() {
                 *state.0.lock().unwrap() = Some(child);
             }
         }
-        Err(e) => sidecar_log(&format!("FAILED to start backend sidecar {}: {}", path.display(), e)),
+        Err(e) => sidecar_log(&format!("FAILED to start backend {}: {}", path.display(), e)),
     }
 }
 
