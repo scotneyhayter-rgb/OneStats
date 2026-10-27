@@ -18,6 +18,17 @@ import {
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
 
 const KINDS = ["club", "association", "intl_team", "historical_club"];
+// Properly capitalised display labels for the organisation kinds (the stored values stay lower_snake).
+const KIND_LABELS: Record<string, string> = {
+  club: "Club",
+  association: "Association",
+  intl_team: "International Team",
+  historical_club: "Historical Club",
+};
+const kindLabel = (k: string): string => KIND_LABELS[k] ?? humanise(k);
+// Statuses a user can set here; "merged" is system-managed and shown as a badge, never chosen.
+const STATUSES = ["active", "archived"];
+const statusLabel = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function Organisations() {
   const { workspaceId, canManage } = useManage();
@@ -79,7 +90,7 @@ export function Organisations() {
           <option value="">All kinds</option>
           {KINDS.map((k) => (
             <option key={k} value={k}>
-              {humanise(k)}
+              {kindLabel(k)}
             </option>
           ))}
         </Select>
@@ -114,7 +125,7 @@ export function Organisations() {
                   <div className="truncate font-medium">{o.name}</div>
                   <div className="truncate text-xs text-muted-foreground">
                     {o.short_name ? `${o.short_name} · ` : ""}
-                    {humanise(o.kind)}
+                    {kindLabel(o.kind)}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -218,7 +229,7 @@ function CreateOrganisationModal({
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             {KINDS.map((k) => (
               <option key={k} value={k}>
-                {humanise(k)}
+                {kindLabel(k)}
               </option>
             ))}
           </Select>
@@ -258,6 +269,10 @@ function OrganisationDetailModal({
     | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    name: "", short_name: "", kind: "club", status: "active", is_historical: false, notes: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -309,6 +324,53 @@ function OrganisationDetailModal({
     }
   };
 
+  const beginEdit = () => {
+    if (!org) return;
+    setForm({
+      name: org.name,
+      short_name: org.short_name ?? "",
+      kind: org.kind,
+      status: org.status,
+      is_historical: org.is_historical,
+      notes: org.notes ?? "",
+    });
+    setErr(null);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!org) return;
+    const name = form.name.trim();
+    if (!name) {
+      setErr("Name is required.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.updateOrganisation(workspaceId, orgId, {
+        name,
+        short_name: form.short_name.trim() || null,
+        kind: form.kind,
+        status: form.status,
+        is_historical: form.is_historical,
+        notes: form.notes.trim() || null,
+        name_change_note: name !== org.name ? "renamed" : undefined,
+      });
+      setEditing(false);
+      onChanged(
+        name !== org.name
+          ? `Renamed to "${name}". The previous name is kept as an alias; scorecards update automatically.`
+          : `Updated "${name}".`,
+      );
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal open title={org?.name ?? "Organisation"} onClose={onClose}>
       {loading && <LoadingState />}
@@ -316,15 +378,64 @@ function OrganisationDetailModal({
       {!loading && org && (
         <div className="flex flex-col gap-5">
           <section>
-            <Detail label="Kind">{humanise(org.kind)}</Detail>
-            <Detail label="Short name"><Unknown value={org.short_name} /></Detail>
-            <Detail label="Status">{org.status}</Detail>
-            <Detail label="Historical">{org.is_historical ? "Yes" : "No"}</Detail>
-            <Detail label="Notes"><Unknown value={org.notes} /></Detail>
-            {org.merged_into_id && (
-              <Detail label="Merged into">
-                <Badge variant="warning">this record is merged</Badge>
-              </Detail>
+            {!editing ? (
+              <>
+                {canManage && !org.merged_into_id && (
+                  <div className="mb-2 flex justify-end">
+                    <Button size="sm" variant="outline" onClick={beginEdit}>Edit details</Button>
+                  </div>
+                )}
+                <Detail label="Kind">{kindLabel(org.kind)}</Detail>
+                <Detail label="Short name"><Unknown value={org.short_name} /></Detail>
+                <Detail label="Status">{statusLabel(org.status)}</Detail>
+                <Detail label="Historical">{org.is_historical ? "Yes" : "No"}</Detail>
+                <Detail label="Notes"><Unknown value={org.notes} /></Detail>
+                {org.merged_into_id && (
+                  <Detail label="Merged into">
+                    <Badge variant="warning">this record is merged</Badge>
+                  </Detail>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <Field label="Name" hint="The previous name is kept as an alias; scorecards update automatically.">
+                  <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
+                </Field>
+                <Field label="Short name" hint="Optional display abbreviation.">
+                  <Input value={form.short_name} onChange={(e) => setForm((f) => ({ ...f, short_name: e.target.value }))} />
+                </Field>
+                <Field label="Kind">
+                  <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}>
+                    {KINDS.map((k) => (
+                      <option key={k} value={k}>{kindLabel(k)}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Status">
+                  <Select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>{statusLabel(s)}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.is_historical}
+                    onChange={(e) => setForm((f) => ({ ...f, is_historical: e.target.checked }))}
+                  />
+                  Historical organisation
+                </label>
+                <Field label="Notes">
+                  <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+                </Field>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditing(false)} disabled={busy}>Cancel</Button>
+                  <Button size="sm" onClick={() => void saveEdit()} disabled={busy || !form.name.trim()}>
+                    {busy ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </div>
             )}
           </section>
 
