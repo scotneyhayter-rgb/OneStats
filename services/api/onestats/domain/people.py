@@ -81,7 +81,9 @@ def list_people(
         clauses.append("status = 'active'")
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY display_name"
+    # Sort by last name (surname), then full name as a tiebreaker. People are stored as a single
+    # display_name (e.g. "A Allen"), so the surname is the final whitespace-separated token.
+    sql += " ORDER BY lower(split_part(display_name, ' ', -1)), lower(display_name)"
     return [_redact(dict(r), include_protected) for r in conn.execute(text(sql), params).mappings().all()]
 
 

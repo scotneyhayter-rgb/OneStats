@@ -189,6 +189,15 @@ def test_people_isolated_across_workspaces(conn):
     assert people.list_people(conn) == []
 
 
+def test_list_people_sorted_by_surname(conn):
+    wid = _ws(conn, "PPL SORT WS")
+    # Deliberately created out of surname order; stored as "Initial Surname" like CricketStatz data.
+    for name in ("B Allen", "A Zephyr", "C Barham", "A Allen"):
+        people.create_person(conn, wid, ACTOR, display_name=name)
+    order = [p["display_name"] for p in people.list_people(conn)]
+    assert order == ["A Allen", "B Allen", "C Barham", "A Zephyr"]
+
+
 # 6. permissions + audit ----------------------------------------------------
 
 
