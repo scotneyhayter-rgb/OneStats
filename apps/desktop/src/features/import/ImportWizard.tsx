@@ -134,6 +134,7 @@ export function ImportWizard() {
     const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
   });
   const selectFirst = (k: number) => setSelected(new Set(matches.slice(0, k).map((m) => m.MatchID as number)));
+  const selectAll = () => setSelected(new Set(matches.map((m) => m.MatchID as number)));
 
   async function runPreview() {
     if (!workspaceId || !file) return;
@@ -213,6 +214,7 @@ export function ImportWizard() {
               <span className="text-muted-foreground">Select matches to import:</span>
               <Button variant="outline" size="sm" onClick={() => selectFirst(2)}>First 2</Button>
               <Button variant="outline" size="sm" onClick={() => selectFirst(10)}>First 10</Button>
+              <Button variant="outline" size="sm" onClick={selectAll}>Select all ({matches.length})</Button>
               <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
               <span className="ml-auto font-medium">{selected.size} selected</span>
             </div>
