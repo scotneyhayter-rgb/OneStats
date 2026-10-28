@@ -1479,7 +1479,8 @@ export const api = {
   // --- Phase 6 Stage 8: CricketStatz import wizard ---
   cricketStatzImport: (
     w: string,
-    body: { data: unknown; people?: unknown; commit: boolean; filename?: string },
+    body: { data: unknown; people?: unknown; commit: boolean; filename?: string;
+            competition_id?: string | null; competition_name?: string | null },
   ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
   listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
 

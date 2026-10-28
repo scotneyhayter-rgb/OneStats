@@ -14,7 +14,9 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import imports, permissions
+import uuid
+
+from onestats.domain import competitions, imports, permissions
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(
@@ -142,6 +144,35 @@ def test_finals_round_divisions_not_promoted_as_grades(conn):
     names = {r[0] for r in conn.execute(text("SELECT name FROM grade")).all()}
     assert {"A Grade", "Under 16"} <= names
     assert "Grand Final" not in names and "Semi Final" not in names
+
+
+def test_import_into_named_competition(conn):
+    """The user can name the competition at import (the export carries none); imported grades and
+    matches land under it, found-or-created by name — not the generic container. Idempotent by name."""
+    wid = _ws(conn, "IMP COMP NAME")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid, competition_name="Grampians Cricket Association")
+    comp = conn.execute(text("SELECT id FROM competition WHERE name = 'Grampians Cricket Association'")).scalar_one()
+    assert conn.execute(text("SELECT count(*) FROM grade WHERE competition_id = :c"), {"c": comp}).scalar_one() == 4
+    assert conn.execute(text("SELECT count(*) FROM match WHERE competition_id = :c"), {"c": comp}).scalar_one() == 3
+    assert conn.execute(text("SELECT count(*) FROM competition WHERE name = 'Cricket Statz Import'")).scalar_one() == 0
+    # re-import under the same name (any case/spacing) reuses the competition — no duplicate
+    bid2 = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid2, competition_name="  grampians   cricket association ")
+    assert conn.execute(text("SELECT count(*) FROM competition WHERE workspace_id = :w "
+                             "AND lower(name) = lower('Grampians Cricket Association')"), {"w": wid}).scalar_one() == 1
+
+
+def test_import_into_existing_competition_by_id(conn):
+    """An existing competition can be chosen by id; a bad id is rejected."""
+    wid = _ws(conn, "IMP COMP ID")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="My League")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid, competition_id=comp)
+    assert conn.execute(text("SELECT count(*) FROM match WHERE competition_id = :c"), {"c": comp}).scalar_one() == 3
+    bid2 = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    with pytest.raises(ValueError, match="competition_not_found"):
+        imports.promote_batch(conn, wid, ACTOR, bid2, competition_id=uuid.uuid4())
 
 
 def test_stage_matchtype_labels(conn):

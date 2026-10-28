@@ -18,7 +18,9 @@ import { ErrorState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { api, ApiError, type CricketStatzImportResult, type ImportBatch } from "../../lib/api";
+import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
+import { api, ApiError, type Competition, type CricketStatzImportResult, type ImportBatch } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
 import { UniversalImport } from "./UniversalImport";
 
@@ -96,10 +98,16 @@ export function ImportWizard() {
   const [history, setHistory] = useState<ImportBatch[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Competition to import into. CricketStatz exports carry no competition, so the user chooses:
+  // "" = default import container, a competition id = import into it, "__new__" = create by name.
+  const [comps, setComps] = useState<Competition[]>([]);
+  const [compChoice, setCompChoice] = useState<string>("");
+  const [newCompName, setNewCompName] = useState("");
 
   const loadHistory = useCallback(async () => {
     if (!workspaceId) return;
     try { setHistory(await api.listImports(workspaceId)); } catch { /* history is best-effort */ }
+    try { setComps(await api.listCompetitions(workspaceId)); } catch { /* best-effort */ }
   }, [workspaceId]);
   useEffect(() => { void loadHistory(); }, [loadHistory]);
 
@@ -153,7 +161,9 @@ export function ImportWizard() {
     setStep("importing"); setBusy(true); setError(null);
     try {
       const { data, people } = buildSlice(file, selected);
-      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName }));
+      const competition_id = compChoice && compChoice !== "__new__" ? compChoice : null;
+      const competition_name = compChoice === "__new__" ? newCompName.trim() || null : null;
+      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName, competition_id, competition_name }));
       await loadHistory();
       setStep("results");
     } catch (err) {
@@ -256,7 +266,9 @@ export function ImportWizard() {
 
         {step === "preview" && preview && (
           <PreviewStep preview={preview} selected={selected.size} busy={busy}
-            onBack={() => setStep("analyse")} onImport={() => void runImport()} />
+            onBack={() => setStep("analyse")} onImport={() => void runImport()}
+            comps={comps} compChoice={compChoice} setCompChoice={setCompChoice}
+            newCompName={newCompName} setNewCompName={setNewCompName} />
         )}
 
         {step === "importing" && (
@@ -329,12 +341,15 @@ function SelectStep({ busy, onFile, history }: { busy: boolean; onFile: (e: Reac
   );
 }
 
-function PreviewStep({ preview, selected, busy, onBack, onImport }: {
+function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compChoice, setCompChoice, newCompName, setNewCompName }: {
   preview: CricketStatzImportResult; selected: number; busy: boolean; onBack: () => void; onImport: () => void;
+  comps: Competition[]; compChoice: string; setCompChoice: (v: string) => void;
+  newCompName: string; setNewCompName: (v: string) => void;
 }) {
   const p = preview.preview;
   const ppl = preview.people.detected;
   const unresolved = preview.howout_unresolved ?? [];
+  const needsName = compChoice === "__new__" && !newCompName.trim();
   return (
     <Card><CardContent className="flex flex-col gap-4">
       <p className="text-sm">Preview of <strong>{selected}</strong> selected match(es). <span className="text-muted-foreground">Nothing has been written yet.</span></p>
@@ -365,9 +380,24 @@ function PreviewStep({ preview, selected, busy, onBack, onImport }: {
           </div>
         </div>
       )}
+      <div className="rounded-[var(--radius-app)] border border-border p-3 text-sm">
+        <p className="mb-1 font-medium">Competition</p>
+        <p className="mb-2 text-xs text-muted-foreground">CricketStatz files don&apos;t record the competition, so choose where these grades and matches go.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={compChoice} onChange={(e) => setCompChoice(e.target.value)} className="max-w-xs">
+            <option value="">Default — Cricket Statz Import container</option>
+            {comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value="__new__">➕ New competition…</option>
+          </Select>
+          {compChoice === "__new__" && (
+            <Input value={newCompName} onChange={(e) => setNewCompName(e.target.value)}
+              placeholder="e.g. Grampians Cricket Association" className="max-w-xs" />
+          )}
+        </div>
+      </div>
       <div className="flex justify-between border-t border-border pt-3">
         <Button variant="ghost" size="sm" onClick={onBack}>Back</Button>
-        <Button size="sm" disabled={busy} onClick={onImport}>Import {selected} match(es)</Button>
+        <Button size="sm" disabled={busy || needsName} onClick={onImport}>Import {selected} match(es)</Button>
       </div>
     </CardContent></Card>
   );

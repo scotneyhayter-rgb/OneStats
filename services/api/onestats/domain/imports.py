@@ -631,6 +631,33 @@ def _get_or_create_import_competition(
     )
 
 
+def _resolve_target_competition(
+    conn: Connection, workspace_id: UUID, actor: str, source_system: str,
+    competition_id: UUID | None, competition_name: str | None,
+) -> UUID:
+    """The competition that imported grades and matches land under. CricketStatz exports carry no
+    competition, so this is the user's choice (from the Import Wizard), never guessed from the data:
+    an explicit ``competition_id`` (an existing competition they picked) wins; otherwise a non-blank
+    ``competition_name`` is found-or-created by name (idempotent, so re-importing under the same name
+    reuses it); otherwise the generic per-source import container."""
+    if competition_id is not None:
+        if conn.execute(text("SELECT 1 FROM competition WHERE id = :c AND workspace_id = :w"),
+                        {"c": competition_id, "w": workspace_id}).first() is None:
+            raise ValueError("competition_not_found")
+        return competition_id
+    name = (competition_name or "").strip()
+    if name:
+        existing = conn.execute(
+            text("SELECT id FROM competition WHERE workspace_id = :w "
+                 "AND regexp_replace(lower(btrim(name)), '\\s+', ' ', 'g') "
+                 "= regexp_replace(lower(btrim(:n)), '\\s+', ' ', 'g') ORDER BY created_at LIMIT 1"),
+            {"w": workspace_id, "n": name}).scalar_one_or_none()
+        if existing is not None:
+            return existing
+        return competitions.create_competition(conn, workspace_id, actor, name=name)
+    return _get_or_create_import_competition(conn, workspace_id, actor, source_system)
+
+
 def _set_record(conn: Connection, record_id: UUID, *, status: str, resolution: str, canonical_id: UUID | None) -> None:
     conn.execute(
         text(
@@ -640,8 +667,13 @@ def _set_record(conn: Connection, record_id: UUID, *, status: str, resolution: s
     )
 
 
-def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID) -> dict[str, Any]:
+def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID, *,
+                  competition_id: UUID | None = None, competition_name: str | None = None) -> dict[str, Any]:
     """Promote staged, promotable rows into canonical tables (explicit admin approval).
+
+    ``competition_id`` / ``competition_name`` choose the competition imported grades and matches land
+    under (the user's choice from the wizard — the export carries none); without either, the generic
+    per-source import container is used.
 
     Idempotent: a row whose source_ref already exists canonically is *matched*, never duplicated;
     names are never auto-merged. Unresolved divisions and all matches are left in staging.
@@ -696,7 +728,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     comp_id: UUID | None = None
     confident_divs = promotable("division")
     if confident_divs:
-        comp_id = _get_or_create_import_competition(conn, workspace_id, actor, ss)
+        comp_id = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
     for rec in confident_divs:
         norm = rec["normalised"] or {}
         existing = conn.execute(
@@ -742,7 +774,7 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # label NEVER classifies the match: classification stays 'unclassified'/unverified for admin.
     promotable_matches = promotable("match")
     if promotable_matches and comp_id is None:
-        comp_id = _get_or_create_import_competition(conn, workspace_id, actor, ss)
+        comp_id = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
     for rec in promotable_matches:
         norm = rec["normalised"] or {}
         existing = conn.execute(
@@ -1124,6 +1156,7 @@ def controlled_import(
     conn: Connection, workspace_id: UUID, actor: str, *,
     data: dict[str, Any], people: dict[str, Any] | None = None,
     commit: bool = False, filename: str | None = None,
+    competition_id: UUID | None = None, competition_name: str | None = None,
 ) -> dict[str, Any]:
     """Run a controlled CricketStatz import (people, then structural + scorecards) in one pass and
     return a combined summary for the Import Wizard.
@@ -1150,7 +1183,8 @@ def controlled_import(
     out["preview"] = preview_batch(conn, staged["batch_id"])
     out["howout_unresolved"] = unresolved_howout_report(data)["unresolved_codes"]
     if commit:
-        out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"])
+        out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"],
+                                        competition_id=competition_id, competition_name=competition_name)
         # once both people and clubs exist, record each player's MyClub affiliation (for scoping)
         out["affiliations"] = link_cricketstatz_people_to_clubs(conn, workspace_id, actor, people_batch)
     return out

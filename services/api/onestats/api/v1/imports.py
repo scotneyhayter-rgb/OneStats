@@ -73,6 +73,8 @@ class CricketStatzRequest(BaseModel):
     people: dict[str, Any] | None = Field(default=None, description="Referenced players/officials")
     commit: bool = Field(default=False, description="False = preview (nothing persists); True = import")
     filename: str | None = None
+    competition_id: UUID | None = Field(default=None, description="Existing competition to import into")
+    competition_name: str | None = Field(default=None, description="New competition name (found-or-created)")
 
 
 @router.post("/cricketstatz")
@@ -88,6 +90,7 @@ def cricketstatz_import(
             result = imports.controlled_import(
                 conn, workspace_id, str(ctx.user["id"]),
                 data=body.data, people=body.people, commit=body.commit, filename=body.filename,
+                competition_id=body.competition_id, competition_name=body.competition_name,
             )
         except ValueError as exc:
             sp.rollback()
