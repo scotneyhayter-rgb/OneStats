@@ -140,6 +140,29 @@ def _sum_known(values: list[Any]) -> int | None:
     return sum(known) if known else None
 
 
+def _sum_overs_notation(texts: list[str | None]) -> tuple[str | None, float | None]:
+    """Sum recorded over figures (cricket notation ``O`` or ``O.B``) into a combined notation and, when
+    it can be known without assuming balls-per-over, a decimal over count for the run rate. Whole-over
+    totals give an exact decimal; a part-over total needs balls-per-over, so the decimal is left None
+    (the notation is still returned). Unparseable input yields no figure rather than a guess."""
+    present = [t for t in texts if t]
+    if not present:
+        return None, None
+    o_sum = b_sum = 0
+    for t in present:
+        try:
+            if "." in t:
+                o, b = t.split(".", 1)
+                o_sum += int(o)
+                b_sum += int(b)
+            else:
+                o_sum += int(t)
+        except ValueError:
+            return None, None
+    notation = f"{o_sum}.{b_sum}" if b_sum else f"{o_sum}.0"
+    return notation, (float(o_sum) if b_sum == 0 else None)
+
+
 def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
     """Distinct total components. ``extras_total`` is the sum of the recorded extras (unknown if
     none recorded). ``batting_runs``/``bowling_conceded`` derive from later scorecard stages and
@@ -173,8 +196,11 @@ def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
     derived_total = None
     if batting_runs is not None or extras_total is not None:
         derived_total = (batting_runs or 0) + (extras_total or 0) if (batting_runs is not None) else None
-    # Overs bowled + run rate, from the bowling card (legal balls / balls-per-over). Both stay unknown
-    # unless the data supports them — overs are never decimals and balls-per-over is never assumed.
+    # Overs bowled + run rate. When balls-per-over is known we use the canonical legal-ball count;
+    # otherwise (e.g. imported matches with no playing conditions) we fall back to summing the overs
+    # AS RECORDED — that needs no balls-per-over assumption, so the figures still show. The run rate is
+    # only computed where the over total is exact (balls-per-over known, or whole overs); it never
+    # assumes a 6-ball over to invent a fractional result.
     overs_bowled: str | None = None
     legal_balls: int | None = None
     balls_per_over: int | None = None
@@ -183,12 +209,18 @@ def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
         from onestats.domain import bowling  # local import avoids a module cycle
         card = bowling.bowling_card(conn, innings_id)
         legal_balls = card.get("total_legal_balls")
-        overs_bowled = card.get("total_overs")
         balls_per_over = bowling._balls_per_over(conn, innings_id)
-        # best-known innings total per over (official where set, else the calculated total)
         runs_for_rate = inn["official_total"] if inn["official_total"] is not None else derived_total
-        if runs_for_rate is not None and legal_balls and balls_per_over:
-            run_rate = round(runs_for_rate * balls_per_over / legal_balls, 2)
+        if legal_balls and balls_per_over:
+            overs_bowled = card.get("total_overs")
+            if runs_for_rate is not None:
+                run_rate = round(runs_for_rate * balls_per_over / legal_balls, 2)
+        else:
+            # balls-per-over unknown: sum the overs exactly as recorded (no assumption)
+            overs_bowled, dec_overs = _sum_overs_notation(
+                [e.get("overs_text") for e in bowling.list_entries(conn, innings_id)])
+            if runs_for_rate is not None and dec_overs:
+                run_rate = round(runs_for_rate / dec_overs, 2)
     return {
         "innings_id": str(innings_id),
         "extras_total": extras_total,

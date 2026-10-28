@@ -268,13 +268,17 @@ def test_totals_report_overs_bowled_and_run_rate(conn):
     assert t["run_rate"] == 6.67
 
 
-def test_run_rate_unknown_without_balls_per_over(conn):
-    """With balls-per-over unknown, overs and run rate stay unknown -- never a guessed 6-ball over."""
+def test_overs_and_run_rate_from_recorded_overs_without_balls_per_over(conn):
+    """With balls-per-over unknown (e.g. an imported match with no playing conditions), overs and run
+    rate still come from the overs AS RECORDED -- summed with no 6-ball assumption. 40 off 10 -> 4.00."""
     wid = _ws(conn, "BOWL OVERS UNK")
     iid = _innings(conn, wid)  # no playing conditions -> balls_per_over unknown
     bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Bat"),
                      batting_position=1, runs=40)
     bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "B1"),
-                      bowling_order=1, overs_text="10", runs_conceded=40)
+                      bowling_order=1, overs_text="6", runs_conceded=20)
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "B2"),
+                      bowling_order=2, overs_text="4", runs_conceded=20)
     t = inn.totals(conn, iid)
-    assert t["overs_bowled"] is None and t["run_rate"] is None
+    assert t["balls_per_over"] is None and t["legal_balls"] is None  # no assumption made
+    assert t["overs_bowled"] == "10.0" and t["run_rate"] == 4.0      # from recorded overs
