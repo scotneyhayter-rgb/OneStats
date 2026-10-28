@@ -78,9 +78,10 @@ function InningsScoreHeader({ teamName, innings, totals, format }: {
 
 /** Scorecard approval workflow bar (Phase 7.1): status, transitions (separate from match status),
  *  and the aggregated validation warnings. Approved scorecards are authoritative for official stats. */
-function ApprovalBar({ match, canManage, onAction }: {
+function ApprovalBar({ match, canManage, onAction, onStatus }: {
   match: MatchDetail; canManage: boolean;
   onAction: (action: "submit" | "approve" | "reject" | "reopen", reason?: string) => void;
+  onStatus: (status: string) => void;
 }) {
   const [reason, setReason] = useState("");
   const st = match.approval_status ?? "draft";
@@ -97,6 +98,13 @@ function ApprovalBar({ match, canManage, onAction }: {
           {st === "rejected" && match.approval_reason && <span className="text-xs text-muted-foreground">Reason: {match.approval_reason}</span>}
           {st === "approved" && match.approved_at && <span className="text-xs text-muted-foreground">Approved {new Date(match.approved_at).toLocaleString()}</span>}
         </div>
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Match status</span>
+            <MatchStatusToggle status={match.status} canManage={canManage} onStatus={onStatus} />
+            <span className="text-xs text-muted-foreground">Set Final here, then Submit → Approve — no scrolling.</span>
+          </div>
+        )}
         {canManage && (
           <div className="flex flex-wrap items-end gap-2">
             {(st === "awaiting_approval" || st === "rejected") && (
@@ -128,6 +136,28 @@ const CLASSIFICATIONS = ["unclassified", "home_away", "final", "grand_final", "o
 const FINALS_STAGES = ["qualifying_final", "elimination_final", "semi_final", "preliminary_final", "grand_final", "custom"];
 const RESULT_TYPES = ["home_win", "away_win", "tie", "draw", "no_result", "abandoned", "washout", "forfeit", "unknown"];
 const MATCH_STATUSES = ["draft", "final", "abandoned"];
+
+/** The Draft / Final / Abandoned match-status toggle (Phase 7). Shown both in the top approval bar
+ *  (so finalising and approving are one-stop) and in Result & Notes; both drive the same match.status. */
+function MatchStatusToggle({ status, canManage, onStatus }: {
+  status: string; canManage: boolean; onStatus: (s: string) => void;
+}) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-[var(--radius-app)] border border-border" role="group" aria-label="Match status">
+      {MATCH_STATUSES.map((s) => {
+        const activeState = status === s;
+        const tone = s === "final" ? "bg-success/15 text-success" : s === "abandoned" ? "bg-warning/15 text-warning" : "bg-brand/10 text-brand";
+        return (
+          <button key={s} type="button" disabled={!canManage} onClick={() => onStatus(s)} aria-pressed={activeState}
+            title={s === "draft" ? "Editable; excluded from statistics until finalised" : s === "final" ? "Finalised; included in statistics" : "Abandoned"}
+            className={`border-r border-border px-3 py-1 text-xs capitalize last:border-r-0 ${activeState ? `font-semibold ${tone}` : "text-muted-foreground hover:bg-muted"}`}>
+            {s}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ScorecardEditor({
   workspaceId, matchId, canManage, onBack, onSaved,
@@ -270,6 +300,7 @@ export function ScorecardEditor({
         <Legend />
 
         <ApprovalBar match={match} canManage={canManage}
+          onStatus={(s) => void patchMatch({ status: s })}
           onAction={async (action, reason) => {
             try { await api.matchApproval(workspaceId, matchId, action, reason); await load(); flash("Approval updated."); }
             catch (e) { setErr(e instanceof ApiError ? e.message : "Could not update approval."); }
@@ -788,7 +819,8 @@ function InningsEditor({
   const ctx = { workspaceId: w, inningsId: innings.id, canManage, nameOf, onPersonLoaded: addName,
     onDirty, refreshKey, onChanged: () => { setRefreshKey((k) => k + 1); void recompute(); },
     battingOrgId: teamOrg(innings.batting_team_id), bowlingOrgId: teamOrg(innings.bowling_team_id),
-    battingTeamName: teamName(innings.batting_team_id), bowlingTeamName: teamName(innings.bowling_team_id) };
+    battingTeamName: teamName(innings.batting_team_id), bowlingTeamName: teamName(innings.bowling_team_id),
+    byes: innings.byes, legbyes: innings.legbyes };
 
   // Batting side is explicit (never assumed). Choosing it sets bowling to the other recorded side.
   const applyBatting = (battingId: string | null) => {
@@ -1029,20 +1061,7 @@ function ResultNotesSection({ match, teamName, canManage, onPatch, onResult }: {
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Match status</span>
-        <div className="inline-flex overflow-hidden rounded-[var(--radius-app)] border border-border" role="group" aria-label="Match status">
-          {MATCH_STATUSES.map((s) => {
-            const activeState = match.status === s;
-            const tone = s === "final" ? "bg-success/15 text-success" : s === "abandoned" ? "bg-warning/15 text-warning" : "bg-brand/10 text-brand";
-            return (
-              <button key={s} disabled={!canManage} onClick={() => onPatch({ status: s })}
-                aria-pressed={activeState}
-                title={s === "draft" ? "Editable; excluded from statistics until finalised" : s === "final" ? "Finalised; included in statistics" : "Abandoned"}
-                className={`border-r border-border px-3 py-1 text-xs capitalize last:border-r-0 ${activeState ? `font-semibold ${tone}` : "text-muted-foreground hover:bg-muted"}`}>
-                {s}
-              </button>
-            );
-          })}
-        </div>
+        <MatchStatusToggle status={match.status} canManage={canManage} onStatus={(s) => onPatch({ status: s })} />
         <span className="text-xs text-muted-foreground">Draft keeps it editable and out of statistics until finalised.</span>
       </div>
       <DraftNote matchId={match.id} />

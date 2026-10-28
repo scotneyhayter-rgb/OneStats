@@ -65,6 +65,9 @@ interface GridCtx {
   bowlingOrgId?: string | null;
   battingTeamName?: string | null;
   bowlingTeamName?: string | null;
+  // innings extras (for the bowling totals reconciliation: bowler runs + byes + leg byes = innings runs)
+  byes?: number | null;
+  legbyes?: number | null;
 }
 
 /** A focus grid: register inputs by (row,col); handle arrow/Enter keys to move focus. */
@@ -384,6 +387,34 @@ export function BowlingGrid(ctx: GridCtx) {
     onChanged();
   };
 
+  // Column totals (known values only — unknown is never counted as zero).
+  const sumN = (vals: (number | null | undefined)[]) => {
+    const known = vals.filter((v): v is number => v != null);
+    return known.length ? known.reduce((a, b) => a + b, 0) : null;
+  };
+  const sumOvers = (texts: (string | null | undefined)[]) => {
+    let o = 0, b = 0, any = false;
+    for (const t of texts) {
+      const s = (t ?? "").trim();
+      if (!s) continue;
+      any = true;
+      if (s.includes(".")) { const [oo, bb] = s.split("."); o += Number(oo) || 0; b += Number(bb) || 0; }
+      else o += Number(s) || 0;
+    }
+    return any ? (b ? `${o}.${b}` : `${o}.0`) : null;
+  };
+  const tOvers = sumOvers(rows.map((r) => r.overs_text));
+  const tM = sumN(rows.map((r) => r.maidens));
+  const tR = sumN(rows.map((r) => r.runs_conceded));
+  const tW = sumN(rows.map((r) => r.wickets));
+  const tWd = sumN(rows.map((r) => r.wides));
+  const tNb = sumN(rows.map((r) => r.noballs));
+  // Reconciliation: a bowler's runs conceded include their wides/no-balls, so sum(R) + byes + leg byes
+  // is the innings runs — it should match the batting side's total.
+  const byeslb = (ctx.byes ?? 0) + (ctx.legbyes ?? 0);
+  const inningsRuns = tR != null ? tR + byeslb : null;
+  const tdTot = "px-1 py-1 tabular-nums";
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
@@ -434,7 +465,27 @@ export function BowlingGrid(ctx: GridCtx) {
             <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No bowlers recorded.</td></tr>
           )}
         </tbody>
+        {rows.length > 0 && (
+          <tfoot>
+            <tr className="border-t-2 border-border font-semibold">
+              <td className="px-1 py-1 text-xs uppercase text-muted-foreground">Total</td>
+              <td className={tdTot}>{tOvers ?? "—"}</td>
+              <td className={tdTot}>{tM ?? "—"}</td>
+              <td className={tdTot}>{tR ?? "—"}</td>
+              <td className={tdTot}>{tW ?? "—"}</td>
+              <td className={tdTot}>{tWd ?? "—"}</td>
+              <td className={tdTot}>{tNb ?? "—"}</td>
+              {canManage && <td />}
+            </tr>
+          </tfoot>
+        )}
       </table>
+      {rows.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>Byes + Leg byes: <span className="tabular-nums text-foreground">{byeslb}</span></span>
+          <span>Innings runs (bowling R + byes/leg byes): <span className="tabular-nums font-medium text-foreground">{inningsRuns ?? "—"}</span> <span className="opacity-70">— should match the batting total</span></span>
+        </div>
+      )}
       {canManage && (
         <Button variant="outline" size="sm" className="mt-2" onClick={() => void addRow()}>
           <Plus className="h-4 w-4" aria-hidden /> Add bowler
