@@ -93,3 +93,24 @@ def test_all_time_records_holder_and_ties(conn):
     s = next(x for x in leaders if x["label"] == "2024/25")
     assert s["leading_run_scorer"]["player"] == "Star Batter" and s["leading_run_scorer"]["value"] == 150
     assert s["leading_wicket_taker"]["player"] == "Spearhead"
+
+
+def test_reclassify_grand_final_refreshes_stats_split(conn):
+    """Marking an already-approved match a grand final refreshes the stats ledger, so the player's
+    grand-final figures appear immediately — no re-approval needed."""
+    from onestats.domain.stats import engine
+    wid = _ws(conn, "REC GF SPLIT")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    star = people.create_person(conn, wid, ACTOR, display_name="GF Hero")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=star, batting_position=1,
+                         runs=80, balls_faced=60, dismissal_type="not_out")
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")   # approved while still unclassified
+    gf = {"workspace_id": wid, "split": "grand_final"}
+    assert int(engine.person_batting(conn, gf, star).get("runs") or 0) == 0   # not a grand final yet
+    matches.set_classification(conn, wid, ACTOR, mid, classification="grand_final")
+    assert engine.person_batting(conn, gf, star)["runs"] == 80     # ledger refreshed, no re-approval

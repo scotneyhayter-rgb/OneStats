@@ -180,6 +180,14 @@ def set_classification(
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.classify", entity="match", entity_id=str(match_id),
                       before=before, after=after)
+    # The classification split in official statistics reads the classification snapshotted in the
+    # stat-contribution ledger at approval time. Reclassifying (e.g. marking a match a grand final)
+    # must refresh that ledger so the grand-final / finals split updates immediately -- otherwise the
+    # match stays invisible to the grand-final figures until a re-approval. Figures are unchanged; only
+    # the classification tag is refreshed. A no-op for a match that is not approved.
+    if before.get("classification") != classification:
+        from onestats.domain import recalc  # local import avoids a module cycle
+        recalc.recompute_match(conn, workspace_id, actor, match_id)
     return after
 
 
