@@ -345,6 +345,36 @@ def _ref0(v: Any) -> str | None:
     return None if v in (None, 0, "0", "") else str(v)
 
 
+def _sum_opt(values: list[Any]) -> int | None:
+    """Sum the known (non-None) integer values; None when none are known (unknown stays unknown)."""
+    known = [v for v in values if v is not None]
+    return sum(int(v) for v in known) if known else None
+
+
+def _combine_overs(texts: list[str | None]) -> str | None:
+    """Combine a bowler's spell overs (cricket notation ``O`` or ``O.B``) into one figure by summing
+    the overs and balls parts. Balls-per-over is unknown at staging, so a part-over sum that would
+    carry (balls >= an over) is left for the promotion-time legal-ball check to flag — never guessed.
+    Whole-over spells (the common case) combine exactly (e.g. '2.0' + '3.0' -> '5.0')."""
+    present = [t for t in texts if t]
+    if not present:
+        return None
+    if len(present) == 1:
+        return present[0]
+    o_sum = b_sum = 0
+    for t in present:
+        try:
+            if "." in t:
+                o, b = t.split(".", 1)
+                o_sum += int(o)
+                b_sum += int(b)
+            else:
+                o_sum += int(t)
+        except ValueError:
+            return present[0]  # unparseable notation — keep the first spell's overs; figures still sum
+    return f"{o_sum}.{b_sum}" if b_sum else f"{o_sum}.0"
+
+
 def _toss_winner_team(code: Any, home_id: UUID | None, away_id: UUID | None) -> UUID | None:
     """Map a CricketStatz ``tosswonby`` code to the winning team. 1 = home side, 2 = away side
     (the same home/away convention as Result); 0/blank/unknown → not recorded, so unknown."""
@@ -475,6 +505,12 @@ def _stage_scorecards(
     for wrap in payload.get("bowling") or []:
         for inn in wrap.get("cricket_Innings") or []:
             iref = _s(inn.get("InningsID"))
+            # A bowler can bowl several spells in one innings; a scorecard shows ONE line per bowler
+            # (figures summed). Aggregate the source's spell rows per bowler so there is exactly one
+            # bowling line — never two rows for the same person, which the model rightly rejects. The
+            # first spell's position is the order/source_ref, so a single-spell bowler is unchanged
+            # (same source_ref → idempotent re-import); only genuine multi-spell cases are combined.
+            spells: dict[str, dict[str, Any]] = {}
             for order, bw in enumerate(inn.get("cricket_bowling") or [], start=1):
                 bowler = _ref0(bw.get("bowlerID")) if bw else None
                 if bowler is None:  # skip empty padding slots (bowlerID 0)
@@ -484,12 +520,27 @@ def _stage_scorecards(
                 if not any((bw.get("Overs"), bw.get("Maidens"), bw.get("Wickets"),
                             bw.get("RunsA"), bw.get("wides"), bw.get("noballs"))):
                     continue
-                _insert_record(conn, wid, batch_id, "bowling_entry", f"{iref}:{bowler}:{order}", bw, {
-                    "innings_source_ref": iref, "bowler_source_ref": bowler, "bowling_order": order,
-                    "overs_text": _s(bw.get("Overs")), "maidens": bw.get("Maidens"),
-                    "wickets": bw.get("Wickets"), "runs_conceded": bw.get("RunsA"),
-                    "wides": bw.get("wides"), "noballs": bw.get("noballs"),
-                }, resolution="new")
+                if bowler not in spells:
+                    spells[bowler] = {"order": order, "raw": bw, "rows": [bw]}
+                else:
+                    spells[bowler]["rows"].append(bw)
+            for bowler, agg in spells.items():
+                rows = agg["rows"]
+                merged = len(rows) > 1
+                _insert_record(conn, wid, batch_id, "bowling_entry",
+                               f"{iref}:{bowler}:{agg['order']}", agg["raw"], {
+                                   "innings_source_ref": iref, "bowler_source_ref": bowler,
+                                   "bowling_order": agg["order"],
+                                   "overs_text": _combine_overs([_s(r.get("Overs")) for r in rows]),
+                                   "maidens": _sum_opt([r.get("Maidens") for r in rows]),
+                                   "wickets": _sum_opt([r.get("Wickets") for r in rows]),
+                                   "runs_conceded": _sum_opt([r.get("RunsA") for r in rows]),
+                                   "wides": _sum_opt([r.get("wides") for r in rows]),
+                                   "noballs": _sum_opt([r.get("noballs") for r in rows]),
+                               }, resolution="new",
+                               issues=None if not merged else [
+                                   f"bowling_spells_merged: {len(rows)} spells for this bowler in "
+                                   f"innings {iref} combined into one bowling line"])
                 n_bowl += 1
 
     counts.update({"innings": n_inn, "batting_entry": n_bat, "bowling_entry": n_bowl, "fall_of_wicket": n_fow})
@@ -1081,9 +1132,22 @@ def _promote_scorecards(
         if inns_id is None:
             _flag(conn, rec["id"], "innings_unresolved: bowling entry left staged")
             continue
+        bowler_pid = _person_by_source(conn, norm.get("bowler_source_ref"), source_system)
+        # Spells are already combined into one line per bowler at staging. This is a defensive guard:
+        # if a bowler somehow already has a bowling entry in this innings (e.g. a record carried over
+        # from an earlier import under a different source_ref), leave this one staged + flagged rather
+        # than abort the whole import with duplicate_bowler. Never merged blindly, never rolled back.
+        if bowler_pid is not None and conn.execute(
+            text("SELECT 1 FROM bowling_entry WHERE innings_id = :i AND person_id = :p"),
+            {"i": inns_id, "p": bowler_pid},
+        ).first() is not None:
+            _flag(conn, rec["id"],
+                  f"duplicate_bowler_in_innings: this bowler already has a bowling entry in innings "
+                  f"{norm.get('innings_source_ref')}; left for review")
+            continue
         eid = bowling.create_entry(
             conn, wid, actor, innings_id=inns_id,
-            person_id=_person_by_source(conn, norm.get("bowler_source_ref"), source_system),
+            person_id=bowler_pid,
             bowling_order=norm.get("bowling_order"), overs_text=norm.get("overs_text"),
             maidens=norm.get("maidens"), runs_conceded=norm.get("runs_conceded"),
             wickets=norm.get("wickets"), wides=norm.get("wides"), noballs=norm.get("noballs"),

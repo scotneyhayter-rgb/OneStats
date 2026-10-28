@@ -353,6 +353,55 @@ def test_duplicate_batter_in_innings_keeps_first_and_flags_rest(conn):
     assert dup["status"] == "staged" and "duplicate_batter_in_innings" in dup["issues"]
 
 
+# A bowler who bowls TWO spells in one innings — a scorecard shows one line per bowler (figures summed).
+DUP_BOWLER = {
+    "clubs": [{"ClubID": 1, "Name": "Alpha CC"}, {"ClubID": 2, "Name": "Beta CC"}],
+    "teams": [{"TeamID": 100, "Name": "Alpha", "ClubID": 1}, {"TeamID": 200, "Name": "Beta", "ClubID": 2}],
+    "venues": [{"GroundID": 10, "Name": "Alpha Oval"}],
+    "divisions": [{"GradeID": 50, "Name": "B Grade"}],
+    "matches": [{"MatchID": 902, "HomeTeam": 100, "AwayTeam": 200, "DatePlayed": "2024-03-02",
+                 "Ground": 10, "Grade": 50, "Result": 1, "matchtype": 1}],
+    "innings": [{"MatchID": 902, "cricket_Innings": [
+        {"InningsID": 940, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 200, "iresult": 1},
+    ]}],
+    "batting": [{"MatchID": 902, "cricket_Innings": [
+        {"InningsID": 940, "InnsNumber": 1, "cricket_batting": [
+            {"Batpos": 1, "BatsmanID": 10, "Howout": 2, "Bowler": 30, "Fielder": 0, "Score": 40,
+             "Balls": 50, "mins": 0, "sixes": 0, "fours": 5, "FOW": 0, "FOWPos": 1, "FOWBatID": 0, "FOWOvers": 0.0},
+        ]},
+    ]}],
+    "bowling": [{"MatchID": 902, "cricket_Innings": [
+        {"InningsID": 940, "InnsNumber": 1, "cricket_bowling": [
+            {"bowlerID": 30, "Maidens": 0, "Overs": 2.0, "Wickets": 0, "RunsA": 9, "wides": 0, "noballs": 0},
+            {"bowlerID": 31, "Maidens": 1, "Overs": 4.0, "Wickets": 1, "RunsA": 12, "wides": 0, "noballs": 0},
+            {"bowlerID": 30, "Maidens": 0, "Overs": 3.0, "Wickets": 1, "RunsA": 13, "wides": 0, "noballs": 0},  # 2nd spell
+        ]},
+    ]}],
+}
+
+
+def test_bowler_with_two_spells_combines_into_one_line(conn):
+    """A bowler who bowls more than one spell in an innings is one bowling line with the figures summed
+    — not two rows (which the model rejects and which rolled back the whole import). Idempotent."""
+    wid = _ws(conn, "SC DUPBOWL")
+    p30 = people.create_person(conn, wid, ACTOR, display_name="Spell Bowler", source_system=SS, source_ref="30")
+    people.create_person(conn, wid, ACTOR, display_name="Other Bowler", source_system=SS, source_ref="31")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=DUP_BOWLER)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid)   # must NOT raise / roll back
+    inn = conn.execute(text("SELECT id FROM innings WHERE source_ref = '940'")).scalar_one()
+    rows = conn.execute(text("SELECT person_id, overs_text, maidens, wickets, runs_conceded "
+                             "FROM bowling_entry WHERE innings_id = :i"), {"i": inn}).mappings().all()
+    assert len(rows) == 2                                   # one line per bowler (30 combined + 31)
+    b30 = next(r for r in rows if str(r["person_id"]) == str(p30))
+    assert b30["overs_text"] == "5.0"                       # 2.0 + 3.0 spells combined
+    assert b30["wickets"] == 1 and b30["runs_conceded"] == 22 and b30["maidens"] == 0  # 0+1, 9+13, 0+0
+    # re-import does not duplicate the bowling line
+    bid2 = imports.parse_and_stage(conn, wid, ACTOR, payload=DUP_BOWLER)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid2)
+    assert conn.execute(text("SELECT count(*) FROM bowling_entry WHERE innings_id = :i"),
+                        {"i": inn}).scalar_one() == 2
+
+
 def test_howout_legend_mapping():
     """The verified legend maps exactly the approved/mandated codes; everything else stays None."""
     m = imports.map_howout
