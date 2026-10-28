@@ -155,6 +155,77 @@ def find_duplicate_candidates(conn: Connection, person_id: UUID) -> list[dict[st
     return results
 
 
+def scan_duplicate_pairs(conn: Connection, workspace_id: UUID) -> list[dict[str, Any]]:
+    """Workspace-wide duplicate candidate PAIRS for the identity review worklist — so cross-club
+    players (the same person under two clubs' records) can be resolved from one list instead of
+    opening every profile. Evidence: a shared external source identity is **strong**; an identical
+    normalised name/alias is **weak**, upgraded to **medium** when the pair also shares a club
+    affiliation. Already-merged people and pairs asserted distinct are excluded. Deduped, sorted
+    strongest-first. A name/initials match alone is never proof — these are suggestions to review."""
+    pairs: dict[tuple[UUID, UUID], set[str]] = {}
+
+    def add(a: UUID, b: UUID, ev: str) -> None:
+        if a == b:
+            return
+        pairs.setdefault(_ordered(a, b), set()).add(ev)
+
+    # strong: two live people sharing an external source identity
+    for r in conn.execute(text(
+        "SELECT a.person_id AS pa, b.person_id AS pb FROM person_source_identity a "
+        "JOIN person_source_identity b ON a.source_system = b.source_system "
+        "  AND a.source_ref = b.source_ref AND a.person_id < b.person_id "
+        "JOIN person pa ON pa.id = a.person_id AND pa.merged_into_id IS NULL "
+        "JOIN person pb ON pb.id = b.person_id AND pb.merged_into_id IS NULL"
+    )).mappings().all():
+        add(r["pa"], r["pb"], "shared_source_identity")
+
+    # weak: two live people sharing an identical normalised name/alias (display name or name history)
+    for r in conn.execute(text(
+        "WITH names AS ("
+        "  SELECT p.id AS person_id, regexp_replace(lower(btrim(p.display_name)), '\\s+', ' ', 'g') AS k "
+        "    FROM person p WHERE p.merged_into_id IS NULL "
+        "  UNION "
+        "  SELECT nh.person_id, regexp_replace(lower(btrim(nh.name)), '\\s+', ' ', 'g') AS k "
+        "    FROM person_name_history nh JOIN person p ON p.id = nh.person_id AND p.merged_into_id IS NULL) "
+        "SELECT a.person_id AS pa, b.person_id AS pb FROM names a "
+        "JOIN names b ON a.k = b.k AND a.person_id < b.person_id WHERE a.k <> ''"
+    )).mappings().all():
+        add(r["pa"], r["pb"], "name_or_alias_match")
+
+    if not pairs:
+        return []
+
+    involved = sorted({p for pair in pairs for p in pair}, key=str)
+    orgs: dict[UUID, set[UUID]] = {p: set() for p in involved}
+    for r in conn.execute(
+        text("SELECT person_id, organisation_id FROM person_affiliation WHERE person_id = ANY(CAST(:ids AS uuid[]))"),
+        {"ids": involved},
+    ).mappings().all():
+        orgs.setdefault(r["person_id"], set()).add(r["organisation_id"])
+    names = {r["id"]: r["display_name"] for r in conn.execute(
+        text("SELECT id, display_name FROM person WHERE id = ANY(CAST(:ids AS uuid[]))"),
+        {"ids": involved},
+    ).mappings().all()}
+
+    out: list[dict[str, Any]] = []
+    for (a, b), evidence in pairs.items():
+        if are_asserted_distinct(conn, a, b):
+            continue
+        if orgs.get(a) and (orgs[a] & orgs.get(b, set())):
+            evidence.add("shared_club_affiliation")
+        strong = "shared_source_identity" in evidence
+        medium = (not strong) and "name_or_alias_match" in evidence and "shared_club_affiliation" in evidence
+        out.append({
+            "person_a_id": a, "person_b_id": b,
+            "a_display_name": names.get(a), "b_display_name": names.get(b),
+            "evidence": sorted(evidence),
+            "confidence": "strong" if strong else ("medium" if medium else "weak"),
+        })
+    order = {"strong": 0, "medium": 1, "weak": 2}
+    out.sort(key=lambda r: (order[r["confidence"]], r["a_display_name"] or "", r["b_display_name"] or ""))
+    return out
+
+
 def compare(conn: Connection, a: UUID, b: UUID) -> dict[str, Any]:
     """Side-by-side data for administrator review: both records, names, source identities,
     affiliations, and whether they are already asserted distinct or merged."""

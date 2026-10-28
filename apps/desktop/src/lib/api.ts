@@ -613,6 +613,14 @@ export interface PersonMerge {
   evidence: string | null;
   is_undone: boolean;
 }
+export interface DuplicatePair {
+  person_a_id: string;
+  person_b_id: string;
+  a_display_name: string | null;
+  b_display_name: string | null;
+  evidence: string[];
+  confidence: "strong" | "medium" | "weak";
+}
 export interface ImportBatch {
   id: string;
   source_system: string;
@@ -1437,6 +1445,8 @@ export const api = {
   // identity resolution
   identityCandidates: (w: string, person_id: string) =>
     request<PersonDuplicateCandidate[]>(`/api/v1/workspaces/${w}/identity/candidates${qs({ person_id })}`),
+  identityScan: (w: string) =>
+    request<DuplicatePair[]>(`/api/v1/workspaces/${w}/identity/candidates/scan`),
   identityCompare: (w: string, a: string, b: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/identity/compare${qs({ a, b })}`),
   identityMerge: (w: string, body: { canonical_person_id: string; merged_person_id: string; reason?: string; evidence?: string }) =>

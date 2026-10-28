@@ -12,6 +12,7 @@ import { Select } from "../../components/ui/select";
 import {
   ApiError,
   api,
+  type DuplicatePair,
   type ImportBatch,
   type ImportRecord,
   type Person,
@@ -508,21 +509,27 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
 
 function IdentityCentre({ workspaceId, canManage, onMsg }: { workspaceId: string; canManage: boolean; onMsg: (m: string) => void }) {
   const [merges, setMerges] = useState<PersonMerge[]>([]);
+  const [pairs, setPairs] = useState<DuplicatePair[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmUndo, setConfirmUndo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pairBusy, setPairBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const m = await api.listPersonMerges(workspaceId);
+      const [m, dup, all] = await Promise.all([
+        api.listPersonMerges(workspaceId),
+        api.identityScan(workspaceId),
+        api.listPeople(workspaceId, { include_merged: true }),
+      ]);
       setMerges(m);
+      setPairs(dup);
       // resolve display names for involved people (best-effort)
-      const all = await api.listPeople(workspaceId, { include_merged: true });
       setNames(Object.fromEntries(all.map((p) => [p.id, p.display_name])));
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Failed to load merges"); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Failed to load identity data"); }
     finally { setLoading(false); }
   }, [workspaceId]);
   useEffect(() => { void load(); }, [load]);
@@ -535,16 +542,93 @@ function IdentityCentre({ workspaceId, canManage, onMsg }: { workspaceId: string
     finally { setBusy(false); }
   };
 
+  const pairKey = (p: DuplicatePair) => `${p.person_a_id}:${p.person_b_id}`;
+  const resolvePair = async (p: DuplicatePair, action: "keepA" | "keepB" | "distinct") => {
+    setPairBusy(pairKey(p));
+    try {
+      if (action === "distinct") {
+        await api.identityAssertDistinct(workspaceId, { person_a_id: p.person_a_id, person_b_id: p.person_b_id, reason: "reviewed — different people (desktop)" });
+        onMsg("Marked as different people.");
+      } else {
+        const canonical = action === "keepA" ? p.person_a_id : p.person_b_id;
+        const merged = action === "keepA" ? p.person_b_id : p.person_a_id;
+        await api.identityMerge(workspaceId, { canonical_person_id: canonical, merged_person_id: merged, reason: "confirmed duplicate (desktop)" });
+        onMsg(`Merged into "${(action === "keepA" ? p.a_display_name : p.b_display_name) ?? "person"}".`);
+      }
+      await load();
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not resolve this pair"); }
+    finally { setPairBusy(null); }
+  };
+
+  const confBadge = (c: DuplicatePair["confidence"]) =>
+    c === "strong" ? <Badge variant="brand">strong</Badge>
+      : c === "medium" ? <Badge variant="warning">medium</Badge>
+        : <Badge variant="muted">weak</Badge>;
+
   const nm = (id: string) => names[id] ?? id.slice(0, 8);
 
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
-        The Identity Resolution Centre records administrator-approved merges. Find duplicate suggestions and
-        merge/mark-distinct from a person's profile (Directory → open a person). A name match never auto-merges.
+        Resolve players who appear more than once — e.g. the same person recorded under two clubs. Review the
+        suggested pairs below (strongest first), keep one record or mark them as different people. A name match
+        is never proof and nothing is auto-merged; every merge is reversible.
       </p>
-      {loading && <LoadingState label="Loading identity history..." />}
+      {loading && <LoadingState label="Loading identity data..." />}
       {!loading && error && <ErrorState message={error} onRetry={() => void load()} />}
+
+      {!loading && !error && (
+        <section className="mb-6">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Possible duplicates {pairs.length > 0 && <span className="text-foreground">({pairs.length})</span>}
+          </h3>
+          {pairs.length === 0 ? (
+            <EmptyState icon={<Users className="h-8 w-8" aria-hidden />} title="No possible duplicates"
+              description="Every player resolves to a single person. New suggestions appear here after an import." />
+          ) : (
+            <div className="grid gap-2">
+              {pairs.map((p) => {
+                const k = pairKey(p);
+                const pending = pairBusy === k;
+                return (
+                  <Card key={k}>
+                    <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          {confBadge(p.confidence)}
+                          <span className="truncate"><b>{p.a_display_name ?? nm(p.person_a_id)}</b> &amp; <b>{p.b_display_name ?? nm(p.person_b_id)}</b></span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {p.evidence.map((ev) => (
+                            <span key={ev} className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{humanise(ev)}</span>
+                          ))}
+                        </div>
+                      </div>
+                      {canManage && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" variant="outline" disabled={pending} onClick={() => void resolvePair(p, "keepA")}>
+                            <GitMerge className="h-4 w-4" aria-hidden /> Keep {p.a_display_name ?? "A"}
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={pending} onClick={() => void resolvePair(p, "keepB")}>
+                            <GitMerge className="h-4 w-4" aria-hidden /> Keep {p.b_display_name ?? "B"}
+                          </Button>
+                          <Button size="sm" variant="ghost" disabled={pending} onClick={() => void resolvePair(p, "distinct")}>
+                            Not the same
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!loading && !error && (
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Merge history</h3>
+      )}
       {!loading && !error && merges.length === 0 && (
         <EmptyState icon={<GitMerge className="h-8 w-8" aria-hidden />} title="No merges recorded"
           description="Confirmed merges and reversals appear here with full history." />

@@ -95,6 +95,40 @@ def test_alias_match_detected(conn):
     assert any(c["person_id"] == a for c in cands)  # matched via alias, still weak
 
 
+def test_scan_lists_workspace_duplicate_pairs(conn):
+    """The workspace-wide scan drives the identity review worklist: cross-club same-name players are
+    weak pairs, same-club same-name are medium, and pairs that are merged or marked distinct drop out."""
+    wid = _ws(conn, "RES SCAN")
+    club_r, club_m = _org(conn, wid, "Rhymney CC"), _org(conn, wid, "Moyston CC")
+
+    def _pairs():
+        return {frozenset((str(p["person_a_id"]), str(p["person_b_id"]))): p
+                for p in pr.scan_duplicate_pairs(conn, wid)}
+
+    # same player across two clubs -> same name, DIFFERENT clubs -> weak
+    a, b = _person(conn, wid, "A Bonner"), _person(conn, wid, "A Bonner")
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=a, organisation_id=club_r, role="player")
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=b, organisation_id=club_m, role="player")
+    # same name AND same club -> medium
+    c, d = _person(conn, wid, "B Webb"), _person(conn, wid, "B Webb")
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=c, organisation_id=club_r, role="player")
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=d, organisation_id=club_r, role="player")
+    _person(conn, wid, "Z Unique")  # no pair
+
+    pairs = _pairs()
+    ab, cd = frozenset((str(a), str(b))), frozenset((str(c), str(d)))
+    assert ab in pairs and pairs[ab]["confidence"] == "weak"
+    assert {pairs[ab]["a_display_name"], pairs[ab]["b_display_name"]} == {"A Bonner"}
+    assert cd in pairs and pairs[cd]["confidence"] == "medium" and "shared_club_affiliation" in pairs[cd]["evidence"]
+
+    # mark the cross-club pair distinct -> it drops out of the worklist
+    pr.assert_distinct(conn, wid, ACTOR, a, b)
+    assert ab not in _pairs()
+    # merge the same-club pair -> the merged record drops out too
+    pr.merge_people(conn, wid, ACTOR, c, d)
+    assert cd not in _pairs()
+
+
 # ---------------------------------------------- Walker (same): admin-approved merge
 
 

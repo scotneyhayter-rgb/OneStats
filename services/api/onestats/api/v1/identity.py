@@ -94,6 +94,13 @@ def candidates(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: 
         return [{**c, "person_id": str(c["person_id"])} for c in cands]
 
 
+@router.get("/candidates/scan")
+def candidates_scan(workspace_id: UUID, settings: SettingsDep, ctx: IdCtx) -> list[dict[str, Any]]:
+    """Workspace-wide duplicate candidate pairs for the identity review worklist (strongest first)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_ids(p) for p in person_resolution.scan_duplicate_pairs(conn, workspace_id)]
+
+
 @router.get("/compare")
 def compare(workspace_id: UUID, a: UUID, b: UUID, settings: SettingsDep, ctx: IdCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
