@@ -1055,6 +1055,10 @@ export interface InningsTotals {
   derived_wickets: number | null;
   official_total: number | null;
   official_wickets: number | null;
+  overs_bowled: string | null;
+  legal_balls: number | null;
+  balls_per_over: number | null;
+  run_rate: number | null;
 }
 export interface DismissalFielder {
   id: string;

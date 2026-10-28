@@ -173,6 +173,22 @@ def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
     derived_total = None
     if batting_runs is not None or extras_total is not None:
         derived_total = (batting_runs or 0) + (extras_total or 0) if (batting_runs is not None) else None
+    # Overs bowled + run rate, from the bowling card (legal balls / balls-per-over). Both stay unknown
+    # unless the data supports them — overs are never decimals and balls-per-over is never assumed.
+    overs_bowled: str | None = None
+    legal_balls: int | None = None
+    balls_per_over: int | None = None
+    run_rate: float | None = None
+    if conn.execute(text("SELECT to_regclass('public.bowling_entry')")).scalar_one() is not None:
+        from onestats.domain import bowling  # local import avoids a module cycle
+        card = bowling.bowling_card(conn, innings_id)
+        legal_balls = card.get("total_legal_balls")
+        overs_bowled = card.get("total_overs")
+        balls_per_over = bowling._balls_per_over(conn, innings_id)
+        # best-known innings total per over (official where set, else the calculated total)
+        runs_for_rate = inn["official_total"] if inn["official_total"] is not None else derived_total
+        if runs_for_rate is not None and legal_balls and balls_per_over:
+            run_rate = round(runs_for_rate * balls_per_over / legal_balls, 2)
     return {
         "innings_id": str(innings_id),
         "extras_total": extras_total,
@@ -182,6 +198,10 @@ def totals(conn: Connection, innings_id: UUID) -> dict[str, Any]:
         "derived_wickets": derived_wickets,
         "official_total": inn["official_total"],
         "official_wickets": inn["official_wickets"],
+        "overs_bowled": overs_bowled,
+        "legal_balls": legal_balls,
+        "balls_per_over": balls_per_over,
+        "run_rate": run_rate,
     }
 
 

@@ -911,6 +911,8 @@ export function TotalsBar({ totals, innings, canManage, onOfficial }: {
         <span className="text-muted-foreground">Calculated wkts: <span className="text-brand tabular-nums">{showNum(calcWkts)}</span></span>
         <span className="text-muted-foreground">Official: <span className={`tabular-nums ${officialSet ? "text-success" : "italic text-muted-foreground"}`}>
           {officialSet ? `${innings.official_total}/${showNum(innings.official_wickets)}` : "—"}</span></span>
+        <span className="text-muted-foreground">Overs: <span className="text-foreground tabular-nums">{totals?.overs_bowled ?? "—"}</span></span>
+        <span className="text-muted-foreground">Run rate: <span className="text-foreground tabular-nums">{totals?.run_rate != null ? totals.run_rate.toFixed(2) : "—"}</span></span>
         {canManage && (
           <div className="ml-auto flex items-center gap-3">
             {matchesCalc ? (

@@ -250,3 +250,31 @@ def test_invalid_inputs(conn):
     iid = _innings(conn, wid, balls_per_over=6)
     with pytest.raises(ValueError, match="invalid_wickets"):
         bowl.create_entry(conn, wid, ACTOR, innings_id=iid, bowling_order=1, wickets=11)
+
+
+def test_totals_report_overs_bowled_and_run_rate(conn):
+    """Innings totals expose overs bowled (from the bowling card) and the run rate (runs per over),
+    both from real data: 40 runs off 6 overs -> 6.67."""
+    wid = _ws(conn, "BOWL OVERS")
+    iid = _innings(conn, wid, balls_per_over=6)
+    bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Bat"),
+                     batting_position=1, runs=40)
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "B1"),
+                      bowling_order=1, overs_text="3", runs_conceded=20)
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "B2"),
+                      bowling_order=2, overs_text="3", runs_conceded=20)
+    t = inn.totals(conn, iid)
+    assert t["overs_bowled"] == "6.0" and t["legal_balls"] == 36 and t["balls_per_over"] == 6
+    assert t["run_rate"] == 6.67
+
+
+def test_run_rate_unknown_without_balls_per_over(conn):
+    """With balls-per-over unknown, overs and run rate stay unknown -- never a guessed 6-ball over."""
+    wid = _ws(conn, "BOWL OVERS UNK")
+    iid = _innings(conn, wid)  # no playing conditions -> balls_per_over unknown
+    bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Bat"),
+                     batting_position=1, runs=40)
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "B1"),
+                      bowling_order=1, overs_text="10", runs_conceded=40)
+    t = inn.totals(conn, iid)
+    assert t["overs_bowled"] is None and t["run_rate"] is None
