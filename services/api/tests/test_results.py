@@ -162,6 +162,21 @@ def test_recorded_result_without_margin_gets_scorecard_margin(conn):
     assert matches.get_match(conn, mid)["margin_wickets"] == 4
 
 
+def test_recorded_win_by_runs_fills_margin_even_when_second_innings_incomplete(conn):
+    """Imported innings aren't flagged complete, but a recorded result is itself the evidence the match
+    finished — so a win-by-runs margin still fills from the totals (the old completion check had left it
+    blank for most imported matches)."""
+    wid = _ws(conn, "RES MARGIN RUNS INC")
+    mid, home, away = _match(conn, wid)
+    _two_innings(conn, wid, mid, home, away, 150, 120, w2=4, status2="in_progress")  # 2nd NOT complete
+    assert results.compute_result(conn, mid)["status"] == "insufficient"             # calc alone: unknown
+    matches.set_result(conn, wid, ACTOR, mid, result_type="home_win", won_by_team_id=home,
+                       result_raw="1", result_source="recorded")
+    out = results.auto_apply_result(conn, wid, ACTOR, mid)
+    assert out["applied"] is True and out["margin_runs"] == 30 and out["margin_wickets"] is None
+    assert matches.get_match(conn, mid)["margin_runs"] == 30
+
+
 def test_margin_not_backfilled_when_scorecard_disagrees(conn):
     """The margin is only added when the scorecard agrees on the winner — a disagreement is left as a
     review conflict, never silently completed with a margin for the other side."""

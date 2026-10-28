@@ -112,32 +112,52 @@ def _same_team(a: Any, b: Any) -> bool:
 
 def _augment_authoritative_margin(conn: Connection, workspace_id: UUID, actor: str,
                                   match: dict[str, Any]) -> dict[str, Any]:
-    """Complete an imported/recorded result that has no margin with the margin implied by the
-    scorecard — winner and outcome untouched. Never fabricated: the margin is derived from the
-    innings totals, and only applied when the scorecard agrees on both the outcome and the winner.
-    A ``manual`` override is left alone; a result that already carries a margin is left alone."""
+    """Complete an imported/recorded result that has no margin with the margin from the scorecard —
+    winner and outcome untouched.
+
+    The recorded result is itself the evidence that the match concluded with this winner, so the margin
+    is taken from the two innings totals and the recorded winner WITHOUT requiring the second innings to
+    be flagged complete — that flag is usually absent on imported matches, which is why so many imported
+    results showed a winner but no margin. Never fabricated: the figures come straight from the totals,
+    and nothing is filled when the scorecard contradicts the recorded winner (that stays a review
+    conflict, surfaced by ``result_warnings``). A manual override, or a result that already carries a
+    margin, is left alone; only a two-innings win result gets a margin."""
     mid = match["id"]
     if match.get("result_source") == "manual":
         return {"applied": False, "reason": "preserved manual result"}
     if match.get("margin_runs") is not None or match.get("margin_wickets") is not None:
         return {"applied": False, "reason": "result already has a margin"}
-    computed = compute_result(conn, mid)
-    if computed["status"] != "sufficient":
-        return {"applied": False, "reason": computed.get("reason", computed["status"])}
-    if (computed.get("result_type") != match.get("result_type")
-            or not _same_team(computed.get("won_by_team_id"), match.get("won_by_team_id"))):
-        return {"applied": False, "reason": "scorecard result differs from the recorded result"}
-    if computed.get("margin_runs") is None and computed.get("margin_wickets") is None:
-        return {"applied": False, "reason": "no margin implied by the scorecard"}
+    winner = match.get("won_by_team_id")
+    if winner is None or match.get("result_type") not in ("home_win", "away_win"):
+        return {"applied": False, "reason": "no winning margin applies"}
+    inns = innings_domain.list_innings(conn, mid)
+    if len(inns) != 2:
+        return {"applied": False, "reason": "multi/single-innings margin not auto-calculated"}
+    first, second = inns[0], inns[1]
+    t1, _w1 = _innings_figures(conn, first)
+    t2, w2 = _innings_figures(conn, second)
+    if t1 is None or t2 is None:
+        return {"applied": False, "reason": "one or both innings totals are unknown"}
+    bat1, bat2 = first.get("batting_team_id"), second.get("batting_team_id")
+    margin_runs: int | None = None
+    margin_wickets: int | None = None
+    if _same_team(winner, bat1) and t1 > t2:          # recorded winner batted first and made more → by runs
+        margin_runs = t1 - t2
+    elif _same_team(winner, bat2) and t2 > t1:        # recorded winner batted second and passed it → by wickets
+        margin_wickets = (MAX_WICKETS - w2) if w2 is not None else None
+    else:
+        # the scorecard does not support the recorded winner (they did not out-score the loser) — leave
+        # the margin for review; the recorded/calculated conflict is surfaced by result_warnings.
+        return {"applied": False, "reason": "scorecard does not support the recorded winner"}
+    if margin_runs is None and margin_wickets is None:
+        return {"applied": False, "reason": "margin cannot be determined from the scorecard"}
     matches.set_result(
         conn, workspace_id, actor, mid, result_type=match["result_type"],
-        won_by_team_id=match.get("won_by_team_id"),
-        margin_runs=computed.get("margin_runs"), margin_wickets=computed.get("margin_wickets"),
+        won_by_team_id=winner, margin_runs=margin_runs, margin_wickets=margin_wickets,
         result_source=match.get("result_source") or "recorded",
         result_override_reason=match.get("result_override_reason"),  # preserve
     )
-    return {"applied": True, "margin_added": True, "margin_runs": computed.get("margin_runs"),
-            "margin_wickets": computed.get("margin_wickets"), "basis": computed.get("basis")}
+    return {"applied": True, "margin_added": True, "margin_runs": margin_runs, "margin_wickets": margin_wickets}
 
 
 def auto_apply_result(conn: Connection, workspace_id: UUID, actor: str, match_id: UUID) -> dict[str, Any]:
