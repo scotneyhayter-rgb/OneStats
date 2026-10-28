@@ -224,7 +224,10 @@ export function ScorecardEditor({
     }
   };
 
-  if (loading) return <LoadingState label="Loading scorecard…" />;
+  // Only the FIRST load replaces the editor with a full-screen loader. A refetch (after an edit)
+  // keeps the editor mounted so child components never remount and lose unsaved local state — e.g.
+  // an in-progress classification selection. (Matches the Focus-Mode intent above.)
+  if (loading && !match) return <LoadingState label="Loading scorecard…" />;
   if (err && !match) return <ErrorState message={err} onRetry={() => void load()} />;
   if (!match) return null;
 
@@ -274,7 +277,7 @@ export function ScorecardEditor({
 
         <MatchDetailsSection
           match={match} teams={teams} venues={venues} comps={comps} compDetail={compDetail}
-          canManage={canManage} teamName={teamName}
+          canManage={canManage} teamName={teamName} reload={load}
           onComp={async (cid) => { await patchMatch({ competition_id: cid || null }); }}
           onPatch={patchMatch}
           onSetTeam={async (team_id, is_home) => {
@@ -369,12 +372,12 @@ function Legend() {
 }
 
 function MatchDetailsSection({
-  match, teams, venues, comps, compDetail, canManage, teamName, onComp, onPatch, onSetTeam,
+  match, teams, venues, comps, compDetail, canManage, teamName, onComp, onPatch, onSetTeam, reload,
 }: {
   match: MatchDetail; teams: Team[]; venues: Venue[]; comps: Competition[]; compDetail: CompetitionDetail | null;
   canManage: boolean; teamName: (id: string | null) => string | null;
   onComp: (cid: string) => void; onPatch: (b: Record<string, unknown>) => void;
-  onSetTeam: (teamId: string, isHome: boolean) => void;
+  onSetTeam: (teamId: string, isHome: boolean) => void; reload: () => Promise<void>;
 }) {
   const home = match.teams.find((t) => t.is_home)?.team_id ?? "";
   const away = match.teams.find((t) => !t.is_home)?.team_id ?? "";
@@ -436,7 +439,7 @@ function MatchDetailsSection({
         </Field>
       </div>
 
-      <ClassificationControl match={match} canManage={canManage} />
+      <ClassificationControl match={match} canManage={canManage} reload={reload} />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <TeamPanel side="home" teamName={teamName(home || null)}>
@@ -460,7 +463,9 @@ function MatchDetailsSection({
   );
 }
 
-function ClassificationControl({ match, canManage }: { match: MatchDetail; canManage: boolean }) {
+function ClassificationControl({ match, canManage, reload }: {
+  match: MatchDetail; canManage: boolean; reload?: () => Promise<void>;
+}) {
   // Classification is set through its own endpoint (independent of round), so give it a clear control.
   const [cls, setCls] = useState(match.classification);
   const [stage, setStage] = useState(match.finals_stage ?? "");
@@ -475,6 +480,7 @@ function ClassificationControl({ match, canManage }: { match: MatchDetail; canMa
       await api.setMatchClassification(w, match.id, {
         classification: cls, finals_stage: stage || null, verified,
       });
+      await reload?.();   // refresh the match so the classification badge reflects the saved value
       setDone(true);
       setTimeout(() => setDone(false), 2000);
     } finally {
