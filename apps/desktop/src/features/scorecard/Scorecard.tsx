@@ -102,19 +102,29 @@ export function Scorecard() {
     if (allFilteredSelected) { const n = new Set(s); filtered.forEach((m) => n.delete(m.id)); return n; }
     return new Set([...s, ...filtered.map((m) => m.id)]);
   });
-  const runBulk = async (fn: () => Promise<{ updated: number; skipped: { reason: string }[] }>, label: string) => {
+  // Run a bulk action in small chunks so a large selection (e.g. all 940) never sends one giant
+  // request that ties up the single-process backend and times out. Progress is shown as it goes.
+  const BULK_CHUNK = 40;
+  const runBulk = async (
+    apiCall: (chunkIds: string[]) => Promise<{ updated: number; skipped: { reason: string }[] }>,
+    label: string,
+  ) => {
     setBulkBusy(true); setError(null); setMsg(null);
+    const all = [...selected];
+    let updated = 0, skipped = 0;
     try {
-      const r = await fn();
-      const skip = r.skipped.length ? `, ${r.skipped.length} skipped` : "";
-      setMsg(`${label}: ${r.updated} match${r.updated === 1 ? "" : "es"}${skip}.`);
+      for (let i = 0; i < all.length; i += BULK_CHUNK) {
+        const r = await apiCall(all.slice(i, i + BULK_CHUNK));
+        updated += r.updated; skipped += r.skipped.length;
+        if (all.length > BULK_CHUNK) setMsg(`${label}: ${Math.min(i + BULK_CHUNK, all.length)} of ${all.length}…`);
+      }
+      setMsg(`${label}: ${updated} match${updated === 1 ? "" : "es"}${skipped ? `, ${skipped} skipped` : ""}.`);
       setSelected(new Set());
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Bulk action failed.");
     } finally { setBulkBusy(false); }
   };
-  const ids = () => [...selected];
 
   return (
     <AppShell title="Matches" subtitle="Match management and scorecard entry">
@@ -142,11 +152,11 @@ export function Scorecard() {
           {selected.size > 0 && (
             <>
               <Button size="sm" variant="outline" disabled={bulkBusy}
-                onClick={() => void runBulk(() => api.bulkStatusMatches(workspaceId, { match_ids: ids(), status: "final" }), "Marked Final")}>
+                onClick={() => void runBulk((chunk) => api.bulkStatusMatches(workspaceId, { match_ids: chunk, status: "final" }), "Marked Final")}>
                 Mark Final
               </Button>
               <Select aria-label="Set match type for selected" value="" disabled={bulkBusy} className="w-36"
-                onChange={(e) => { const v = e.target.value; if (v) void runBulk(() => api.bulkClassifyMatches(workspaceId, { match_ids: ids(), classification: v, finals_stage: v === "grand_final" ? "grand_final" : undefined }), "Type set"); }}>
+                onChange={(e) => { const v = e.target.value; if (v) void runBulk((chunk) => api.bulkClassifyMatches(workspaceId, { match_ids: chunk, classification: v, finals_stage: v === "grand_final" ? "grand_final" : undefined }), "Type set"); }}>
                 <option value="">Set type…</option>
                 <option value="home_away">Home &amp; Away</option>
                 <option value="final">Final</option>
@@ -154,11 +164,11 @@ export function Scorecard() {
                 <option value="unclassified">Unclassified</option>
               </Select>
               <Button size="sm" variant="outline" disabled={bulkBusy}
-                onClick={() => void runBulk(() => api.bulkClassifyMatches(workspaceId, { match_ids: ids(), verify_existing: true }), "Types verified")}>
+                onClick={() => void runBulk((chunk) => api.bulkClassifyMatches(workspaceId, { match_ids: chunk, verify_existing: true }), "Types verified")}>
                 Verify types
               </Button>
               <Button size="sm" variant="outline" disabled={bulkBusy}
-                onClick={() => void runBulk(() => api.bulkApproveMatches(workspaceId, { match_ids: ids(), status: "approved" }), "Approved")}>
+                onClick={() => void runBulk((chunk) => api.bulkApproveMatches(workspaceId, { match_ids: chunk, status: "approved" }), "Approved")}>
                 Approve
               </Button>
               <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
