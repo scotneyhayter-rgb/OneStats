@@ -21,6 +21,16 @@ def test_data_dir_falls_back_to_localappdata(monkeypatch, tmp_path):
     assert launcher.data_dir() == Path(str(tmp_path)) / "OneStats"
 
 
+def test_bind_host_loopback_by_default_network_only_when_set(monkeypatch):
+    """The backend binds loopback unless ONESTATS_BIND_HOST is explicitly set (server mode over a VPN)."""
+    monkeypatch.delenv("ONESTATS_BIND_HOST", raising=False)
+    assert launcher.resolve_bind_host() == launcher.LOOPBACK_HOST
+    monkeypatch.setenv("ONESTATS_BIND_HOST", "   ")          # blank -> still loopback
+    assert launcher.resolve_bind_host() == launcher.LOOPBACK_HOST
+    monkeypatch.setenv("ONESTATS_BIND_HOST", "0.0.0.0")      # explicit -> network
+    assert launcher.resolve_bind_host() == "0.0.0.0"
+
+
 def test_load_config_sets_but_never_overrides(monkeypatch, tmp_path):
     cfg = tmp_path / "onestats.env"
     cfg.write_text('# comment\nONESTATS_DB_NAME=from_file\nONESTATS_DB_USER="quoted_user"\n', encoding="utf-8")

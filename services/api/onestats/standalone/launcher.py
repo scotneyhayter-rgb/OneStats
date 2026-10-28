@@ -163,14 +163,22 @@ def run_migrations() -> bool:
         return False
 
 
-def serve(port: int = DEFAULT_PORT) -> None:
+def resolve_bind_host() -> str:
+    """The network interface the backend binds to. Loopback by default (single-PC, off the network);
+    SERVER MODE sets ``ONESTATS_BIND_HOST`` (e.g. ``0.0.0.0``) so other computers can connect over a
+    VPN. Only an explicit non-empty value opens the network — never on its own."""
+    return (os.environ.get("ONESTATS_BIND_HOST") or "").strip() or LOOPBACK_HOST
+
+
+def serve(port: int = DEFAULT_PORT, host: str = LOOPBACK_HOST) -> None:
     import uvicorn
 
     from onestats.main import create_app
 
     app = create_app()
-    log.info("Starting OneStats API on http://%s:%s (loopback only).", LOOPBACK_HOST, port)
-    uvicorn.run(app, host=LOOPBACK_HOST, port=port, log_level="info")
+    scope = "loopback only" if host == LOOPBACK_HOST else f"network ({host}) — SERVER MODE"
+    log.info("Starting OneStats API on http://%s:%s (%s).", host, port, scope)
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -198,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     if not run_migrations():
         return 3
     try:
-        serve(port)
+        serve(port, host=resolve_bind_host())
     except Exception:  # noqa: BLE001
         log.exception("The OneStats backend stopped unexpectedly.")
         return 1
