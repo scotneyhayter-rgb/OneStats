@@ -82,8 +82,15 @@ def map_howout(code: Any) -> str | None:
 MATCHTYPE_LABELS = {1: "1 innings per side", 2: "2 innings per side", 3: "T20"}
 # Only 0/1/2 are evidence-confirmed; 3/4/8/9 must stay unresolved (never guessed).
 RESULT_LABELS = {0: "unknown", 1: "home_win", 2: "away_win"}
-# Grade names safe to promote directly; anything else is left unresolved for admin review.
-CONFIDENT_GRADES = {"a grade", "b grade", "c grade"}
+# Division names that are really a finals round / match classification, NOT a grade. These are never
+# promoted as a grade (CricketStatz sometimes stores finals in the division field); a match that uses
+# one as its grade is left unresolved for admin review. Every OTHER named division becomes a grade
+# verbatim, the same way clubs/teams/venues are imported from their source names — nothing is guessed.
+NON_GRADE_DIVISIONS = {
+    "grand final", "grand finals", "semi final", "semi finals", "semifinal", "semifinals",
+    "preliminary final", "prelim final", "qualifying final", "elimination final",
+    "final", "finals", "play off", "play-off", "playoff", "playoffs", "finals series",
+}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -219,13 +226,19 @@ def parse_and_stage(
         if ref is None:
             continue
         name = row.get("Name") or ""
-        confident = name.strip().lower() in CONFIDENT_GRADES
+        nm = name.strip()
+        # A grade is created verbatim from any named division (like teams/venues/clubs) and linked to
+        # its matches. Only a finals-round/classification label, or a blank name, is left unresolved —
+        # the match's real grade is never guessed, and a finals label is never turned into a grade.
+        confident = bool(nm) and nm.lower() not in NON_GRADE_DIVISIONS
         _insert_record(
             conn, workspace_id, batch_id, "division", ref, row,
             {"name": name, "confident": confident},
             status="staged" if confident else "unresolved",
             resolution="new" if confident else "unresolved",
-            issues=None if confident else ["ambiguous_grade: preserve original; admin must resolve"],
+            issues=None if confident else [
+                "ambiguous_grade: an unnamed division or a finals-round/classification label — not "
+                "promoted as a grade; admin must resolve the grade for its matches"],
         )
     counts["division"] = len(payload.get("divisions") or [])
 

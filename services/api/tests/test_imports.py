@@ -106,10 +106,11 @@ def test_stage_preserves_raw_and_flags_unknowns(conn):
     assert venue_recs["101"]["normalised"]["name"] is None
     assert venue_recs["101"]["raw"]["Name"] == "?"  # original untouched
 
-    # Ambiguous grades are unresolved, confident ones staged.
+    # Every named division becomes a grade verbatim (like clubs/teams/venues) — B/C Grade, the
+    # catch-all "All Grades", and the prefixed "GCA A Grade" all stage.
     div = {r["source_ref"]: r for r in imports.list_records(conn, bid, entity_type="division")}
-    assert div["9770"]["status"] == "staged" and div["9774"]["status"] == "staged"
-    assert div["9771"]["status"] == "unresolved" and div["12335"]["status"] == "unresolved"
+    for ref in ("9770", "9774", "9771", "12335"):
+        assert div[ref]["status"] == "staged"
 
     # Match: Result 4 unresolved; classification always unresolved; round preserved verbatim.
     m = {r["source_ref"]: r for r in imports.list_records(conn, bid, entity_type="match")}
@@ -119,6 +120,28 @@ def test_stage_preserves_raw_and_flags_unknowns(conn):
     for rec in m.values():
         assert rec["normalised"]["classification_status"] == "unresolved"
     assert m["3000002"]["normalised"]["round"] == "GF"  # verbatim, only a hint
+
+
+def test_finals_round_divisions_not_promoted_as_grades(conn):
+    """A division whose name is really a finals round / classification (or is blank) is never turned
+    into a grade — it stays unresolved for admin review. Every other named division becomes a grade."""
+    wid = _ws(conn, "IMP GRADES")
+    payload = {"divisions": [
+        {"GradeID": 1, "Name": "A Grade"},
+        {"GradeID": 2, "Name": "Under 16"},
+        {"GradeID": 3, "Name": "Grand Final"},
+        {"GradeID": 4, "Name": "Semi Final"},
+        {"GradeID": 5, "Name": ""},            # blank name
+    ]}
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=payload)["batch_id"]
+    div = {r["source_ref"]: r for r in imports.list_records(conn, bid, entity_type="division")}
+    assert div["1"]["status"] == "staged" and div["2"]["status"] == "staged"            # real grades
+    assert div["3"]["status"] == "unresolved" and div["4"]["status"] == "unresolved"    # finals rounds
+    assert div["5"]["status"] == "unresolved"                                           # blank name
+    imports.promote_batch(conn, wid, ACTOR, bid)
+    names = {r[0] for r in conn.execute(text("SELECT name FROM grade")).all()}
+    assert {"A Grade", "Under 16"} <= names
+    assert "Grand Final" not in names and "Semi Final" not in names
 
 
 def test_stage_matchtype_labels(conn):
@@ -160,24 +183,24 @@ def test_promote_creates_canonical_including_matches(conn):
     bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
     res = imports.promote_batch(conn, wid, ACTOR, bid)
 
-    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3,
+    assert res["created"] == {"club": 2, "venue": 2, "team": 4, "division": 4, "match": 3,
                               "innings": 0, "batting_entry": 0, "bowling_entry": 0,
                               "fall_of_wicket": 0, "partnership": 0}
-    assert res["status"] == "partially_promoted"  # two ambiguous grades remain unresolved
+    assert res["status"] == "promoted"  # every named division is a grade now; nothing left unresolved
     after = _canon_counts(conn)
     assert after["organisation"] - before["organisation"] == 2
     assert after["team"] - before["team"] == 4
     assert after["venue"] - before["venue"] == 2
-    assert after["grade"] - before["grade"] == 2  # only B/C Grade promoted
+    assert after["grade"] - before["grade"] == 4  # all four named divisions promoted verbatim
     assert after["competition"] - before["competition"] == 1  # one import container
     assert after["match"] - before["match"] == 3
 
     # every match row promoted; none left staged
     for rec in imports.list_records(conn, bid, entity_type="match"):
         assert rec["status"] == "promoted" and rec["resolution"] == "new"
-    # Ambiguous grades still stay unresolved (not promoted).
+    # Every named division became a grade; none left unresolved (no finals-round/blank names here).
     unresolved = imports.list_records(conn, bid, entity_type="division", status="unresolved")
-    assert len(unresolved) == 2
+    assert len(unresolved) == 0
 
     # the away-win match (3000002, Result 2) records the away side as winner; the raw code is kept
     m = conn.execute(text(
@@ -202,7 +225,7 @@ def test_idempotent_reimport_matches_not_duplicates(conn):
     res = imports.promote_batch(conn, wid, ACTOR, b2)
     sc0 = {"innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0, "partnership": 0}
     assert res["created"] == {"club": 0, "venue": 0, "team": 0, "division": 0, "match": 0, **sc0}
-    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 2, "match": 3, **sc0}
+    assert res["matched"] == {"club": 2, "venue": 2, "team": 4, "division": 4, "match": 3, **sc0}
     assert _canon_counts(conn) == mid  # no duplicate canonical rows (matches included)
 
 
@@ -234,7 +257,7 @@ def test_rollback_removes_only_batch_created_rows_and_recovers(conn):
     assert _canon_counts(conn)["team"] - before["team"] == 4
 
     out = imports.rollback_batch(conn, wid, ACTOR, bid)
-    assert out["removed"] == {"match": 3, "team": 4, "division": 2, "venue": 2, "club": 2,
+    assert out["removed"] == {"match": 3, "team": 4, "division": 4, "venue": 2, "club": 2,
                               "innings": 0, "batting_entry": 0, "bowling_entry": 0, "fall_of_wicket": 0}
     # canonical returns to the pre-promotion baseline (competition container left in place)
     after = _canon_counts(conn)
