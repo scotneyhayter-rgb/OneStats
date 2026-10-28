@@ -66,6 +66,31 @@ def _match(conn, wid, comp, season, home, away, p, *, runs, wkts=0):
     return mid
 
 
+def test_full_profile_scoped_to_one_club(conn):
+    """A player who turned out for two clubs can view one club or their whole career. Scoping the full
+    profile by organisation_id restricts the career figures to that club; the clubs list stays complete."""
+    wid = _ws(conn, "PP CLUBS")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="League")
+    s = _season(conn, wid, comp, "2023/24", 2023)
+    club_a = _team(conn, wid, "Alpha")   # distinct organisation per _team
+    club_b = _team(conn, wid, "Beta")
+    opp = _team(conn, wid, "Opp")
+    p = people.create_person(conn, wid, ACTOR, display_name="Journeyman")
+    _match(conn, wid, comp, s, club_a, opp, p, runs=100)   # for club A
+    _match(conn, wid, comp, s, club_b, opp, p, runs=40)    # for club B
+    org_a = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": club_a}).scalar_one()
+    org_b = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": club_b}).scalar_one()
+
+    career = player_profile.full_profile(conn, wid, p)
+    assert career["career"]["batting"]["runs"] == 140 and career["career"]["matches"] == 2
+    a = player_profile.full_profile(conn, wid, p, organisation_id=org_a)
+    assert a["career"]["batting"]["runs"] == 100 and a["career"]["matches"] == 1
+    b = player_profile.full_profile(conn, wid, p, organisation_id=org_b)
+    assert b["career"]["batting"]["runs"] == 40 and b["career"]["matches"] == 1
+    # the clubs list is always the full set, so the screen can still offer both as choices
+    assert {str(org_a), str(org_b)} <= {c["org_id"] for c in a["clubs"]}
+
+
 def test_career_and_season_breakdown(conn):
     wid = _ws(conn, "PP CAREER")
     comp = competitions.create_competition(conn, wid, ACTOR, name="League")

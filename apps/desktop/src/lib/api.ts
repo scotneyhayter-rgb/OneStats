@@ -1387,19 +1387,20 @@ export const api = {
   getProfile: (w: string, id: string) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`),
   // Phase 13 player profile (stats composed from the one engine)
-  profileFull: (w: string, id: string) =>
-    request<PlayerFullProfile>(`/api/v1/workspaces/${w}/people/${id}/full-profile`),
+  profileFull: (w: string, id: string, organisation_id?: string) =>
+    request<PlayerFullProfile>(`/api/v1/workspaces/${w}/people/${id}/full-profile${organisation_id ? `?organisation_id=${organisation_id}` : ""}`),
   profileSeasons: (w: string, id: string) =>
     request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/seasons`),
   profileMatches: (w: string, id: string) =>
     request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/matches`),
   profileAnalysis: (w: string, id: string) =>
     request<PlayerAnalysis>(`/api/v1/workspaces/${w}/people/${id}/analysis`),
-  profilePdfUrl: async (w: string, id: string): Promise<string> => {
+  profilePdfUrl: async (w: string, id: string, organisation_id?: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
-    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/people/${id}/profile.pdf`, { headers });
+    const q = organisation_id ? `?organisation_id=${organisation_id}` : "";
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/people/${id}/profile.pdf${q}`, { headers });
     if (!resp.ok) throw new ApiError(`Profile PDF failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },

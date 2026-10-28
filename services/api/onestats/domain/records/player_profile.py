@@ -19,16 +19,20 @@ from onestats.domain.stats import engine
 
 
 def _scope_filters(workspace_id: UUID, competition_id: UUID | None, season_id: UUID | None,
-                   grade_id: UUID | None, team_id: UUID | None) -> dict[str, Any]:
+                   grade_id: UUID | None, team_id: UUID | None,
+                   organisation_id: UUID | None = None) -> dict[str, Any]:
     return {"workspace_id": workspace_id, "competition_id": competition_id, "season_id": season_id,
-            "grade_id": grade_id, "team_id": team_id}
+            "grade_id": grade_id, "team_id": team_id, "organisation_id": organisation_id}
 
 
 def career_summary(conn: Connection, workspace_id: UUID, person_id: UUID, *, competition_id: UUID | None = None,
                    season_id: UUID | None = None, grade_id: UUID | None = None,
-                   team_id: UUID | None = None) -> dict[str, Any]:
-    """Career totals in each discipline for the selected scope (merge-aware, confirmed from the engine)."""
-    f = _scope_filters(workspace_id, competition_id, season_id, grade_id, team_id)
+                   team_id: UUID | None = None, organisation_id: UUID | None = None) -> dict[str, Any]:
+    """Career totals in each discipline for the selected scope (merge-aware, confirmed from the engine).
+
+    ``organisation_id`` restricts the figures to one club, so a player who has turned out for more than
+    one club can be viewed per club or across their whole career."""
+    f = _scope_filters(workspace_id, competition_id, season_id, grade_id, team_id, organisation_id)
     bat = engine.person_batting(conn, f, person_id)
     bowl = engine.person_bowling(conn, f, person_id)
     field = engine.person_fielding(conn, f, person_id)
@@ -158,11 +162,12 @@ def records_held(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[
     return held
 
 
-def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
+def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID, *,
+                 organisation_id: UUID | None = None) -> dict[str, Any]:
     """Grand-final career record for the player: figures restricted to matches classified as grand
     finals (the engine's ``grand_final`` split), plus each grand final played. ``premierships`` is the
     number of grand finals the player's team won while they featured — a recorded result, never inferred."""
-    f = {"workspace_id": workspace_id, "split": "grand_final"}
+    f = {"workspace_id": workspace_id, "split": "grand_final", "organisation_id": organisation_id}
     bat = engine.person_batting(conn, f, person_id)
     bowl = engine.person_bowling(conn, f, person_id)
     field = engine.person_fielding(conn, f, person_id)
@@ -180,10 +185,12 @@ def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[
     }
 
 
-def career_matches_span(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, Any]:
+def career_matches_span(conn: Connection, workspace_id: UUID, person_id: UUID, *,
+                        organisation_id: UUID | None = None) -> dict[str, Any]:
     """The player's first and most recent recorded match — date + opposition (the other team's club).
     From approved/stats-eligible matches they featured in; missing dates are excluded. Opposition is the
-    match's other team; unknown if it can't be resolved — never invented."""
+    match's other team; unknown if it can't be resolved — never invented. ``organisation_id`` restricts
+    the span to the matches the player featured in for one club."""
     ids = _merge_ids(conn, person_id)
 
     def _edge(order: str) -> dict[str, Any] | None:
@@ -195,12 +202,14 @@ def career_matches_span(conn: Connection, workspace_id: UUID, person_id: UUID) -
                 "  WHERE mt.match_id = m.id AND mt.team_id <> pm.team_id LIMIT 1) AS opposition "
                 "FROM (SELECT DISTINCT match_id, team_id FROM match_stat_contribution "
                 "      WHERE workspace_id = :w AND subject_id = ANY(CAST(:ids AS uuid[])) "
-                "        AND team_id IS NOT NULL) pm "
+                "        AND team_id IS NOT NULL "
+                "        AND (CAST(:org AS uuid) IS NULL "
+                "             OR team_id IN (SELECT id FROM team WHERE organisation_id = CAST(:org AS uuid)))) pm "
                 "JOIN match m ON m.id = pm.match_id "
                 "WHERE m.match_date IS NOT NULL "
                 f"ORDER BY m.match_date {order} LIMIT 1"
             ),
-            {"w": workspace_id, "ids": ids},
+            {"w": workspace_id, "ids": ids, "org": organisation_id},
         ).mappings().first()
         if r is None:
             return None
@@ -228,8 +237,11 @@ def _group_service(rows: list[dict[str, Any]], label_of) -> list[dict[str, Any]]
 
 
 def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, competition_id: UUID | None = None,
-                 season_id: UUID | None = None) -> dict[str, Any]:
-    """Everything the profile needs in one call (career scope optional), composed from the engines."""
+                 season_id: UUID | None = None, organisation_id: UUID | None = None) -> dict[str, Any]:
+    """Everything the profile needs in one call (career scope optional), composed from the engines.
+
+    ``organisation_id`` scopes the career figures, grand-final record and match span to one club; the
+    ``clubs`` list is always the player's full set of clubs so the caller can offer the choice."""
     det = conn.execute(
         text("SELECT batting_style, bowling_style, is_wicketkeeper, biography FROM person_profile WHERE person_id = :p"),
         {"p": person_id}).mappings().first()
@@ -246,12 +258,13 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
                    "numbers": sorted({str(n["number"]) for n in nums if n.get("number")}),
                    "leadership": _group_service(lead, lambda r: r.get("role")),
                    "recognition": _group_service(recog, lambda r: r.get("title") or r.get("recognition_type"))},
-        "span": career_matches_span(conn, workspace_id, person_id),
-        "career": career_summary(conn, workspace_id, person_id, competition_id=competition_id, season_id=season_id),
+        "span": career_matches_span(conn, workspace_id, person_id, organisation_id=organisation_id),
+        "career": career_summary(conn, workspace_id, person_id, competition_id=competition_id,
+                                 season_id=season_id, organisation_id=organisation_id),
         "seasons": season_breakdown(conn, workspace_id, person_id),
         "clubs": clubs_and_teams(conn, workspace_id, person_id),
         "records": records_held(conn, workspace_id, person_id),
-        "grand_finals": grand_finals(conn, workspace_id, person_id),
+        "grand_finals": grand_finals(conn, workspace_id, person_id, organisation_id=organisation_id),
         "milestones": milestones.person_milestones(conn, workspace_id, person_id),
         "badges": badges.person_badges(conn, workspace_id, person_id),
         "honours": [{k: (str(v) if isinstance(v, UUID) else v) for k, v in h.items()}

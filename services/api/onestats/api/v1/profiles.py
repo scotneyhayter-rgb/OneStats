@@ -150,12 +150,14 @@ def profile_matches(workspace_id: UUID, person_id: UUID, settings: SettingsDep, 
 
 @router.get("/{person_id}/full-profile")
 def full_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
-                 competition_id: UUID | None = None, season_id: UUID | None = None) -> dict[str, Any]:
+                 competition_id: UUID | None = None, season_id: UUID | None = None,
+                 organisation_id: UUID | None = None) -> dict[str, Any]:
     """Everything for the Player Profile screen in one call: career + seasons + clubs + records +
-    milestones + badges + honours (plus identity/photos via /profile)."""
+    milestones + badges + honours (plus identity/photos via /profile). ``organisation_id`` scopes the
+    career figures to one club (the ``clubs`` list is always complete, so the screen can offer the choice)."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return player_profile.full_profile(conn, workspace_id, person_id, competition_id=competition_id,
-                                           season_id=season_id)
+                                           season_id=season_id, organisation_id=organisation_id)
 
 
 @router.get("/{person_id}/analysis")
@@ -168,11 +170,14 @@ def player_analysis(workspace_id: UUID, person_id: UUID, settings: SettingsDep, 
 
 
 @router.get("/{person_id}/profile.pdf")
-def profile_pdf(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> Response:
-    """Professional player career-profile PDF (shared framework; same figures as on screen)."""
+def profile_pdf(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                organisation_id: UUID | None = None) -> Response:
+    """Professional player career-profile PDF (shared framework; same figures as on screen). Pass
+    organisation_id to scope the figures to one club, matching the profile screen's club selector."""
     from onestats.reports import player_pdf
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        pdf = player_pdf.player_profile_pdf(conn, settings, workspace_id, person_id)
+        pdf = player_pdf.player_profile_pdf(conn, settings, workspace_id, person_id,
+                                            organisation_id=organisation_id)
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="player-profile.pdf"'})
 

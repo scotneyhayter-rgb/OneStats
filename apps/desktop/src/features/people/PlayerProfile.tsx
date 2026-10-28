@@ -14,6 +14,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { Select } from "../../components/ui/select";
 import { api, ApiError, type PlayerAnalysis, type PlayerFullProfile } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -120,12 +121,14 @@ export function PlayerProfile() {
   const [splitDim, setSplitDim] = useState<"opposition" | "ground" | "grade" | "format">("opposition");
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
+  // "" = whole career across every club; otherwise an organisation_id to scope the figures to one club
+  const [clubFilter, setClubFilter] = useState("");
 
   const load = useCallback(async () => {
     if (!current || !personId) return;
     try {
       const [f, prof] = await Promise.all([
-        api.profileFull(current.id, personId),
+        api.profileFull(current.id, personId, clubFilter || undefined),
         api.getProfile(current.id, personId).catch(() => null),
       ]);
       setFull(f);
@@ -136,7 +139,7 @@ export function PlayerProfile() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load the player profile.");
     }
-  }, [current, personId]);
+  }, [current, personId, clubFilter]);
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
@@ -150,6 +153,13 @@ export function PlayerProfile() {
     if (!current || !personId || analysis || !["splits", "best", "partnerships", "analysis"].includes(tab)) return;
     api.profileAnalysis(current.id, personId).then(setAnalysis).catch(() => setAnalysis(null));
   }, [tab, current, personId, analysis]);
+
+  // Distinct clubs the player has represented (one entry per club, not per team), for the club selector.
+  const clubOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const cl of full?.clubs ?? []) if (!seen.has(cl.org_id)) seen.set(cl.org_id, cl.club);
+    return [...seen].map(([org_id, club]) => ({ org_id, club }));
+  }, [full]);
 
   // Per-match chart points (chronological), so even a single-season player shows a trend per innings/match.
   const matchCharts = useMemo(() => {
@@ -200,7 +210,7 @@ export function PlayerProfile() {
 
   const exportPdf = async () => {
     try {
-      openBlobUrl(await api.profilePdfUrl(current.id, personId!), `${name || "player"}-profile.pdf`);
+      openBlobUrl(await api.profilePdfUrl(current.id, personId!, clubFilter || undefined), `${name || "player"}-profile.pdf`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "PDF export failed.");
     }
@@ -294,6 +304,18 @@ export function PlayerProfile() {
             <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
           </div>
         </CardContent></Card>
+
+        {/* Club scope — a player who has turned out for more than one club can view one club or their
+            whole career. The figures below (and the PDF) follow this choice; the badges/clubs stay full. */}
+        {clubOptions.length > 1 && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Showing</span>
+            <Select value={clubFilter} onChange={(e) => setClubFilter(e.target.value)} className="w-56">
+              <option value="">Career (all clubs)</option>
+              {clubOptions.map((o) => <option key={o.org_id} value={o.org_id}>{o.club}</option>)}
+            </Select>
+          </div>
+        )}
 
         {/* adaptive career summary */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

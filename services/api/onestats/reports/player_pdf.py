@@ -18,10 +18,11 @@ from onestats.reports.builder import Column, ReportDoc, Section, build_pdf
 from onestats.reports.record_book import _brand
 
 
-def player_profile_pdf(conn: Connection, settings: Settings, workspace_id: UUID, person_id: UUID) -> bytes:
+def player_profile_pdf(conn: Connection, settings: Settings, workspace_id: UUID, person_id: UUID,
+                       *, organisation_id: UUID | None = None) -> bytes:
     person = people.detail(conn, person_id, include_protected=False)
     name = (person or {}).get("display_name") or "Player"
-    prof = player_profile.full_profile(conn, workspace_id, person_id)
+    prof = player_profile.full_profile(conn, workspace_id, person_id, organisation_id=organisation_id)
     ws_name, logo_path, hexc = _brand(conn, settings, workspace_id)
     c = prof["career"]
     bat, bowl, field, capt = c["batting"], c["bowling"], c["fielding"], c["captaincy"]
