@@ -220,3 +220,15 @@ def rollback(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: Imp
             return imports.rollback_batch(conn, workspace_id, str(ctx.user["id"]), batch_id)
         except ValueError as exc:
             raise _value_error(exc) from exc
+
+
+@router.post("/fix-imported-data")
+def fix_imported_data(workspace_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
+    """Backfill already-imported matches without re-importing: re-file matches in the generic import
+    container into the competition/season their date falls in (needs the competitions' season dates
+    set), and apply the current dismissal legend to unresolved dismissals (e.g. caught & bowled)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        actor = str(ctx.user["id"])
+        refiled = imports.refile_imported_matches_by_season_date(conn, workspace_id, actor)
+        dismissals = imports.remap_howout_dismissals(conn, workspace_id, actor)
+        return {"refiled": refiled, "dismissals": dismissals}

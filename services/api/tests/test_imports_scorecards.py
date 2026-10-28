@@ -406,10 +406,12 @@ def test_howout_legend_mapping():
     """The verified legend maps exactly the approved/mandated codes; everything else stays None."""
     m = imports.map_howout
     assert m(1) == "not_out" and m(2) == "bowled" and m(3) == "caught"
+    assert m(4) == "caught_and_bowled" and m(5) == "caught_behind"   # c&b / caught behind
     assert m(6) == "lbw" and m(7) == "run_out" and m(8) == "stumped"
+    assert m(9) == "hit_wicket" and m(10) == "obstructing" and m(12) == "hit_twice" and m(23) == "timed_out"
     assert m(0) == "dnb" and m(21) == "absent"                       # dnb/absent are non-wickets
     assert m(20) == "retired_not_out" and m(22) == "retired_out"     # retired distinction
-    for c in (4, 5, 9, 10, 11, 12, 23, 24, 99, None, "x"):           # unresolved — never guessed
+    for c in (11, 24, 99, None, "x"):                                # still unresolved — never guessed
         assert m(c) is None
 
 

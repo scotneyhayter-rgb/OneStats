@@ -58,15 +58,20 @@ CS_HOWOUT: dict[int, str] = {
     1: "not_out",           # NON-wicket
     2: "bowled",
     3: "caught",            # caught by a fielder
+    4: "caught_and_bowled",  # caught & bowled — the bowler took the catch
+    5: "caught_behind",     # caught by the wicketkeeper
     6: "lbw",
     7: "run_out",           # credits no bowler
     8: "stumped",
+    9: "hit_wicket",
+    10: "obstructing",      # obstructing the field
+    12: "hit_twice",        # hit the ball twice
     20: "retired_not_out",  # retired (hurt/ill) — NON-wicket; distinct from retired out
     21: "absent",           # NON-wicket
     22: "retired_out",      # retired out — a genuine dismissal (counts as a wicket)
-    # Documented but NOT yet approved -> left UNRESOLVED (NULL): 4 c&b, 5 ct behind, 9 hit wkt,
-    # 10 obstructed, 12 hit twice, 23 timed out. Code 11 (handled ball) has no exact OneStats type;
-    # code 24 is undocumented. All of these keep their raw code and await confirmation.
+    23: "timed_out",
+    # Still UNRESOLVED (no exact OneStats type / undocumented): 11 (handled the ball — merged into
+    # obstructing in the modern Laws, no 1:1 type) and 24 (undocumented). Both keep their raw code.
 }
 
 
@@ -1437,6 +1442,45 @@ def remap_howout_dismissals(conn: Connection, workspace_id: UUID, actor: str) ->
     audit.write_audit(conn, workspace_id, actor, "import.remap_howout", entity="workspace",
                       entity_id=str(workspace_id), after={"updated": updated, "by_type": by_type})
     return {"updated": updated, "by_type": by_type, "still_unresolved": still_unresolved}
+
+
+def refile_imported_matches_by_season_date(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, Any]:
+    """Re-file already-imported matches sitting in the generic import container into the competition
+    whose season date range covers each match's date — for matches imported before the competitions/
+    seasons were set up. Moves the match, recreates its grade under the new competition, and re-assigns
+    the season. A match with no date or no covering season is left where it is. Idempotent; never guessed."""
+    container = _find_canonical_by_source(
+        conn, "competition_source_identity", "competition_id", _IMPORT_COMP_REF, SOURCE_SYSTEM)
+    if container is None:
+        return {"moved": 0, "unmatched": 0, "reason": "no import container"}
+    rows = conn.execute(
+        text("SELECT id, match_date, grade_id FROM match WHERE workspace_id = :w AND competition_id = :c "
+             "AND source_system = :ss AND match_date IS NOT NULL"),
+        {"w": workspace_id, "c": container, "ss": SOURCE_SYSTEM},
+    ).mappings().all()
+    from onestats.domain import seasons  # local import avoids a module cycle
+    moved, unmatched = 0, 0
+    for r in rows:
+        target = _competition_for_match_date(conn, workspace_id, r["match_date"])
+        if target is None or str(target) == str(container):
+            unmatched += 1
+            continue
+        new_grade = None
+        if r["grade_id"]:
+            g = conn.execute(text("SELECT name, source_ref FROM grade WHERE id = :g"),
+                             {"g": r["grade_id"]}).mappings().first()
+            if g and g["source_ref"]:
+                new_grade = _grade_under(conn, workspace_id, actor, target, g["source_ref"],
+                                         {g["source_ref"]: g["name"]}, SOURCE_SYSTEM, set())
+        conn.execute(
+            text("UPDATE match SET competition_id = :c, grade_id = :g, season_id = NULL, "
+                 "season_source = 'unknown', updated_at = now() WHERE id = :id"),
+            {"c": target, "g": new_grade, "id": r["id"]})
+        seasons.auto_assign_season(conn, workspace_id, actor, r["id"])  # fills the season within the new comp
+        moved += 1
+    audit.write_audit(conn, workspace_id, actor, "import.refile_by_season", entity="workspace",
+                      entity_id=str(workspace_id), after={"moved": moved, "unmatched": unmatched})
+    return {"moved": moved, "unmatched": unmatched}
 
 
 def rollback_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID) -> dict[str, Any]:

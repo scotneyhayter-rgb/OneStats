@@ -105,6 +105,19 @@ export function ImportWizard() {
   const [newCompName, setNewCompName] = useState("");
   const [assignBySeason, setAssignBySeason] = useState(false);
   const [suggestClass, setSuggestClass] = useState(false);
+  const [fixBusy, setFixBusy] = useState(false);
+  const [fixMsg, setFixMsg] = useState<string | null>(null);
+
+  async function runFix() {
+    if (!workspaceId) return;
+    setFixBusy(true); setFixMsg(null); setError(null);
+    try {
+      const r = await api.fixImportedData(workspaceId);
+      setFixMsg(`Re-filed ${r.refiled.moved} match(es) by date (${r.refiled.unmatched} had no covering season); fixed ${r.dismissals.updated} dismissal(s).`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Fix failed.");
+    } finally { setFixBusy(false); }
+  }
 
   const loadHistory = useCallback(async () => {
     if (!workspaceId) return;
@@ -200,6 +213,23 @@ export function ImportWizard() {
 
         {mode === "cricketstatz" && step === "select" && (
           <SelectStep busy={busy} onFile={onFile} history={history} />
+        )}
+
+        {mode === "cricketstatz" && step === "select" && history.length > 0 && (
+          <Card><CardContent className="flex flex-col gap-2 py-4">
+            <p className="text-sm font-medium">Fix already-imported matches</p>
+            <p className="text-xs text-muted-foreground">
+              Re-files matches in the generic "Cricket Statz Import" container into the competition &amp; season their date falls in
+              (set your competitions&apos; season start/finish dates first), and applies the latest dismissal legend (e.g. caught &amp; bowled) —
+              without re-importing. Safe to run more than once.
+            </p>
+            <div>
+              <Button size="sm" variant="outline" disabled={fixBusy} onClick={() => void runFix()}>
+                {fixBusy ? "Fixing…" : "Fix imported data"}
+              </Button>
+            </div>
+            {fixMsg && <p className="text-xs text-success">{fixMsg}</p>}
+          </CardContent></Card>
         )}
 
         {step === "analyse" && file && (

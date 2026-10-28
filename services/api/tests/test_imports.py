@@ -202,6 +202,25 @@ def test_import_assigns_competition_by_season_date(conn):
     assert season is not None  # post-promotion auto-assign filled the season within Alpha
 
 
+def test_refile_imported_matches_by_season_date(conn):
+    """Matches imported into the generic container (before competitions/seasons existed) can be re-filed
+    in place into the competition whose season covers their date — no re-import."""
+    import datetime as dt
+    wid = _ws(conn, "IMP REFILE")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid)                       # lands in the default container
+    container = conn.execute(text("SELECT id FROM competition WHERE name = 'Cricket Statz Import'")).scalar_one()
+    assert conn.execute(text("SELECT competition_id FROM match WHERE source_ref = '3000002'")).scalar_one() == container
+    beta = competitions.create_competition(conn, wid, ACTOR, name="Beta League")
+    competitions.create_season(conn, wid, ACTOR, beta, label="2023/24",
+                               start_date=dt.date(2023, 10, 1), end_date=dt.date(2024, 9, 30))
+    out = imports.refile_imported_matches_by_season_date(conn, wid, ACTOR)
+    assert out["moved"] >= 1
+    assert conn.execute(text("SELECT competition_id FROM match WHERE source_ref = '3000002'")).scalar_one() == beta
+    g = conn.execute(text("SELECT grade_id FROM match WHERE source_ref = '3000002'")).scalar_one()
+    assert conn.execute(text("SELECT competition_id FROM grade WHERE id = :g"), {"g": g}).scalar_one() == beta
+
+
 def test_import_suggests_classifications_unverified(conn):
     """The opt-in assist suggests a classification from the round label, always UNVERIFIED — GF ->
     grand final, SF -> final (semi), a round number -> home & away."""
