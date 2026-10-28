@@ -86,7 +86,7 @@ def _num(metric: str, as_: str, agg: str = "sum") -> str:
 # ---- batting ------------------------------------------------------------------------------------
 _BAT_SELECT = (
     "count(DISTINCT c.match_id) AS matches, " + _num("innings", "innings") + ", " + _num("runs", "runs")
-    + ", " + _num("runs_known", "runs_known")
+    + ", " + _num("runs_known", "runs_known") + ", " + _num("runs_with_balls", "runs_with_balls")
     + ", " + _num("balls", "balls") + ", " + _num("balls_known", "balls_known") + ", "
     + _num("fours", "fours") + ", " + _num("sixes", "sixes") + ", " + _num("dismissed", "dismissed")
     + ", " + _num("not_out", "not_out") + ", " + _num("fifties", "fifties") + ", "
@@ -108,8 +108,10 @@ def _bat_row(r: dict[str, Any]) -> dict[str, Any]:
         "hundreds": int(r["hundreds"]), "ducks": int(r["ducks"]), "highest_score": int(r["highest_score"]),
         "most_runs_in_match": int(r["most_runs_in_match"]),
         "average": round(runs / dismissed, 2) if dismissed else None,
-        "strike_rate": round(runs * 100 / balls, 2) if balls else None,
-        # strike rate is over recorded balls only; flag when some innings had unknown balls faced
+        # strike rate uses only the runs scored in innings whose balls were recorded, over those balls —
+        # never total runs over partial balls (which would wildly overstate it)
+        "strike_rate": round(int(r["runs_with_balls"]) * 100 / balls, 2) if balls else None,
+        # flag when some innings had unknown balls faced (strike rate covers only part of the career)
         "balls_incomplete": balls_known < innings,
         # runs are a known-minimum when some innings had unknown runs (never treated as zero)
         "runs_known_minimum": int(r["runs_known"]) < innings,

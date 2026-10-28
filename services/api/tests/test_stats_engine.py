@@ -86,6 +86,36 @@ def _f(wid, **kw):
     return {"workspace_id": wid, **kw}
 
 
+def test_strike_rate_uses_only_innings_with_recorded_balls(conn):
+    """Strike rate = runs from recorded-ball innings x100 / those balls — never total runs over partial
+    balls (which wildly overstated it: e.g. a career total divided by a handful of recorded balls)."""
+    wid = _ws(conn, "ENG SR")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bat = _p(conn, wid, "Opener")
+    # match 1: 20 runs off 40 recorded balls
+    m1 = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, m1, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, m1, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=m1, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bat, batting_position=1,
+                         runs=20, balls_faced=40, dismissal_type="bowled")
+    matches.set_approval(conn, wid, ACTOR, m1, status="approved")
+    # match 2: 80 runs but balls not recorded (old import)
+    m2 = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, m2, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, m2, team_id=away, is_home=False)
+    i2 = inn.create_innings(conn, wid, ACTOR, match_id=m2, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i2, person_id=bat, batting_position=1,
+                         runs=80, balls_faced=None, dismissal_type="bowled")
+    matches.set_approval(conn, wid, ACTOR, m2, status="approved")
+
+    row = {r["subject_id"]: r for r in engine.batting_leaders(conn, _f(wid))}[str(bat)]
+    assert row["runs"] == 100 and row["balls"] == 40      # totals unchanged
+    assert row["strike_rate"] == 50.0                     # 20*100/40, NOT 100*100/40 (=250)
+    assert row["balls_incomplete"] is True                # one innings had no recorded balls
+
+
 def test_batting_engine(conn):
     wid = _ws(conn, "ENG BAT")
     x = _build(conn, wid)

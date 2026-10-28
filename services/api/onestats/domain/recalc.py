@@ -125,7 +125,8 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
     agg: dict[Any, dict[str, Any]] = {}
     for r in rows:
         a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "runs": 0, "runs_known": 0,
-                                      "balls": 0, "balls_known": 0, "fours": 0, "sixes": 0, "dismissed": 0,
+                                      "balls": 0, "balls_known": 0, "runs_with_balls": 0,
+                                      "fours": 0, "sixes": 0, "dismissed": 0,
                                       "not_out": 0, "hs": None, "fifties": 0, "hundreds": 0, "ducks": 0})
         runs = r["runs"] or 0
         dismissed = r["dt"] is not None and r["dt"] not in NON_WICKET_STATUSES
@@ -138,6 +139,8 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
         if r["balls"] is not None:
             a["balls"] += r["balls"]
             a["balls_known"] += 1
+            # strike rate is over recorded balls only, so its numerator is the runs from those same innings
+            a["runs_with_balls"] += runs
         if dismissed:
             a["dismissed"] += 1
         if r["dt"] in ("not_out", "retired_not_out"):
@@ -156,7 +159,8 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
             continue
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"innings": a["innings"], "runs": a["runs"], "runs_known": a["runs_known"],
-                                "balls": a["balls"], "balls_known": a["balls_known"], "fours": a["fours"],
+                                "balls": a["balls"], "balls_known": a["balls_known"],
+                                "runs_with_balls": a["runs_with_balls"], "fours": a["fours"],
                                 "sixes": a["sixes"], "dismissed": a["dismissed"], "not_out": a["not_out"], "hs": a["hs"],
                                 "fifties": a["fifties"], "hundreds": a["hundreds"], "ducks": a["ducks"],
                                 "match_runs": a["runs"],
