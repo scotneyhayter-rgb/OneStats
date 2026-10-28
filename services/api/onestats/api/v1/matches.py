@@ -240,6 +240,38 @@ def reject_scorecard(workspace_id: UUID, match_id: UUID, body: ApprovalReason, s
         return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="rejected", reason=body.reason)
 
 
+class BulkApproval(BaseModel):
+    match_ids: list[UUID] = Field(min_length=1)
+    status: str = Field(pattern="^(awaiting_approval|approved|rejected|draft)$")
+    reason: str | None = None
+
+
+@router.post("/bulk-approve")
+def bulk_approve(workspace_id: UUID, body: BulkApproval, settings: SettingsDep, ctx: ApproveCtx) -> dict[str, Any]:
+    """Set the scorecard approval status on many matches at once (bulk approve/submit/reject/reopen)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return matches.bulk_set_approval(conn, workspace_id, str(ctx.user["id"]), body.match_ids,
+                                             status=body.status, reason=body.reason)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+class BulkStatus(BaseModel):
+    match_ids: list[UUID] = Field(min_length=1)
+    status: str = Field(pattern="^(draft|final|abandoned)$")
+
+
+@router.post("/bulk-status")
+def bulk_status(workspace_id: UUID, body: BulkStatus, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    """Set the cricket match status (draft/final/abandoned) on many matches at once."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return matches.bulk_set_status(conn, workspace_id, str(ctx.user["id"]), body.match_ids, status=body.status)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
 @router.post("/{match_id}/teams", status_code=status.HTTP_201_CREATED)
 def set_team(workspace_id: UUID, match_id: UUID, body: TeamSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

@@ -1764,6 +1764,10 @@ export const api = {
   // --- Phase 7.1: scorecard approval workflow (separate from match status) ---
   matchApproval: (w: string, id: string, action: "submit" | "approve" | "reject" | "reopen", reason?: string) =>
     request<Match>(`/api/v1/workspaces/${w}/matches/${id}/${action}`, { method: "POST", body: { reason: reason ?? null } }),
+  bulkApproveMatches: (w: string, body: { match_ids: string[]; status: string; reason?: string }) =>
+    request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-approve`, { method: "POST", body }),
+  bulkStatusMatches: (w: string, body: { match_ids: string[]; status: string }) =>
+    request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-status`, { method: "POST", body }),
   setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
   setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>

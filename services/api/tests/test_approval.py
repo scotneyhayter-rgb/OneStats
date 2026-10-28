@@ -98,6 +98,21 @@ def test_revision_flag_set_on_edit_and_cleared_on_reapproval(conn):
     assert matches.get_match(conn, mid)["revised_since_approval"] is False
 
 
+def test_bulk_approval_and_status(conn):
+    """Many scorecards can be approved — and many matches set Final — in one action; a failure is
+    skipped and reported, not fatal."""
+    wid = _ws(conn, "APP BULK")
+    mids = [_match(conn, wid)[0] for _ in range(3)]
+    out = matches.bulk_set_approval(conn, wid, ACTOR, mids, status="approved")
+    assert out["updated"] == 3 and out["skipped"] == []
+    assert all(matches.get_match(conn, m)["approval_status"] == "approved" for m in mids)
+    out2 = matches.bulk_set_status(conn, wid, ACTOR, mids, status="final")
+    assert out2["updated"] == 3
+    assert all(matches.get_match(conn, m)["status"] == "final" for m in mids)
+    with pytest.raises(ValueError, match="invalid_approval_status"):
+        matches.bulk_set_approval(conn, wid, ACTOR, mids, status="finalised")
+
+
 def test_invalid_status_rejected(conn):
     wid = _ws(conn, "APP INVALID")
     mid, _ = _match(conn, wid)

@@ -33,6 +33,9 @@ export function Scorecard() {
   const [compFilter, setCompFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [openMatch, setOpenMatch] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -93,6 +96,26 @@ export function Scorecard() {
     return hay.includes(search.toLowerCase());
   });
 
+  const toggleSel = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selected.has(m.id));
+  const toggleAllFiltered = () => setSelected((s) => {
+    if (allFilteredSelected) { const n = new Set(s); filtered.forEach((m) => n.delete(m.id)); return n; }
+    return new Set([...s, ...filtered.map((m) => m.id)]);
+  });
+  const runBulk = async (fn: () => Promise<{ updated: number; skipped: { reason: string }[] }>, label: string) => {
+    setBulkBusy(true); setError(null); setMsg(null);
+    try {
+      const r = await fn();
+      const skip = r.skipped.length ? `, ${r.skipped.length} skipped` : "";
+      setMsg(`${label}: ${r.updated} match${r.updated === 1 ? "" : "es"}${skip}.`);
+      setSelected(new Set());
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Bulk action failed.");
+    } finally { setBulkBusy(false); }
+  };
+  const ids = () => [...selected];
+
   return (
     <AppShell title="Matches" subtitle="Match management and scorecard entry">
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -109,6 +132,30 @@ export function Scorecard() {
         )}
       </div>
 
+      {canManage && filtered.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-app)] border border-border bg-muted/30 px-3 py-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={allFilteredSelected} onChange={toggleAllFiltered} className="h-4 w-4" />
+            <span className="text-muted-foreground">{selected.size > 0 ? `${selected.size} selected` : "Select all"}</span>
+          </label>
+          <div className="flex-1" />
+          {selected.size > 0 && (
+            <>
+              <Button size="sm" variant="outline" disabled={bulkBusy}
+                onClick={() => void runBulk(() => api.bulkStatusMatches(workspaceId, { match_ids: ids(), status: "final" }), "Marked Final")}>
+                Mark Final
+              </Button>
+              <Button size="sm" disabled={bulkBusy}
+                onClick={() => void runBulk(() => api.bulkApproveMatches(workspaceId, { match_ids: ids(), status: "approved" }), "Approved")}>
+                Approve
+              </Button>
+              <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
+            </>
+          )}
+        </div>
+      )}
+      {msg && <div className="mb-3 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">{msg}</div>}
+
       {loading && <LoadingState label="Loading matches…" />}
       {!loading && error && <ErrorState message={error} onRetry={() => void load()} />}
       {!loading && !error && filtered.length === 0 && (
@@ -118,8 +165,13 @@ export function Scorecard() {
       {!loading && !error && filtered.length > 0 && (
         <div className="grid gap-3">
           {filtered.map((m) => (
-            <Card key={m.id} className="cursor-pointer hover:border-brand">
-              <CardContent className="flex items-center gap-3 py-4" onClick={() => setOpenMatch(m.id)}>
+            <Card key={m.id} className={`hover:border-brand ${selected.has(m.id) ? "border-brand" : ""}`}>
+              <CardContent className="flex items-center gap-3 py-4">
+                {canManage && (
+                  <input type="checkbox" aria-label={`Select ${matchTitle(m)}`} checked={selected.has(m.id)}
+                    onChange={() => toggleSel(m.id)} onClick={(e) => e.stopPropagation()} className="h-4 w-4" />
+                )}
+                <div className="flex flex-1 cursor-pointer items-center gap-3" onClick={() => setOpenMatch(m.id)}>
                 <Trophy className="h-5 w-5 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{matchTitle(m)}</div>
@@ -132,6 +184,7 @@ export function Scorecard() {
                 </div>
                 {m.classification !== "unclassified" && <Badge variant="brand">{m.classification.replace(/_/g, " ")}</Badge>}
                 <Badge variant={m.status === "final" ? "success" : m.status === "abandoned" ? "warning" : "muted"}>{m.status}</Badge>
+                </div>
               </CardContent>
             </Card>
           ))}

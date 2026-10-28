@@ -268,6 +268,40 @@ def set_approval(
     return after
 
 
+def bulk_set_approval(conn: Connection, workspace_id: UUID, actor: str, match_ids: list[UUID], *,
+                      status: str, reason: str | None = None) -> dict[str, Any]:
+    """Set the scorecard approval status on many matches at once (e.g. approve a whole imported batch).
+    Each match is applied independently with the same safeguards as the single-match path (the stats
+    ledger is updated per match); a match that cannot be changed is skipped and reported, never
+    aborting the rest."""
+    if status not in APPROVAL_STATUSES:
+        raise ValueError("invalid_approval_status")
+    updated, skipped = 0, []
+    for mid in match_ids:
+        try:
+            set_approval(conn, workspace_id, actor, mid, status=status, reason=reason)
+            updated += 1
+        except ValueError as exc:
+            skipped.append({"match_id": str(mid), "reason": str(exc)})
+    return {"updated": updated, "skipped": skipped}
+
+
+def bulk_set_status(conn: Connection, workspace_id: UUID, actor: str, match_ids: list[UUID], *,
+                    status: str) -> dict[str, Any]:
+    """Set the cricket match status (draft/final/abandoned) on many matches at once. Independent per
+    match; a failure is skipped and reported."""
+    if status not in STATUSES:
+        raise ValueError("invalid_status")
+    updated, skipped = 0, []
+    for mid in match_ids:
+        try:
+            update_match(conn, workspace_id, actor, mid, status=status)
+            updated += 1
+        except ValueError as exc:
+            skipped.append({"match_id": str(mid), "reason": str(exc)})
+    return {"updated": updated, "skipped": skipped}
+
+
 def mark_revised_if_approved(conn: Connection, match_id: UUID) -> None:
     """Flag that an APPROVED scorecard has changed since approval, so official statistics keep using
     the last approved version until the revision is re-approved. No-op unless currently approved."""
