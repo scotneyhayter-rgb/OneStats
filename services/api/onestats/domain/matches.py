@@ -302,6 +302,36 @@ def bulk_set_status(conn: Connection, workspace_id: UUID, actor: str, match_ids:
     return {"updated": updated, "skipped": skipped}
 
 
+def bulk_classify(conn: Connection, workspace_id: UUID, actor: str, match_ids: list[UUID], *,
+                  classification: str | None = None, finals_stage: str | None = None,
+                  verify_existing: bool = False) -> dict[str, Any]:
+    """Confirm or set the match classification on many matches at once.
+    ``verify_existing`` marks each match's current classification verified (confirming the import's
+    suggestions; a still-unclassified match is skipped); otherwise ``classification`` (+ finals_stage)
+    is set verified on each. Independent per match; a failure is skipped and reported."""
+    updated, skipped = 0, []
+    for mid in match_ids:
+        try:
+            if verify_existing:
+                m = get_match(conn, mid)
+                if m is None:
+                    raise ValueError("match_not_found")
+                if m.get("classification") in (None, "unclassified"):
+                    skipped.append({"match_id": str(mid), "reason": "unclassified"})
+                    continue
+                set_classification(conn, workspace_id, actor, mid, classification=m["classification"],
+                                   finals_stage=m.get("finals_stage"), verified=True)
+            else:
+                if classification is None:
+                    raise ValueError("classification_required")
+                set_classification(conn, workspace_id, actor, mid, classification=classification,
+                                   finals_stage=finals_stage, verified=True)
+            updated += 1
+        except ValueError as exc:
+            skipped.append({"match_id": str(mid), "reason": str(exc)})
+    return {"updated": updated, "skipped": skipped}
+
+
 def mark_revised_if_approved(conn: Connection, match_id: UUID) -> None:
     """Flag that an APPROVED scorecard has changed since approval, so official statistics keep using
     the last approved version until the revision is re-approved. No-op unless currently approved."""

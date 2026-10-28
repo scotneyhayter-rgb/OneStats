@@ -1481,7 +1481,7 @@ export const api = {
     w: string,
     body: { data: unknown; people?: unknown; commit: boolean; filename?: string;
             competition_id?: string | null; competition_name?: string | null;
-            assign_by_season_date?: boolean },
+            assign_by_season_date?: boolean; suggest_classifications?: boolean },
   ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
   listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
 
@@ -1768,6 +1768,8 @@ export const api = {
     request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-approve`, { method: "POST", body }),
   bulkStatusMatches: (w: string, body: { match_ids: string[]; status: string }) =>
     request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-status`, { method: "POST", body }),
+  bulkClassifyMatches: (w: string, body: { match_ids: string[]; classification?: string; finals_stage?: string; verify_existing?: boolean }) =>
+    request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-classify`, { method: "POST", body }),
   setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
   setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>

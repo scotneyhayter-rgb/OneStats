@@ -113,6 +113,21 @@ def test_bulk_approval_and_status(conn):
         matches.bulk_set_approval(conn, wid, ACTOR, mids, status="finalised")
 
 
+def test_bulk_classify_verify_and_set(conn):
+    """Bulk-verify confirms each match's current (suggested) classification and skips the unclassified;
+    bulk-set applies a chosen classification (verified) to all."""
+    wid = _ws(conn, "APP CLASSIFY")
+    a, b = _match(conn, wid)[0], _match(conn, wid)[0]
+    matches.set_classification(conn, wid, ACTOR, a, classification="grand_final", finals_stage="grand_final", verified=False)
+    out = matches.bulk_classify(conn, wid, ACTOR, [a, b], verify_existing=True)
+    assert out["updated"] == 1 and len(out["skipped"]) == 1   # a verified, b (unclassified) skipped
+    assert matches.get_match(conn, a)["classification_verified"] is True
+    out2 = matches.bulk_classify(conn, wid, ACTOR, [a, b], classification="home_away")
+    assert out2["updated"] == 2
+    m = matches.get_match(conn, b)
+    assert m["classification"] == "home_away" and m["classification_verified"] is True
+
+
 def test_invalid_status_rejected(conn):
     wid = _ws(conn, "APP INVALID")
     mid, _ = _match(conn, wid)

@@ -76,6 +76,7 @@ class CricketStatzRequest(BaseModel):
     competition_id: UUID | None = Field(default=None, description="Existing competition to import into")
     competition_name: str | None = Field(default=None, description="New competition name (found-or-created)")
     assign_by_season_date: bool = Field(default=False, description="File each match by the season date range covering its date")
+    suggest_classifications: bool = Field(default=False, description="Suggest Home&Away/Final/Grand Final from the round label (unverified)")
 
 
 @router.post("/cricketstatz")
@@ -93,6 +94,7 @@ def cricketstatz_import(
                 data=body.data, people=body.people, commit=body.commit, filename=body.filename,
                 competition_id=body.competition_id, competition_name=body.competition_name,
                 assign_by_season_date=body.assign_by_season_date,
+                suggest_classifications=body.suggest_classifications,
             )
         except ValueError as exc:
             sp.rollback()

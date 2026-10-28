@@ -375,6 +375,33 @@ def _combine_overs(texts: list[str | None]) -> str | None:
     return f"{o_sum}.{b_sum}" if b_sum else f"{o_sum}.0"
 
 
+_FINALS_ROUNDS = {
+    "sf": "semi_final", "semi": "semi_final", "semi final": "semi_final", "semifinal": "semi_final",
+    "pf": "preliminary_final", "prelim": "preliminary_final", "prelim final": "preliminary_final",
+    "preliminary final": "preliminary_final",
+    "ef": "elimination_final", "elim": "elimination_final", "elimination final": "elimination_final",
+    "qf": "qualifying_final", "qualifying final": "qualifying_final",
+}
+
+
+def _suggest_classification(round_label: Any) -> tuple[str, str | None] | None:
+    """Suggest a match classification (classification, finals_stage) from the round label — an ASSIST
+    only. The label is a hint, never proof, so a suggestion is always written UNVERIFIED for a human to
+    confirm. Returns None when the label gives no clear signal (left unclassified)."""
+    s = str(round_label or "").strip().lower()
+    if not s:
+        return None
+    if s in ("gf", "grand final", "grandfinal", "grand-final"):
+        return ("grand_final", "grand_final")
+    if s in _FINALS_ROUNDS:
+        return ("final", _FINALS_ROUNDS[s])
+    if s in ("f", "final"):
+        return ("final", None)
+    if s.isdigit() or (s.startswith("r") and s[1:].isdigit()):  # a home-and-away round number
+        return ("home_away", None)
+    return None
+
+
 def _toss_winner_team(code: Any, home_id: UUID | None, away_id: UUID | None) -> UUID | None:
     """Map a CricketStatz ``tosswonby`` code to the winning team. 1 = home side, 2 = away side
     (the same home/away convention as Result); 0/blank/unknown → not recorded, so unknown."""
@@ -757,7 +784,7 @@ def _set_record(conn: Connection, record_id: UUID, *, status: str, resolution: s
 
 def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID, *,
                   competition_id: UUID | None = None, competition_name: str | None = None,
-                  assign_by_season_date: bool = False) -> dict[str, Any]:
+                  assign_by_season_date: bool = False, suggest_classifications: bool = False) -> dict[str, Any]:
     """Promote staged, promotable rows into canonical tables (explicit admin approval).
 
     ``competition_id`` / ``competition_name`` choose the competition imported grades and matches land
@@ -937,6 +964,16 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
             status="final",
             source_system=ss, source_ref=rec["source_ref"],
         )
+        # Import assist (opt-in): suggest a classification from the round label, written UNVERIFIED for
+        # a human to confirm — the round never classifies a match on its own, so nothing is trusted.
+        if suggest_classifications:
+            sug = _suggest_classification(norm.get("round"))
+            if sug is not None:
+                conn.execute(
+                    text("UPDATE match SET classification = :c, finals_stage = :fs, "
+                         "classification_verified = false, updated_at = now() WHERE id = :id"),
+                    {"c": sug[0], "fs": sug[1], "id": mid},
+                )
         # Resolve match-specific captains/keepers to people (0/absent → unset; never invented).
         # A single player named as both captain and keeper keeps both roles distinctly.
         home_captain = _person_by_source(conn, norm.get("home_captain_source_ref"), ss)
@@ -1296,7 +1333,7 @@ def controlled_import(
     data: dict[str, Any], people: dict[str, Any] | None = None,
     commit: bool = False, filename: str | None = None,
     competition_id: UUID | None = None, competition_name: str | None = None,
-    assign_by_season_date: bool = False,
+    assign_by_season_date: bool = False, suggest_classifications: bool = False,
 ) -> dict[str, Any]:
     """Run a controlled CricketStatz import (people, then structural + scorecards) in one pass and
     return a combined summary for the Import Wizard.
@@ -1325,7 +1362,8 @@ def controlled_import(
     if commit:
         out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"],
                                         competition_id=competition_id, competition_name=competition_name,
-                                        assign_by_season_date=assign_by_season_date)
+                                        assign_by_season_date=assign_by_season_date,
+                                        suggest_classifications=suggest_classifications)
         # once both people and clubs exist, record each player's MyClub affiliation (for scoping)
         out["affiliations"] = link_cricketstatz_people_to_clubs(conn, workspace_id, actor, people_batch)
     return out

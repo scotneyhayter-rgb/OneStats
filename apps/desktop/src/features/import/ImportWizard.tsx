@@ -104,6 +104,7 @@ export function ImportWizard() {
   const [compChoice, setCompChoice] = useState<string>("");
   const [newCompName, setNewCompName] = useState("");
   const [assignBySeason, setAssignBySeason] = useState(false);
+  const [suggestClass, setSuggestClass] = useState(false);
 
   const loadHistory = useCallback(async () => {
     if (!workspaceId) return;
@@ -164,7 +165,7 @@ export function ImportWizard() {
       const { data, people } = buildSlice(file, selected);
       const competition_id = compChoice && compChoice !== "__new__" ? compChoice : null;
       const competition_name = compChoice === "__new__" ? newCompName.trim() || null : null;
-      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName, competition_id, competition_name, assign_by_season_date: assignBySeason }));
+      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName, competition_id, competition_name, assign_by_season_date: assignBySeason, suggest_classifications: suggestClass }));
       await loadHistory();
       setStep("results");
     } catch (err) {
@@ -270,7 +271,8 @@ export function ImportWizard() {
             onBack={() => setStep("analyse")} onImport={() => void runImport()}
             comps={comps} compChoice={compChoice} setCompChoice={setCompChoice}
             newCompName={newCompName} setNewCompName={setNewCompName}
-            assignBySeason={assignBySeason} setAssignBySeason={setAssignBySeason} />
+            assignBySeason={assignBySeason} setAssignBySeason={setAssignBySeason}
+            suggestClass={suggestClass} setSuggestClass={setSuggestClass} />
         )}
 
         {step === "importing" && (
@@ -343,11 +345,12 @@ function SelectStep({ busy, onFile, history }: { busy: boolean; onFile: (e: Reac
   );
 }
 
-function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compChoice, setCompChoice, newCompName, setNewCompName, assignBySeason, setAssignBySeason }: {
+function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compChoice, setCompChoice, newCompName, setNewCompName, assignBySeason, setAssignBySeason, suggestClass, setSuggestClass }: {
   preview: CricketStatzImportResult; selected: number; busy: boolean; onBack: () => void; onImport: () => void;
   comps: Competition[]; compChoice: string; setCompChoice: (v: string) => void;
   newCompName: string; setNewCompName: (v: string) => void;
   assignBySeason: boolean; setAssignBySeason: (v: boolean) => void;
+  suggestClass: boolean; setSuggestClass: (v: boolean) => void;
 }) {
   const p = preview.preview;
   const ppl = preview.people.detected;
@@ -405,6 +408,15 @@ function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compCho
               placeholder="e.g. Grampians Cricket Association" className="max-w-xs" />
           )}
         </div>
+      </div>
+      <div className="rounded-[var(--radius-app)] border border-border p-3 text-sm">
+        <label className="flex items-start gap-2">
+          <input type="checkbox" checked={suggestClass} onChange={(e) => setSuggestClass(e.target.checked)} className="mt-0.5 h-4 w-4" />
+          <span>
+            <span className="font-medium">Suggest match types from the round</span>
+            <span className="block text-xs text-muted-foreground">Proposes Home &amp; Away, Final or Grand Final from each match&apos;s round label (GF, SF, round number…). Written as unverified suggestions — confirm them in bulk on the Matches list; nothing is trusted on a guess.</span>
+          </span>
+        </label>
       </div>
       <div className="flex justify-between border-t border-border pt-3">
         <Button variant="ghost" size="sm" onClick={onBack}>Back</Button>

@@ -272,6 +272,25 @@ def bulk_status(workspace_id: UUID, body: BulkStatus, settings: SettingsDep, ctx
             raise _value_error(exc) from exc
 
 
+class BulkClassify(BaseModel):
+    match_ids: list[UUID] = Field(min_length=1)
+    classification: str | None = None   # with verify_existing=False: the classification to set
+    finals_stage: str | None = None
+    verify_existing: bool = False        # True: confirm each match's current (suggested) classification
+
+
+@router.post("/bulk-classify")
+def bulk_classify(workspace_id: UUID, body: BulkClassify, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    """Confirm the import's suggested classifications, or set a classification, on many matches at once."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return matches.bulk_classify(conn, workspace_id, str(ctx.user["id"]), body.match_ids,
+                                         classification=body.classification, finals_stage=body.finals_stage,
+                                         verify_existing=body.verify_existing)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
 @router.post("/{match_id}/teams", status_code=status.HTTP_201_CREATED)
 def set_team(workspace_id: UUID, match_id: UUID, body: TeamSet, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

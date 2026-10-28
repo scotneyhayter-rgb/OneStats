@@ -145,7 +145,19 @@ export function Scorecard() {
                 onClick={() => void runBulk(() => api.bulkStatusMatches(workspaceId, { match_ids: ids(), status: "final" }), "Marked Final")}>
                 Mark Final
               </Button>
-              <Button size="sm" disabled={bulkBusy}
+              <Select aria-label="Set match type for selected" value="" disabled={bulkBusy} className="w-36"
+                onChange={(e) => { const v = e.target.value; if (v) void runBulk(() => api.bulkClassifyMatches(workspaceId, { match_ids: ids(), classification: v, finals_stage: v === "grand_final" ? "grand_final" : undefined }), "Type set"); }}>
+                <option value="">Set type…</option>
+                <option value="home_away">Home &amp; Away</option>
+                <option value="final">Final</option>
+                <option value="grand_final">Grand Final</option>
+                <option value="unclassified">Unclassified</option>
+              </Select>
+              <Button size="sm" variant="outline" disabled={bulkBusy}
+                onClick={() => void runBulk(() => api.bulkClassifyMatches(workspaceId, { match_ids: ids(), verify_existing: true }), "Types verified")}>
+                Verify types
+              </Button>
+              <Button size="sm" variant="outline" disabled={bulkBusy}
                 onClick={() => void runBulk(() => api.bulkApproveMatches(workspaceId, { match_ids: ids(), status: "approved" }), "Approved")}>
                 Approve
               </Button>

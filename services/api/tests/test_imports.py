@@ -202,6 +202,22 @@ def test_import_assigns_competition_by_season_date(conn):
     assert season is not None  # post-promotion auto-assign filled the season within Alpha
 
 
+def test_import_suggests_classifications_unverified(conn):
+    """The opt-in assist suggests a classification from the round label, always UNVERIFIED — GF ->
+    grand final, SF -> final (semi), a round number -> home & away."""
+    wid = _ws(conn, "IMP CLASSIFY")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid, suggest_classifications=True)
+
+    def cls(sref):
+        return conn.execute(text("SELECT classification, finals_stage, classification_verified "
+                                 "FROM match WHERE source_ref = :s"), {"s": sref}).mappings().one()
+    gf = cls("3000002"); assert gf["classification"] == "grand_final" and gf["classification_verified"] is False
+    sf = cls("3177394")
+    assert sf["classification"] == "final" and sf["finals_stage"] == "semi_final" and sf["classification_verified"] is False
+    ha = cls("3000001"); assert ha["classification"] == "home_away" and ha["classification_verified"] is False
+
+
 def test_stage_matchtype_labels(conn):
     wid = _ws(conn, "IMP WS1b")
     bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
