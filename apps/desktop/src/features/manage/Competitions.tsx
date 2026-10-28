@@ -210,14 +210,47 @@ function CreateCompetitionModal({
   const [name, setName] = useState("");
   const [assoc, setAssoc] = useState("");
   const [seasonModel, setSeasonModel] = useState("unknown");
+  const [grades, setGrades] = useState<string[]>([]);
+  const [gradeInput, setGradeInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const addGradeToList = () => {
+    const g = gradeInput.trim();
+    // de-duplicate case-insensitively; keep the first spelling entered
+    if (g && !grades.some((x) => x.toLowerCase() === g.toLowerCase())) setGrades((v) => [...v, g]);
+    setGradeInput("");
+  };
 
   const submit = async () => {
     setBusy(true);
     setErr(null);
+    // fold in a grade typed but not yet added to the list
+    const pending = gradeInput.trim();
+    const allGrades =
+      pending && !grades.some((x) => x.toLowerCase() === pending.toLowerCase())
+        ? [...grades, pending]
+        : grades;
     try {
-      await api.createCompetition(workspaceId, { name, association_id: assoc || null, season_model: seasonModel });
+      const comp = await api.createCompetition(workspaceId, {
+        name,
+        association_id: assoc || null,
+        season_model: seasonModel,
+      });
+      // create each grade on the new competition; report if any fails but keep the competition
+      const failed: string[] = [];
+      for (const g of allGrades) {
+        try {
+          await api.createGrade(workspaceId, comp.id, { name: g });
+        } catch {
+          failed.push(g);
+        }
+      }
+      if (failed.length > 0) {
+        setErr(`Competition created, but these grades could not be added: ${failed.join(", ")}. Add them from the competition.`);
+        setBusy(false);
+        return;
+      }
       onCreated(name.trim());
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Failed to create competition");
@@ -260,6 +293,43 @@ function CreateCompetitionModal({
           <Select value={seasonModel} onChange={(e) => setSeasonModel(e.target.value)}>
             {SEASON_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </Select>
+        </Field>
+        <Field label="Grades" hint="Optional — add the grades this competition runs (e.g. A Grade, B Grade). You can add more later.">
+          {grades.length > 0 && (
+            <ul className="mb-2 flex flex-wrap gap-2">
+              {grades.map((g) => (
+                <li key={g}>
+                  <Badge variant="outline">
+                    {g}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${g}`}
+                      className="ml-1 text-muted-foreground hover:text-danger"
+                      onClick={() => setGrades((v) => v.filter((x) => x !== g))}
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <Input
+              placeholder="e.g. A Grade"
+              value={gradeInput}
+              onChange={(e) => setGradeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addGradeToList();
+                }
+              }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={addGradeToList} disabled={!gradeInput.trim()}>
+              Add
+            </Button>
+          </div>
         </Field>
       </div>
     </Modal>
