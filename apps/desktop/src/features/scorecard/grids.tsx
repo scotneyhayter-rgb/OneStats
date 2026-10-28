@@ -464,7 +464,13 @@ export function FowGrid(ctx: GridCtx) {
   };
   const addRow = async () => {
     try {
-      await api.createFow(workspaceId, inningsId, { wicket_number: rows.length + 1 });
+      // Use the smallest unused wicket number, not rows.length + 1: imported falls of wicket need not
+      // be a contiguous 1..N (a gap would make rows.length + 1 collide with an existing number and the
+      // backend rejects it as a duplicate_wicket_number). This fills any gap and never collides.
+      const used = new Set(rows.map((r) => r.wicket_number).filter((n): n is number => n != null));
+      let next = 1;
+      while (used.has(next)) next += 1;
+      await api.createFow(workspaceId, inningsId, { wicket_number: next });
       await refresh();
     } catch (e) {
       onDirty(e instanceof ApiError ? e.message : "Could not add fall of wicket");
