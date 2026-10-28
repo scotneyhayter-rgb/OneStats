@@ -179,6 +179,21 @@ def test_classification_split_filters(conn):
     assert engine.batting_leaders(conn, _f(wid, split="home_away")) == []
 
 
+def test_club_organisation_filter(conn):
+    """The Club (organisation) filter scopes stats to any of that club's teams — so a club's players
+    show under its own filter and not under another club's."""
+    wid = _ws(conn, "STATS CLUB")
+    x = _build(conn, wid)
+    home_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": x["home"]}).scalar_one()
+    away_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": x["away"]}).scalar_one()
+    home_bats = {r["subject_id"] for r in engine.batting_leaders(conn, _f(wid, organisation_id=home_org))}
+    assert str(x["bat1"]) in home_bats                                   # home batter under the home club
+    away_bats = {r["subject_id"] for r in engine.batting_leaders(conn, _f(wid, organisation_id=away_org))}
+    assert str(x["bat1"]) not in away_bats                               # not under the away club
+    away_bowl = {r["subject_id"] for r in engine.bowling_leaders(conn, _f(wid, organisation_id=away_org))}
+    assert str(x["bowler"]) in away_bowl                                 # away bowler under the away club
+
+
 def test_run_out_reconciliation(conn):
     wid = _ws(conn, "ENG RECON")
     x = _build(conn, wid)

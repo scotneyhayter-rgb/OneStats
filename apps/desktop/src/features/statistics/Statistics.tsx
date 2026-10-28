@@ -9,7 +9,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type Competition, type StatColumn, type StatReport } from "../../lib/api";
+import { api, ApiError, type Competition, type Grade, type Organisation, type Season, type StatColumn, type StatReport, type Team } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -42,6 +42,14 @@ export function Statistics() {
   const [data, setData] = useState<StatReport | null>(null);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [competitionId, setCompetitionId] = useState("");
+  const [organisations, setOrganisations] = useState<Organisation[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [organisationId, setOrganisationId] = useState("");
+  const [gradeId, setGradeId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [seasonId, setSeasonId] = useState("");
   const [split, setSplit] = useState("");
   const [venue, setVenue] = useState("");
   const [format, setFormat] = useState("");
@@ -60,8 +68,22 @@ export function Statistics() {
   useEffect(() => {
     if (current) api.listCompetitions(current.id).then(setCompetitions).catch(() => {});
     if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
+    if (current) api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
+    if (current) api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
     loadSaved();
   }, [current, loadSaved]);
+
+  // Grades and seasons belong to a competition — load them when one is chosen, and clear the picks.
+  useEffect(() => {
+    if (current && competitionId) {
+      api.getCompetition(current.id, competitionId)
+        .then((c) => { setGrades(c.grades ?? []); setSeasons(c.seasons ?? []); })
+        .catch(() => { setGrades([]); setSeasons([]); });
+    } else {
+      setGrades([]); setSeasons([]);
+    }
+    setGradeId(""); setSeasonId("");
+  }, [current, competitionId]);
 
   const applySaved = (id: string) => {
     setSelectedSaved(id);
@@ -70,6 +92,9 @@ export function Statistics() {
     const cfg = (s.config ?? {}) as Record<string, string | number>;
     setReport(s.report);
     setCompetitionId(String(cfg.competition_id ?? ""));
+    setOrganisationId(String(cfg.organisation_id ?? ""));
+    setTeamId(String(cfg.team_id ?? ""));
+    // grade/season depend on the competition's loaded lists; reselect them after choosing a competition
     setSplit(String(cfg.split ?? ""));
     setVenue(String(cfg.venue ?? ""));
     setFormat(String(cfg.format ?? ""));
@@ -81,6 +106,8 @@ export function Statistics() {
     const name = window.prompt("Save this report as:");
     if (!name) return;
     const config: Record<string, unknown> = { competition_id: competitionId || undefined,
+      organisation_id: organisationId || undefined, grade_id: gradeId || undefined,
+      team_id: teamId || undefined, season_id: seasonId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined };
     if (minThreshold) {
       if (report === "batting") config.min_runs = Number(minThreshold);
@@ -108,8 +135,9 @@ export function Statistics() {
 
   const query = useMemo(() => {
     const q: Record<string, string | number | undefined> = {
-      competition_id: competitionId || undefined, split: split || undefined, venue: venue || undefined,
-      format: format || undefined,
+      competition_id: competitionId || undefined, organisation_id: organisationId || undefined,
+      grade_id: gradeId || undefined, team_id: teamId || undefined, season_id: seasonId || undefined,
+      split: split || undefined, venue: venue || undefined, format: format || undefined,
     };
     if (minThreshold) {
       if (report === "batting") q.min_runs = Number(minThreshold);
@@ -117,7 +145,7 @@ export function Statistics() {
       else if (report === "captaincy") q.min_eligible = Number(minThreshold);
     }
     return q;
-  }, [competitionId, split, venue, format, minThreshold, report]);
+  }, [competitionId, organisationId, gradeId, teamId, seasonId, split, venue, format, minThreshold, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -221,6 +249,42 @@ export function Statistics() {
                 {competitions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </label>
+            {grades.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Grade</span>
+                <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} className="w-36">
+                  <option value="">All grades</option>
+                  {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </Select>
+              </label>
+            )}
+            {seasons.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Season</span>
+                <Select value={seasonId} onChange={(e) => setSeasonId(e.target.value)} className="w-32">
+                  <option value="">All seasons</option>
+                  {seasons.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </Select>
+              </label>
+            )}
+            {organisations.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Club</span>
+                <Select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)} className="w-44">
+                  <option value="">All clubs</option>
+                  {organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </Select>
+              </label>
+            )}
+            {teams.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Team</span>
+                <Select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-44">
+                  <option value="">All teams</option>
+                  {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </Select>
+              </label>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-muted-foreground">Matches</span>
               <Select value={split} onChange={(e) => setSplit(e.target.value)} className="w-40">

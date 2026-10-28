@@ -34,6 +34,11 @@ def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         if filters.get(key):
             clauses.append(f"{col} = :{key}")
             params[key] = filters[key]
+    # Club (organisation) filter: any of that club's teams. The engine scopes by team, so a club means
+    # "played for one of this organisation's teams" — across its grades.
+    if filters.get("organisation_id"):
+        clauses.append("c.team_id IN (SELECT id FROM team WHERE organisation_id = :organisation_id)")
+        params["organisation_id"] = filters["organisation_id"]
     split = filters.get("split")
     if split and split in _SPLIT:
         clauses.append("c.metrics->>'classification' = :split_cls")
