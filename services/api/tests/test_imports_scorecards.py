@@ -284,6 +284,57 @@ def test_same_team_match_reimport_is_idempotent(conn):
     assert after == counts  # opponent team + scorecard not duplicated
 
 
+# A player listed twice in one innings — CricketStatz sometimes emits a phantom did-not-bat row (or a
+# scorer double-entry) carrying a real player id. A batter can hold only one line per innings.
+DUP_BATTER = {
+    "clubs": [{"ClubID": 1, "Name": "Alpha CC"}, {"ClubID": 2, "Name": "Beta CC"}],
+    "teams": [{"TeamID": 100, "Name": "Alpha", "ClubID": 1}, {"TeamID": 200, "Name": "Beta", "ClubID": 2}],
+    "venues": [{"GroundID": 10, "Name": "Alpha Oval"}],
+    "divisions": [{"GradeID": 50, "Name": "B Grade"}],
+    "matches": [{"MatchID": 901, "HomeTeam": 100, "AwayTeam": 200, "DatePlayed": "2024-03-01",
+                 "Ground": 10, "Grade": 50, "Result": 1, "matchtype": 1}],
+    "innings": [{"MatchID": 901, "cricket_Innings": [
+        {"InningsID": 930, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 200, "iresult": 1},
+    ]}],
+    "batting": [{"MatchID": 901, "cricket_Innings": [
+        {"InningsID": 930, "InnsNumber": 1, "cricket_batting": [
+            {"Batpos": 1, "BatsmanID": 10, "Howout": 2, "Bowler": 0, "Fielder": 0, "Score": 44,
+             "Balls": 50, "mins": 0, "sixes": 0, "fours": 6, "FOW": 0, "FOWPos": 1, "FOWBatID": 0, "FOWOvers": 0.0},
+            {"Batpos": 2, "BatsmanID": 11, "Howout": 1, "Bowler": 0, "Fielder": 0, "Score": 10,
+             "Balls": 20, "mins": 0, "sixes": 0, "fours": 1, "FOW": 0, "FOWPos": 2, "FOWBatID": 0, "FOWOvers": 0.0},
+            # SECOND row for BatsmanID 10 in the SAME innings (phantom / scorer double entry)
+            {"Batpos": 5, "BatsmanID": 10, "Howout": 7, "Bowler": 0, "Fielder": 0, "Score": 0,
+             "Balls": 0, "mins": 0, "sixes": 0, "fours": 0, "FOW": 0, "FOWPos": 5, "FOWBatID": 0, "FOWOvers": 0.0},
+        ]},
+    ]}],
+}
+
+
+def test_duplicate_batter_in_innings_keeps_first_and_flags_rest(conn):
+    """A player listed twice in one innings must not abort the whole import. The importer keeps the first
+    line, leaves the duplicate staged + flagged for review, and never merges or guesses."""
+    wid = _ws(conn, "SC DUPBAT")
+    # the duplicated player must resolve to a person for the per-innings check to apply
+    people.create_person(conn, wid, ACTOR, display_name="Dup Batter", source_system=SS, source_ref="10")
+    people.create_person(conn, wid, ACTOR, display_name="Other Batter", source_system=SS, source_ref="11")
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=DUP_BATTER)["batch_id"]
+    res = imports.promote_batch(conn, wid, ACTOR, bid)        # must NOT raise / roll back
+    assert res["created"]["batting_entry"] == 2              # player 10 (first line) + player 11
+    inn = conn.execute(text("SELECT id FROM innings WHERE source_ref = '930'")).scalar_one()
+    assert conn.execute(text("SELECT count(*) FROM batting_entry WHERE innings_id = :i"),
+                        {"i": inn}).scalar_one() == 2
+    # the kept line for player 10 is the genuine first line (Batpos 1, Score 44), not the phantom
+    kept = conn.execute(text("SELECT batting_position, runs FROM batting_entry "
+                             "WHERE source_ref = '930:1'")).mappings().one()
+    assert (kept["batting_position"], kept["runs"]) == (1, 44)
+    # the duplicate row is left staged + flagged, never promoted
+    dup = conn.execute(
+        text("SELECT status, issues::text AS issues FROM import_staging_record "
+             "WHERE batch_id = :b AND entity_type = 'batting_entry' AND source_ref = '930:5'"),
+        {"b": bid}).mappings().one()
+    assert dup["status"] == "staged" and "duplicate_batter_in_innings" in dup["issues"]
+
+
 def test_howout_legend_mapping():
     """The verified legend maps exactly the approved/mandated codes; everything else stays None."""
     m = imports.map_howout

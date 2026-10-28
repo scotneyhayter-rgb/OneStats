@@ -982,9 +982,24 @@ def _promote_scorecards(
         if inns_id is None:
             _flag(conn, rec["id"], "innings_unresolved: batting entry left staged")
             continue
+        batter_pid = _person_by_source(conn, norm.get("batter_source_ref"), source_system)
+        # A player can hold only one batting line per innings. CricketStatz occasionally emits a second
+        # row for the same player in an innings (a did-not-bat/phantom placeholder, or a scorer double
+        # entry — a batter cannot be dismissed twice). Rather than aborting the whole import, keep the
+        # first line and leave the duplicate staged + flagged for a human to reconcile. Never merged,
+        # never guessed. (Also covers a duplicate already promoted by an earlier run of this batch.)
+        if batter_pid is not None and conn.execute(
+            text("SELECT 1 FROM batting_entry WHERE innings_id = :i AND person_id = :p"),
+            {"i": inns_id, "p": batter_pid},
+        ).first() is not None:
+            _flag(conn, rec["id"],
+                  f"duplicate_batter_in_innings: this player already has a batting entry in innings "
+                  f"{norm.get('innings_source_ref')} (batting position {norm.get('batting_position')}); "
+                  "left for review")
+            continue
         eid = batting.create_entry(
             conn, wid, actor, innings_id=inns_id,
-            person_id=_person_by_source(conn, norm.get("batter_source_ref"), source_system),
+            person_id=batter_pid,
             batting_position=norm.get("batting_position"), runs=norm.get("runs"),
             balls_faced=norm.get("balls_faced"), fours=norm.get("fours"), sixes=norm.get("sixes"),
             minutes=norm.get("minutes"),
