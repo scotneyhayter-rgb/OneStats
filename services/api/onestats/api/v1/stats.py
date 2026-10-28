@@ -299,12 +299,14 @@ def catalogue_index(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> 
 @router.get("/reports/{report}")
 def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
                 season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
-                team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
+                team_id: UUID | None = None, organisation_id: UUID | None = None,
+                split: str | None = None, venue: str | None = None,
                 format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
                 min_wickets: int | None = None, over_length: int | None = None,
                 min_eligible: int | None = None) -> dict[str, Any]:
     """On-screen report data (columns + rows) from the one engine — matches the PDF export exactly."""
-    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
+                 organisation_id)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
     with workspace_transaction(_engine(settings), workspace_id) as conn:
@@ -341,12 +343,14 @@ def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: V
 @router.get("/reports/{report}/csv")
 def report_csv_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
                       season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
-                      team_id: UUID | None = None, split: str | None = None, venue: str | None = None,
+                      team_id: UUID | None = None, organisation_id: UUID | None = None,
+                      split: str | None = None, venue: str | None = None,
                       format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
                       min_wickets: int | None = None, over_length: int | None = None,
                       min_eligible: int | None = None) -> Response:
     """Export a tabular report as CSV (same columns/figures as the on-screen report)."""
-    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None)
+    f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
+                 organisation_id)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
     with workspace_transaction(_engine(settings), workspace_id) as conn:
