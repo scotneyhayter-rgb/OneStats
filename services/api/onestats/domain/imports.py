@@ -739,6 +739,11 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
         if existing is not None:
             _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
             matched["match"] += 1
+            # An imported match is a completed historical fixture, not a draft being authored. Upgrade a
+            # still-'draft' lifecycle status to 'final' (leaves a manual 'abandoned'/'final' alone). The
+            # scorecard approval_status is separate and untouched — it stays the verification gate.
+            conn.execute(text("UPDATE match SET status = 'final', updated_at = now() "
+                              "WHERE id = :id AND status = 'draft'"), {"id": existing})
             # R1: record THIS source against the already-existing match as additional evidence —
             # never overwriting the approved scorecard; conflicts are surfaced for admin review.
             match_sources.attach_source(conn, workspace_id, actor, existing, source_system=ss,
@@ -760,6 +765,9 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
             conn, workspace_id, actor, competition_id=comp_id, grade_id=grade_id, venue_id=venue_id,
             match_date=match_date, date_precision="exact" if match_date else "unknown",
             round=norm.get("round"), matchtype=norm.get("matchtype_label"),
+            # an imported match is a completed historical fixture, not a draft being authored; the
+            # separate scorecard approval_status still governs statistical inclusion (defaults to draft)
+            status="final",
             source_system=ss, source_ref=rec["source_ref"],
         )
         # Resolve match-specific captains/keepers to people (0/absent → unset; never invented).

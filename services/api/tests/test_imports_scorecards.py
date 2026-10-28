@@ -123,6 +123,24 @@ def test_scorecard_promotes_into_existing_models(conn):
     assert fow["wicket_number"] == 1 and fow["team_score"] == 40 and fow["dismissed_person_id"] == p1
 
 
+def test_imported_match_is_final_not_draft(conn):
+    """An imported match is a completed historical fixture, so its lifecycle status is 'final' (not the
+    'draft' a hand-authored match starts in). The scorecard approval_status stays separate (draft)."""
+    wid = _ws(conn, "SC STATUS")
+    _seed_players(conn, wid)
+    _promote(conn, wid)
+    m = conn.execute(text("SELECT status, approval_status FROM match WHERE source_ref = '500'")).mappings().one()
+    assert m["status"] == "final" and m["approval_status"] == "draft"
+    # a manual 'abandoned' is preserved on re-import (only a 'draft' is upgraded)
+    conn.execute(text("UPDATE match SET status = 'abandoned' WHERE source_ref = '500'"))
+    _promote(conn, wid)
+    assert conn.execute(text("SELECT status FROM match WHERE source_ref = '500'")).scalar_one() == "abandoned"
+    # a match left as 'draft' is upgraded to 'final' on re-import
+    conn.execute(text("UPDATE match SET status = 'draft' WHERE source_ref = '500'"))
+    _promote(conn, wid)
+    assert conn.execute(text("SELECT status FROM match WHERE source_ref = '500'")).scalar_one() == "final"
+
+
 def test_unknown_howout_code_still_imports_figures(conn):
     """A batter with an unknown/ambiguous Howout code (99) still imports runs etc.; the dismissal is
     left unresolved and the raw code preserved — the card is never rejected."""
