@@ -143,6 +143,50 @@ def test_imported_result_with_raw_code_is_preserved(conn):
     assert any("result_conflict" in w for w in results.result_warnings(conn, mid))
 
 
+def test_recorded_result_without_margin_gets_scorecard_margin(conn):
+    """An imported/recorded result with no margin (CricketStatz gives the winner but not the margin)
+    is completed from the scorecard when they agree — the recorded outcome and provenance are kept,
+    only the margin is added."""
+    wid = _ws(conn, "RES MARGIN BACKFILL")
+    mid, home, away = _match(conn, wid)
+    _two_innings(conn, wid, mid, home, away, 120, 121, w2=6)    # away chases => away win by 4 wkts
+    matches.set_result(conn, wid, ACTOR, mid, result_type="away_win", won_by_team_id=away,
+                       result_raw="2", result_source="recorded")   # recorded, NO margin
+    out = results.auto_apply_result(conn, wid, ACTOR, mid)
+    assert out["applied"] is True and out.get("margin_added") is True
+    m = matches.get_match(conn, mid)
+    assert m["margin_wickets"] == 4 and m["margin_runs"] is None
+    assert m["result_type"] == "away_win" and m["result_source"] == "recorded" and m["result_raw"] == "2"
+    # idempotent: a margin now exists, so re-applying adds nothing
+    assert results.auto_apply_result(conn, wid, ACTOR, mid)["applied"] is False
+    assert matches.get_match(conn, mid)["margin_wickets"] == 4
+
+
+def test_margin_not_backfilled_when_scorecard_disagrees(conn):
+    """The margin is only added when the scorecard agrees on the winner — a disagreement is left as a
+    review conflict, never silently completed with a margin for the other side."""
+    wid = _ws(conn, "RES MARGIN DISAGREE")
+    mid, home, away = _match(conn, wid)
+    _two_innings(conn, wid, mid, home, away, 150, 120, w2=10)   # scorecard => home win
+    matches.set_result(conn, wid, ACTOR, mid, result_type="away_win", won_by_team_id=away,
+                       result_raw="2", result_source="recorded")   # recorded disagrees, no margin
+    assert results.auto_apply_result(conn, wid, ACTOR, mid)["applied"] is False
+    m = matches.get_match(conn, mid)
+    assert m["margin_runs"] is None and m["margin_wickets"] is None   # nothing invented
+    assert any("result_conflict" in w for w in results.result_warnings(conn, mid))
+
+
+def test_manual_result_without_margin_is_left_alone(conn):
+    """A manual administrator override is never auto-completed, even if the scorecard implies a margin."""
+    wid = _ws(conn, "RES MARGIN MANUAL")
+    mid, home, away = _match(conn, wid)
+    _two_innings(conn, wid, mid, home, away, 120, 121, w2=6)    # scorecard => away win by 4 wkts
+    matches.set_result(conn, wid, ACTOR, mid, result_type="away_win", won_by_team_id=away,
+                       result_source="manual")                    # manual, NO margin
+    assert results.auto_apply_result(conn, wid, ACTOR, mid)["applied"] is False
+    assert matches.get_match(conn, mid)["margin_wickets"] is None
+
+
 def test_isolation(conn):
     wid_a = conn.execute(text("INSERT INTO workspace(name,type) VALUES ('RES ISO A','club') RETURNING id")).scalar_one()
     set_workspace(conn, wid_a)

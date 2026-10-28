@@ -106,14 +106,50 @@ def _is_authoritative(match: dict[str, Any]) -> bool:
     return bool(match.get("result_raw")) and match.get("result_type") not in (None, "unknown")
 
 
+def _same_team(a: Any, b: Any) -> bool:
+    return (a is None and b is None) or (a is not None and b is not None and str(a) == str(b))
+
+
+def _augment_authoritative_margin(conn: Connection, workspace_id: UUID, actor: str,
+                                  match: dict[str, Any]) -> dict[str, Any]:
+    """Complete an imported/recorded result that has no margin with the margin implied by the
+    scorecard — winner and outcome untouched. Never fabricated: the margin is derived from the
+    innings totals, and only applied when the scorecard agrees on both the outcome and the winner.
+    A ``manual`` override is left alone; a result that already carries a margin is left alone."""
+    mid = match["id"]
+    if match.get("result_source") == "manual":
+        return {"applied": False, "reason": "preserved manual result"}
+    if match.get("margin_runs") is not None or match.get("margin_wickets") is not None:
+        return {"applied": False, "reason": "result already has a margin"}
+    computed = compute_result(conn, mid)
+    if computed["status"] != "sufficient":
+        return {"applied": False, "reason": computed.get("reason", computed["status"])}
+    if (computed.get("result_type") != match.get("result_type")
+            or not _same_team(computed.get("won_by_team_id"), match.get("won_by_team_id"))):
+        return {"applied": False, "reason": "scorecard result differs from the recorded result"}
+    if computed.get("margin_runs") is None and computed.get("margin_wickets") is None:
+        return {"applied": False, "reason": "no margin implied by the scorecard"}
+    matches.set_result(
+        conn, workspace_id, actor, mid, result_type=match["result_type"],
+        won_by_team_id=match.get("won_by_team_id"),
+        margin_runs=computed.get("margin_runs"), margin_wickets=computed.get("margin_wickets"),
+        result_source=match.get("result_source") or "recorded",
+        result_override_reason=match.get("result_override_reason"),  # preserve
+    )
+    return {"applied": True, "margin_added": True, "margin_runs": computed.get("margin_runs"),
+            "margin_wickets": computed.get("margin_wickets"), "basis": computed.get("basis")}
+
+
 def auto_apply_result(conn: Connection, workspace_id: UUID, actor: str, match_id: UUID) -> dict[str, Any]:
     """Recalculate and store the result ONLY when it is not authoritative (i.e. currently calculated
-    or genuinely unknown). A recorded/manual/imported result is preserved untouched. Idempotent."""
+    or genuinely unknown). A recorded/manual/imported result is preserved — but an imported/recorded
+    result with no margin is completed with the scorecard-derived margin where the two agree (the
+    outcome and winner are never changed). Idempotent."""
     match = matches.get_match(conn, match_id)
     if match is None:
         raise ValueError("match_not_found")
     if _is_authoritative(match):
-        return {"applied": False, "reason": "preserved recorded/manual result"}
+        return _augment_authoritative_margin(conn, workspace_id, actor, match)
     computed = compute_result(conn, match_id)
     if computed["status"] != "sufficient" or computed.get("result_type") is None:
         return {"applied": False, "reason": computed.get("reason", computed["status"])}

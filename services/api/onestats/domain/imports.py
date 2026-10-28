@@ -1080,6 +1080,14 @@ def _promote_scorecards(
     from onestats.domain import results, seasons  # local import avoids a module cycle
     match_ids = {conn.execute(text("SELECT match_id FROM innings WHERE id = :i"), {"i": i}).scalar_one()
                  for i in touched_innings}
+    # Also cover every match in this batch (not only newly-touched innings), so re-importing a set
+    # that already exists still completes margins/results on the matches that were matched rather than
+    # re-created. auto_apply_result is idempotent and only augments missing margins / calculated
+    # results, so this never disturbs a recorded outcome or a manual override.
+    match_ids |= {r["matched_canonical_id"] for r in conn.execute(
+        text("SELECT matched_canonical_id FROM import_staging_record "
+             "WHERE batch_id = :b AND entity_type = 'match' AND matched_canonical_id IS NOT NULL"),
+        {"b": batch_id}).mappings().all()}
     for mid in match_ids:
         try:
             results.auto_apply_result(conn, wid, actor, mid)
