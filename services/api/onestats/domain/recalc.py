@@ -340,19 +340,22 @@ def _calc_player_appearance(conn: Connection, match: dict[str, Any]) -> list[dic
     home, _ = _home_away(conn, match["id"])
     cls = match.get("classification")
     gf = _is_grand_final(match)
+    # Exactly ONE appearance per person. A person can be tied to more than one team in a match (e.g.
+    # an intra-club fixture whose two sides are the same club, or a scorer anomaly); pick a single team
+    # by priority (batted > bowled > fielded > captain > keeper) so the per-person appearance is unique.
     rows = conn.execute(
         text(
-            "SELECT DISTINCT pid, team_id FROM ("
-            " SELECT be.person_id AS pid, i.batting_team_id AS team_id FROM batting_entry be "
+            "SELECT DISTINCT ON (pid) pid, team_id FROM ("
+            " SELECT be.person_id AS pid, i.batting_team_id AS team_id, 1 AS pri FROM batting_entry be "
             "   JOIN innings i ON i.id = be.innings_id WHERE i.match_id = :m AND be.person_id IS NOT NULL "
             "     AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))"
-            " UNION SELECT bo.person_id, i.bowling_team_id FROM bowling_entry bo "
+            " UNION ALL SELECT bo.person_id, i.bowling_team_id, 2 FROM bowling_entry bo "
             "   JOIN innings i ON i.id = bo.innings_id WHERE i.match_id = :m AND bo.person_id IS NOT NULL "
-            " UNION SELECT be.fielder_person_id, i.bowling_team_id FROM batting_entry be "
+            " UNION ALL SELECT be.fielder_person_id, i.bowling_team_id, 3 FROM batting_entry be "
             "   JOIN innings i ON i.id = be.innings_id WHERE i.match_id = :m AND be.fielder_person_id IS NOT NULL "
-            " UNION SELECT mt.captain_person_id, mt.team_id FROM match_team mt WHERE mt.match_id = :m AND mt.captain_person_id IS NOT NULL "
-            " UNION SELECT mt.wicketkeeper_person_id, mt.team_id FROM match_team mt WHERE mt.match_id = :m AND mt.wicketkeeper_person_id IS NOT NULL "
-            ") s"
+            " UNION ALL SELECT mt.captain_person_id, mt.team_id, 4 FROM match_team mt WHERE mt.match_id = :m AND mt.captain_person_id IS NOT NULL "
+            " UNION ALL SELECT mt.wicketkeeper_person_id, mt.team_id, 5 FROM match_team mt WHERE mt.match_id = :m AND mt.wicketkeeper_person_id IS NOT NULL "
+            ") s WHERE pid IS NOT NULL ORDER BY pid, pri"
         ),
         {"m": match["id"]},
     ).mappings().all()

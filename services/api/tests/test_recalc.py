@@ -143,6 +143,37 @@ def test_backfill_recomputes_all_and_excludes_unapproved(conn):
     assert out["matches"] == 2 and out["contributions"] == rows and rows > 0  # only the approved match contributes
 
 
+def test_player_credited_to_two_teams_gets_single_appearance(conn):
+    """A person tied to two teams in one match (here: batted for home AND took a catch, so credited
+    as a fielder for away) must yield exactly one appearance contribution, and approval must not raise
+    a uq_stat_contribution unique violation."""
+    wid = _ws(conn, "RC TWO TEAMS")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    p1 = people.create_person(conn, wid, ACTOR, display_name="All Rounder")
+    p2 = people.create_person(conn, wid, ACTOR, display_name="Team-mate")
+    # p1 bats for home ...
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=p1, batting_position=1,
+                         runs=10, balls_faced=12, dismissal_type="not_out")
+    # ... and is credited as the catching fielder (fielder team = away, the bowling side)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=p2, batting_position=2,
+                         runs=5, balls_faced=8, dismissal_type="caught", fielder_person_id=p1)
+
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")   # must not raise
+    assert conn.execute(text(
+        "SELECT count(*) FROM match_stat_contribution WHERE calculator='player_appearance' AND subject_id=:p"
+    ), {"p": p1}).scalar_one() == 1
+    # re-approving stays idempotent for the two-team person
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+    assert conn.execute(text(
+        "SELECT count(*) FROM match_stat_contribution WHERE calculator='player_appearance' AND subject_id=:p"
+    ), {"p": p1}).scalar_one() == 1
+
+
 def test_isolation(conn):
     wid_a = conn.execute(text("INSERT INTO workspace(name,type) VALUES ('RC ISO A','club') RETURNING id")).scalar_one()
     conn.execute(text("INSERT INTO app_user(id, username) VALUES (:a,'rc-iso') ON CONFLICT (id) DO NOTHING"), {"a": ACTOR})
