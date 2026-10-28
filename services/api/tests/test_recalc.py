@@ -143,6 +143,37 @@ def test_backfill_recomputes_all_and_excludes_unapproved(conn):
     assert out["matches"] == 2 and out["contributions"] == rows and rows > 0  # only the approved match contributes
 
 
+def test_did_not_bat_counts_as_a_match_played_but_not_an_innings(conn):
+    """A player listed on the scoresheet as "did not bat" was in the XI and counts as a match played
+    (an appearance), even though it is not a batting innings and earns no batting contribution. A genuine
+    "absent" (took no part) does not count."""
+    wid = _ws(conn, "RC DNB")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    dnb = people.create_person(conn, wid, ACTOR, display_name="Number Eleven")   # in the XI, did not bat
+    absent = people.create_person(conn, wid, ACTOR, display_name="Absent Player")
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=dnb, batting_position=11, dismissal_type="dnb")
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=absent, batting_position=12, dismissal_type="absent")
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    # the did-not-bat player counts as a match played ...
+    assert conn.execute(text(
+        "SELECT count(*) FROM match_stat_contribution WHERE calculator='player_appearance' AND subject_id=:p"
+    ), {"p": dnb}).scalar_one() == 1
+    # ... but has no batting innings
+    assert conn.execute(text(
+        "SELECT count(*) FROM match_stat_contribution WHERE calculator='player_batting' AND subject_id=:p"
+    ), {"p": dnb}).scalar_one() == 0
+    # a genuine absent player is not counted as having played
+    assert conn.execute(text(
+        "SELECT count(*) FROM match_stat_contribution WHERE calculator='player_appearance' AND subject_id=:p"
+    ), {"p": absent}).scalar_one() == 0
+
+
 def test_player_credited_to_two_teams_gets_single_appearance(conn):
     """A person tied to two teams in one match (here: batted for home AND took a catch, so credited
     as a fielder for away) must yield exactly one appearance contribution, and approval must not raise

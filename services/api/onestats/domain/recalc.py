@@ -335,10 +335,12 @@ def _calc_team_result(conn: Connection, match: dict[str, Any]) -> list[dict[str,
 
 
 def _calc_player_appearance(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
-    """One appearance per person who participated in the match — derived from batting, bowling, fielding
-    credits or being a recorded captain/keeper (no separate participation table). Each person once. A
-    forfeit with no play creates NO player appearances (approved forfeit policy); the team still gets its
-    result via ``_calc_team_result``."""
+    """One appearance per person who was on the scoresheet for the match — anyone listed in the batting
+    card (including "did not bat"), the bowling card, as a fielder on a dismissal, or as a recorded
+    captain/keeper (no separate team-sheet table). A player listed as "did not bat" was in the XI and
+    counts as a match played, even though it is not a batting innings; only a genuine "absent" (took no
+    part) is excluded. Each person once. A forfeit with no play creates NO player appearances (approved
+    forfeit policy); the team still gets its result via ``_calc_team_result``."""
     if _forfeit_no_play(conn, match):
         return []
     home, _ = _home_away(conn, match["id"])
@@ -346,13 +348,15 @@ def _calc_player_appearance(conn: Connection, match: dict[str, Any]) -> list[dic
     gf = _is_grand_final(match)
     # Exactly ONE appearance per person. A person can be tied to more than one team in a match (e.g.
     # an intra-club fixture whose two sides are the same club, or a scorer anomaly); pick a single team
-    # by priority (batted > bowled > fielded > captain > keeper) so the per-person appearance is unique.
+    # by priority (batted/listed > bowled > fielded > captain > keeper) so the per-person appearance is unique.
     rows = conn.execute(
         text(
             "SELECT DISTINCT ON (pid) pid, team_id FROM ("
+            # anyone on the batting card counts as having played — including "did not bat"; exclude only a
+            # genuine "absent" (named but took no part in the match)
             " SELECT be.person_id AS pid, i.batting_team_id AS team_id, 1 AS pri FROM batting_entry be "
             "   JOIN innings i ON i.id = be.innings_id WHERE i.match_id = :m AND be.person_id IS NOT NULL "
-            "     AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))"
+            "     AND (be.dismissal_type IS NULL OR be.dismissal_type <> 'absent')"
             " UNION ALL SELECT bo.person_id, i.bowling_team_id, 2 FROM bowling_entry bo "
             "   JOIN innings i ON i.id = bo.innings_id WHERE i.match_id = :m AND bo.person_id IS NOT NULL "
             " UNION ALL SELECT be.fielder_person_id, i.bowling_team_id, 3 FROM batting_entry be "
