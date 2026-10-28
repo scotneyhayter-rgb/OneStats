@@ -1480,7 +1480,8 @@ export const api = {
   cricketStatzImport: (
     w: string,
     body: { data: unknown; people?: unknown; commit: boolean; filename?: string;
-            competition_id?: string | null; competition_name?: string | null },
+            competition_id?: string | null; competition_name?: string | null;
+            assign_by_season_date?: boolean },
   ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
   listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
 

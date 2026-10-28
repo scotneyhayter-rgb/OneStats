@@ -709,6 +709,43 @@ def _resolve_target_competition(
     return _get_or_create_import_competition(conn, workspace_id, actor, source_system)
 
 
+def _competition_for_match_date(conn: Connection, workspace_id: UUID, match_date: Any) -> UUID | None:
+    """The competition a match belongs to, decided by the user's season date ranges: the competition
+    of the season whose start/finish dates cover the match date (narrowest range wins on overlap), or
+    None when no season covers it. CricketStatz carries no competition, so this lets a club that played
+    in different competitions over the years have each match filed by its own date — never guessed."""
+    if match_date is None:
+        return None
+    day = str(match_date)[:10]
+    return conn.execute(
+        text("SELECT competition_id FROM season WHERE workspace_id = :w AND start_date IS NOT NULL "
+             "AND end_date IS NOT NULL AND start_date <= :d AND end_date >= :d "
+             "ORDER BY (end_date - start_date) LIMIT 1"),
+        {"w": workspace_id, "d": day},
+    ).scalar_one_or_none()
+
+
+def _grade_under(conn: Connection, workspace_id: UUID, actor: str, competition_id: UUID,
+                 grade_source_ref: str | None, div_names: dict[str, str | None], source_system: str,
+                 created_grades: set[tuple[Any, str]]) -> UUID | None:
+    """Get-or-create the grade for ``grade_source_ref`` UNDER a specific competition (so when matches
+    span competitions, each competition keeps its own A/B/C grade). Only a confident division (a real
+    grade name) becomes a grade; a finals-round/blank division stays unresolved (None)."""
+    if not grade_source_ref or grade_source_ref not in div_names:
+        return None
+    existing = conn.execute(
+        text("SELECT id FROM grade WHERE competition_id = :c AND source_ref = :sr"),
+        {"c": competition_id, "sr": grade_source_ref},
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    gid = competitions.create_grade(conn, workspace_id, actor, competition_id,
+                                    name=div_names[grade_source_ref] or "(grade)",
+                                    source_system=source_system, source_ref=grade_source_ref)
+    created_grades.add((competition_id, grade_source_ref))
+    return gid
+
+
 def _set_record(conn: Connection, record_id: UUID, *, status: str, resolution: str, canonical_id: UUID | None) -> None:
     conn.execute(
         text(
@@ -719,12 +756,16 @@ def _set_record(conn: Connection, record_id: UUID, *, status: str, resolution: s
 
 
 def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UUID, *,
-                  competition_id: UUID | None = None, competition_name: str | None = None) -> dict[str, Any]:
+                  competition_id: UUID | None = None, competition_name: str | None = None,
+                  assign_by_season_date: bool = False) -> dict[str, Any]:
     """Promote staged, promotable rows into canonical tables (explicit admin approval).
 
     ``competition_id`` / ``competition_name`` choose the competition imported grades and matches land
     under (the user's choice from the wizard — the export carries none); without either, the generic
-    per-source import container is used.
+    per-source import container is used. ``assign_by_season_date`` instead files each match under the
+    competition whose season date range covers the match date (its grade created under that
+    competition); a match with no covering season falls back to the chosen/default competition and is
+    flagged. The post-promotion season auto-assign then fills the season within that competition.
 
     Idempotent: a row whose source_ref already exists canonically is *matched*, never duplicated;
     names are never auto-merged. Unresolved divisions and all matches are left in staging.
@@ -778,24 +819,34 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # divisions -> grade (confident only; ambiguous stay unresolved and are not in 'staged')
     comp_id: UUID | None = None
     confident_divs = promotable("division")
-    if confident_divs:
-        comp_id = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
-    for rec in confident_divs:
-        norm = rec["normalised"] or {}
-        existing = conn.execute(
-            text("SELECT id FROM grade WHERE competition_id = :c AND source_ref = :sr"),
-            {"c": comp_id, "sr": rec["source_ref"]},
-        ).scalar_one_or_none()
-        if existing is not None:
-            _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
-            matched["division"] += 1
-            continue
-        gid = competitions.create_grade(
-            conn, workspace_id, actor, comp_id, name=norm.get("name") or "(grade)",
-            source_system=ss, source_ref=rec["source_ref"],
-        )
-        _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=gid)
-        created["division"] += 1
+    # grade names by source ref — used to create a grade under whichever competition a match lands in
+    div_names: dict[str, str | None] = {
+        rec["source_ref"]: (rec["normalised"] or {}).get("name") for rec in confident_divs}
+    created_grades: set[tuple[Any, str]] = set()
+    if assign_by_season_date:
+        # grades are created per-match under each match's (date-chosen) competition; the division rows
+        # are marked handled here, and the grade counts come from what the match loop creates.
+        for rec in confident_divs:
+            _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=None)
+    else:
+        if confident_divs:
+            comp_id = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
+        for rec in confident_divs:
+            norm = rec["normalised"] or {}
+            existing = conn.execute(
+                text("SELECT id FROM grade WHERE competition_id = :c AND source_ref = :sr"),
+                {"c": comp_id, "sr": rec["source_ref"]},
+            ).scalar_one_or_none()
+            if existing is not None:
+                _set_record(conn, rec["id"], status="promoted", resolution="matched", canonical_id=existing)
+                matched["division"] += 1
+                continue
+            gid = competitions.create_grade(
+                conn, workspace_id, actor, comp_id, name=norm.get("name") or "(grade)",
+                source_system=ss, source_ref=rec["source_ref"],
+            )
+            _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=gid)
+            created["division"] += 1
 
     # teams -> team (needs its club promoted/matched first)
     for rec in promotable("team"):
@@ -824,8 +875,16 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
     # unresolved reference stays NULL (unknown ≠ wrong) and is flagged, never invented. The round
     # label NEVER classifies the match: classification stays 'unclassified'/unverified for admin.
     promotable_matches = promotable("match")
-    if promotable_matches and comp_id is None:
+    if promotable_matches and comp_id is None and not assign_by_season_date:
         comp_id = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
+    # date-based import: a competition for matches no season covers (resolved on first need)
+    _fallback_comp: list[UUID | None] = [None]
+
+    def fallback_comp() -> UUID:
+        if _fallback_comp[0] is None:
+            _fallback_comp[0] = _resolve_target_competition(conn, workspace_id, actor, ss, competition_id, competition_name)
+        return _fallback_comp[0]
+
     for rec in promotable_matches:
         norm = rec["normalised"] or {}
         existing = conn.execute(
@@ -853,12 +912,24 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
 
         home_id = _resolve("team_source_identity", "team_id", "home_team_source_ref")
         away_id = _resolve("team_source_identity", "team_id", "away_team_source_ref")
-        grade_id = _resolve("grade", "id", "grade_source_ref")
         venue_id = _resolve("venue_source_identity", "venue_id", "venue_source_ref")
         match_date = norm.get("date_played")
+        if assign_by_season_date:
+            # file the match under the competition whose season date range covers it; its grade is
+            # created under that competition. The post-promotion season auto-assign then fills the season.
+            target_comp = _competition_for_match_date(conn, workspace_id, match_date)
+            if target_comp is None:
+                target_comp = fallback_comp()
+                _flag(conn, rec["id"], "no_season_match: no competition season covers this match date — "
+                      "filed under the default competition; set the season's start/finish dates and re-import")
+            grade_id = _grade_under(conn, workspace_id, actor, target_comp, norm.get("grade_source_ref"),
+                                    div_names, ss, created_grades)
+        else:
+            target_comp = comp_id
+            grade_id = _resolve("grade", "id", "grade_source_ref")
 
         mid = matches.create_match(
-            conn, workspace_id, actor, competition_id=comp_id, grade_id=grade_id, venue_id=venue_id,
+            conn, workspace_id, actor, competition_id=target_comp, grade_id=grade_id, venue_id=venue_id,
             match_date=match_date, date_precision="exact" if match_date else "unknown",
             round=norm.get("round"), matchtype=norm.get("matchtype_label"),
             # an imported match is a completed historical fixture, not a draft being authored; the
@@ -908,6 +979,10 @@ def promote_batch(conn: Connection, workspace_id: UUID, actor: str, batch_id: UU
                                     filename=batch.get("source_filename"), sha256=batch.get("source_sha256"))
         _set_record(conn, rec["id"], status="promoted", resolution="new", canonical_id=mid)
         created["match"] += 1
+
+    # date-based import creates grades per-match under each competition; count the distinct new grades
+    if assign_by_season_date:
+        created["division"] = len(created_grades)
 
     _promote_scorecards(conn, workspace_id, actor, batch_id, created, matched, ss)
 
@@ -1221,6 +1296,7 @@ def controlled_import(
     data: dict[str, Any], people: dict[str, Any] | None = None,
     commit: bool = False, filename: str | None = None,
     competition_id: UUID | None = None, competition_name: str | None = None,
+    assign_by_season_date: bool = False,
 ) -> dict[str, Any]:
     """Run a controlled CricketStatz import (people, then structural + scorecards) in one pass and
     return a combined summary for the Import Wizard.
@@ -1248,7 +1324,8 @@ def controlled_import(
     out["howout_unresolved"] = unresolved_howout_report(data)["unresolved_codes"]
     if commit:
         out["promoted"] = promote_batch(conn, workspace_id, actor, staged["batch_id"],
-                                        competition_id=competition_id, competition_name=competition_name)
+                                        competition_id=competition_id, competition_name=competition_name,
+                                        assign_by_season_date=assign_by_season_date)
         # once both people and clubs exist, record each player's MyClub affiliation (for scoping)
         out["affiliations"] = link_cricketstatz_people_to_clubs(conn, workspace_id, actor, people_batch)
     return out

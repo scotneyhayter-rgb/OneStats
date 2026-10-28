@@ -367,6 +367,8 @@ function CompetitionDetailModal({
   const [err, setErr] = useState<string | null>(null);
   const [newGrade, setNewGrade] = useState("");
   const [newSeason, setNewSeason] = useState("");
+  const [newSeasonStart, setNewSeasonStart] = useState("");
+  const [newSeasonEnd, setNewSeasonEnd] = useState("");
   const [entry, setEntry] = useState({ team_id: "", grade_id: "", season_id: "" });
   const [busy, setBusy] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -431,8 +433,12 @@ function CompetitionDetailModal({
     if (!newSeason.trim()) return;
     setBusy(true);
     try {
-      await api.createSeason(workspaceId, competitionId, { label: newSeason.trim() });
-      setNewSeason("");
+      await api.createSeason(workspaceId, competitionId, {
+        label: newSeason.trim(),
+        start_date: newSeasonStart || undefined,
+        end_date: newSeasonEnd || undefined,
+      });
+      setNewSeason(""); setNewSeasonStart(""); setNewSeasonEnd("");
       onChanged("Season added.");
       await load();
     } catch (e) {
@@ -549,18 +555,32 @@ function CompetitionDetailModal({
               <ul className="flex flex-wrap gap-2">
                 {comp.seasons.map((s) => (
                   <li key={s.id}>
-                    <Badge variant="muted">{s.label}</Badge>
+                    <Badge variant="muted">
+                      {s.label}
+                      {s.start_date && s.end_date ? ` · ${s.start_date} → ${s.end_date}` : ""}
+                    </Badge>
                   </li>
                 ))}
               </ul>
             )}
             {canManage && (
-              <div className="mt-2 flex gap-2">
-                <Input placeholder='New season e.g. "2026/27"' value={newSeason} onChange={(e) => setNewSeason(e.target.value)} className="max-w-xs" />
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">Season
+                  <Input placeholder='e.g. "2019/20"' value={newSeason} onChange={(e) => setNewSeason(e.target.value)} className="w-40" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">Start date
+                  <Input type="date" value={newSeasonStart} onChange={(e) => setNewSeasonStart(e.target.value)} className="w-40" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">Finish date
+                  <Input type="date" value={newSeasonEnd} onChange={(e) => setNewSeasonEnd(e.target.value)} className="w-40" />
+                </label>
                 <Button size="sm" variant="outline" onClick={() => void addSeason()} disabled={busy || !newSeason.trim()}>
                   Add season
                 </Button>
               </div>
+            )}
+            {canManage && (
+              <p className="mt-1 text-xs text-muted-foreground">Set start/finish dates so the import can file matches into the right competition and season by their date.</p>
             )}
           </section>
 

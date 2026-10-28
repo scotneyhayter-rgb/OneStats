@@ -103,6 +103,7 @@ export function ImportWizard() {
   const [comps, setComps] = useState<Competition[]>([]);
   const [compChoice, setCompChoice] = useState<string>("");
   const [newCompName, setNewCompName] = useState("");
+  const [assignBySeason, setAssignBySeason] = useState(false);
 
   const loadHistory = useCallback(async () => {
     if (!workspaceId) return;
@@ -163,7 +164,7 @@ export function ImportWizard() {
       const { data, people } = buildSlice(file, selected);
       const competition_id = compChoice && compChoice !== "__new__" ? compChoice : null;
       const competition_name = compChoice === "__new__" ? newCompName.trim() || null : null;
-      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName, competition_id, competition_name }));
+      setResult(await api.cricketStatzImport(workspaceId, { data, people, commit: true, filename: fileName, competition_id, competition_name, assign_by_season_date: assignBySeason }));
       await loadHistory();
       setStep("results");
     } catch (err) {
@@ -268,7 +269,8 @@ export function ImportWizard() {
           <PreviewStep preview={preview} selected={selected.size} busy={busy}
             onBack={() => setStep("analyse")} onImport={() => void runImport()}
             comps={comps} compChoice={compChoice} setCompChoice={setCompChoice}
-            newCompName={newCompName} setNewCompName={setNewCompName} />
+            newCompName={newCompName} setNewCompName={setNewCompName}
+            assignBySeason={assignBySeason} setAssignBySeason={setAssignBySeason} />
         )}
 
         {step === "importing" && (
@@ -341,10 +343,11 @@ function SelectStep({ busy, onFile, history }: { busy: boolean; onFile: (e: Reac
   );
 }
 
-function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compChoice, setCompChoice, newCompName, setNewCompName }: {
+function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compChoice, setCompChoice, newCompName, setNewCompName, assignBySeason, setAssignBySeason }: {
   preview: CricketStatzImportResult; selected: number; busy: boolean; onBack: () => void; onImport: () => void;
   comps: Competition[]; compChoice: string; setCompChoice: (v: string) => void;
   newCompName: string; setNewCompName: (v: string) => void;
+  assignBySeason: boolean; setAssignBySeason: (v: boolean) => void;
 }) {
   const p = preview.preview;
   const ppl = preview.people.detected;
@@ -383,7 +386,15 @@ function PreviewStep({ preview, selected, busy, onBack, onImport, comps, compCho
       <div className="rounded-[var(--radius-app)] border border-border p-3 text-sm">
         <p className="mb-1 font-medium">Competition</p>
         <p className="mb-2 text-xs text-muted-foreground">CricketStatz files don&apos;t record the competition, so choose where these grades and matches go.</p>
+        <label className="mb-2 flex items-start gap-2">
+          <input type="checkbox" checked={assignBySeason} onChange={(e) => setAssignBySeason(e.target.checked)} className="mt-0.5 h-4 w-4" />
+          <span>
+            <span className="font-medium">Assign competition &amp; season by match date</span>
+            <span className="block text-xs text-muted-foreground">Files each match under the competition whose season date range covers its date. Set the seasons&apos; start/finish dates on your competitions first; matches with no covering season fall to the choice below.</span>
+          </span>
+        </label>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">{assignBySeason ? "Fallback:" : ""}</span>
           <Select value={compChoice} onChange={(e) => setCompChoice(e.target.value)} className="max-w-xs">
             <option value="">Default — Cricket Statz Import container</option>
             {comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

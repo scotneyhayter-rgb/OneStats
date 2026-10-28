@@ -175,6 +175,33 @@ def test_import_into_existing_competition_by_id(conn):
         imports.promote_batch(conn, wid, ACTOR, bid2, competition_id=uuid.uuid4())
 
 
+def test_import_assigns_competition_by_season_date(conn):
+    """With assign_by_season_date, each match is filed under the competition whose season date range
+    covers its date, and its grade is created under that competition."""
+    import datetime as dt
+    wid = _ws(conn, "IMP SEASONDATE")
+    alpha = competitions.create_competition(conn, wid, ACTOR, name="Alpha League")
+    beta = competitions.create_competition(conn, wid, ACTOR, name="Beta League")
+    competitions.create_season(conn, wid, ACTOR, alpha, label="2023/24",
+                               start_date=dt.date(2023, 10, 1), end_date=dt.date(2024, 9, 30))
+    competitions.create_season(conn, wid, ACTOR, beta, label="2025/26",
+                               start_date=dt.date(2025, 10, 1), end_date=dt.date(2026, 9, 30))
+    bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]
+    imports.promote_batch(conn, wid, ACTOR, bid, assign_by_season_date=True)
+
+    def comp_of(sref):
+        return conn.execute(text("SELECT competition_id FROM match WHERE source_ref = :s"), {"s": sref}).scalar_one()
+    assert comp_of("3000002") == alpha    # 2024-03-01 -> Alpha's 2023/24 season
+    assert comp_of("3177394") == beta     # 2026-03-07 -> Beta's 2025/26 season
+    assert comp_of("3000001") == beta     # 2025-12-01 -> Beta's 2025/26 season
+    # the match's grade is created under its own competition, and the season auto-fills within it
+    g = conn.execute(text("SELECT grade_id FROM match WHERE source_ref = '3000002'")).scalar_one()
+    assert g is not None
+    assert conn.execute(text("SELECT competition_id FROM grade WHERE id = :g"), {"g": g}).scalar_one() == alpha
+    season = conn.execute(text("SELECT season_id FROM match WHERE source_ref = '3000002'")).scalar_one()
+    assert season is not None  # post-promotion auto-assign filled the season within Alpha
+
+
 def test_stage_matchtype_labels(conn):
     wid = _ws(conn, "IMP WS1b")
     bid = imports.parse_and_stage(conn, wid, ACTOR, payload=PAYLOAD)["batch_id"]

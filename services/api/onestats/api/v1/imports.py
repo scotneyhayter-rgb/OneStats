@@ -75,6 +75,7 @@ class CricketStatzRequest(BaseModel):
     filename: str | None = None
     competition_id: UUID | None = Field(default=None, description="Existing competition to import into")
     competition_name: str | None = Field(default=None, description="New competition name (found-or-created)")
+    assign_by_season_date: bool = Field(default=False, description="File each match by the season date range covering its date")
 
 
 @router.post("/cricketstatz")
@@ -91,6 +92,7 @@ def cricketstatz_import(
                 conn, workspace_id, str(ctx.user["id"]),
                 data=body.data, people=body.people, commit=body.commit, filename=body.filename,
                 competition_id=body.competition_id, competition_name=body.competition_name,
+                assign_by_season_date=body.assign_by_season_date,
             )
         except ValueError as exc:
             sp.rollback()
