@@ -234,10 +234,17 @@ def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[
     wickets. Unknown fielders are not credited."""
     keepers = _keepers_by_team(conn, match["id"])
     rows = conn.execute(
-        text("SELECT be.fielder_person_id AS pid, be.dismissal_type AS dt, i.bowling_team_id AS team_id "
+        # A caught-and-bowled is a catch taken by the BOWLER, so credit the bowler when no separate fielder
+        # is named (the scorecard's Fielder is blank for c&b). Every other dismissal credits the fielder.
+        text("SELECT CASE WHEN be.dismissal_type = 'caught_and_bowled' "
+             "            THEN coalesce(be.fielder_person_id, be.bowler_person_id) "
+             "            ELSE be.fielder_person_id END AS pid, "
+             "       be.dismissal_type AS dt, i.bowling_team_id AS team_id "
              "FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
-             "WHERE i.match_id = :m AND be.fielder_person_id IS NOT NULL "
-             "AND be.dismissal_type IN ('caught','caught_and_bowled','caught_behind','stumped','run_out')"),
+             "WHERE i.match_id = :m "
+             "AND be.dismissal_type IN ('caught','caught_and_bowled','caught_behind','stumped','run_out') "
+             "AND (be.fielder_person_id IS NOT NULL "
+             "     OR (be.dismissal_type = 'caught_and_bowled' AND be.bowler_person_id IS NOT NULL))"),
         {"m": match["id"]},
     ).mappings().all()
     home, _ = _home_away(conn, match["id"])

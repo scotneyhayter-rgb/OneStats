@@ -86,6 +86,27 @@ def _f(wid, **kw):
     return {"workspace_id": wid, **kw}
 
 
+def test_caught_and_bowled_credits_the_bowler_with_a_catch(conn):
+    """A caught-and-bowled is a catch taken by the bowler, so the bowler is credited with a catch even
+    when no separate fielder is named on the scorecard (which is how c&b is recorded)."""
+    wid = _ws(conn, "ENG CANDB")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bowler = _p(conn, wid, "Bowler")
+    bat = _p(conn, wid, "Victim")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bat, batting_position=1,
+                         runs=10, balls_faced=8, dismissal_type="caught_and_bowled", bowler_person_id=bowler)
+    bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bowler, legal_balls=12, runs_conceded=10, wickets=1)
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    row = {r["subject_id"]: r for r in engine.fielding_leaders(conn, _f(wid))}.get(str(bowler))
+    assert row is not None and row["catches"] == 1 and row["field_catches"] == 1   # the bowler took the catch
+
+
 def test_leaderboard_matches_is_matches_played_not_matches_batted(conn):
     """A discipline leaderboard's Matches column counts matches PLAYED (everyone on the scoresheet,
     did-not-bat included), not matches in that discipline. A player who batted in one of two matches
