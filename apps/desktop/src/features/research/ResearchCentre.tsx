@@ -60,6 +60,7 @@ const COVERAGE_VARIANT: Record<string, "success" | "warning" | "muted" | "brand"
 export function ResearchCentre() {
   const { workspaceId } = useManage();
   const [tab, setTab] = useState<Tab>("overview");
+  const [gapsSub, setGapsSub] = useState<"overview" | "seasons" | "matches" | "tasks">("overview");
   const [dash, setDash] = useState<ResearchDashboard | null>(null);
   const [scRows, setScRows] = useState<SeasonCompletenessRow[]>([]);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
@@ -290,28 +291,86 @@ export function ResearchCentre() {
           </Card>
         )}
 
-        {tab === "gaps" && gaps && (
+        {tab === "gaps" && gaps && (() => {
+          const cats = Object.entries(gaps) as [string, GapCategory][];
+          const totalGaps = cats.reduce((a, [, c]) => a + c.count, 0);
+          const top = [...cats].filter(([, c]) => c.count > 0).sort((a, b) => b[1].count - a[1].count);
+          const subBtn = (key: typeof gapsSub, label: string) => (
+            <button type="button" onClick={() => setGapsSub(key)}
+              className={`rounded-[var(--radius-app)] border px-3 py-1 text-xs ${gapsSub === key ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground hover:text-foreground"}`}>
+              {label}
+            </button>
+          );
+          return (
           <Card>
             <CardContent className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">Research Gaps</h3>
-              <p className="text-xs text-muted-foreground">
-                Where research effort is most valuable — derived from real data. An unsearched period is never
-                reported as complete.
-              </p>
-              {Object.entries(gaps).map(([key, cat]) => (
-                <div key={key} className="flex items-center gap-2 border-t border-border pt-2 text-sm first:border-0">
-                  <span className="font-medium">{key.replace(/_/g, " ")}</span>
-                  <Badge variant={(cat as GapCategory).count > 0 ? "warning" : "muted"}>{(cat as GapCategory).count}</Badge>
-                  <Button size="sm" variant="outline" className="ml-auto" disabled={busy || (cat as GapCategory).count === 0}
-                    onClick={() => void act(() => api.researchCreateTask(workspaceId,
-                      { title: `Address: ${key.replace(/_/g, " ")}`, gap_kind: key }), "Research task created.")}>
-                    Create task
+              <div className="flex flex-wrap gap-2">
+                {subBtn("overview", "Overview")}
+                {subBtn("seasons", "Seasons")}
+                {subBtn("matches", "Matches")}
+                {subBtn("tasks", "Research Tasks")}
+              </div>
+
+              {gapsSub === "overview" && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    The most significant unresolved issues, from real data. An unsearched period is never reported
+                    as complete.
+                  </p>
+                  {totalGaps === 0 && <p className="text-sm text-muted-foreground">No outstanding gaps in the known records.</p>}
+                  {top.slice(0, 5).map(([key, cat]) => (
+                    <div key={key} className="flex items-center gap-2 rounded-[var(--radius-app)] border border-border px-3 py-2 text-sm">
+                      <span className="font-medium">{key.replace(/_/g, " ")}</span>
+                      <Badge variant="warning">{cat.count}</Badge>
+                      <Button size="sm" variant="outline" className="ml-auto" disabled={busy}
+                        onClick={() => void act(() => api.researchCreateTask(workspaceId,
+                          { title: `Address: ${key.replace(/_/g, " ")}`, gap_kind: key }), "Research task created.")}>
+                        Create task
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {gapsSub === "seasons" && <SeasonCompleteness onCreateTask={() => setTab("tasks")} />}
+
+              {gapsSub === "matches" && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">Match-level gaps by category; open a category to work through it.</p>
+                  {cats.map(([key, cat]) => (
+                    <div key={key} className="flex flex-col gap-1 border-t border-border pt-2 first:border-0">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">{key.replace(/_/g, " ")}</span>
+                        <Badge variant={cat.count > 0 ? "warning" : "muted"}>{cat.count}</Badge>
+                        <Button size="sm" variant="outline" className="ml-auto" disabled={busy || cat.count === 0}
+                          onClick={() => void act(() => api.researchCreateTask(workspaceId,
+                            { title: `Address: ${key.replace(/_/g, " ")}`, gap_kind: key }), "Research task created.")}>
+                          Create task
+                        </Button>
+                      </div>
+                      {(cat.sample ?? []).slice(0, 3).map((s) => (
+                        <div key={s.match_id} className="ml-1 text-xs text-muted-foreground">
+                          · {s.match_date ?? "date unknown"}{s.round ? ` · ${s.round}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {gapsSub === "tasks" && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">Research tasks track the work to close these gaps.</p>
+                  <Button size="sm" variant="outline" className="self-start" onClick={() => setTab("tasks")}>
+                    Open Research Tasks
                   </Button>
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
-        )}
+          );
+        })()}
 
         {tab === "review" && (
           <Card>

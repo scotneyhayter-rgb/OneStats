@@ -9,8 +9,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
-import { api, ApiError, type SeasonCompleteness as SC, type SeasonCompletenessRow } from "../../lib/api";
+import { api, ApiError, type AutoSyncConnector, type SeasonCompleteness as SC, type SeasonCompletenessRow } from "../../lib/api";
 import { useWorkspace } from "../../lib/workspace-context";
+
+// Honest discovery availability per Stage 8 — never claim an archive was searched when it cannot be.
+function discoveryStatus(c: AutoSyncConnector): { label: string; tone: "ok" | "warn" | "muted" } {
+  if (c.status === "live") return c.auth_required ? { label: "Requires credentials", tone: "warn" } : { label: "Available", tone: "ok" };
+  if (c.status === "fixture") return { label: "Available (test data)", tone: "ok" };
+  return { label: "Unsupported (interface only)", tone: "muted" };
+}
 
 type Sort = "newest" | "oldest" | "most_incomplete" | "least_researched";
 
@@ -48,6 +55,8 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
   const [loading, setLoading] = useState(false);
   const [sort, setSort] = useState<Sort>("newest");
   const [sel, setSel] = useState<SeasonCompletenessRow | null>(null);
+  const [connectors, setConnectors] = useState<AutoSyncConnector[] | null>(null);
+  const [discoBusy, setDiscoBusy] = useState(false);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -85,7 +94,7 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
     );
     return (
       <div className="flex flex-col gap-3">
-        <button type="button" onClick={() => setSel(null)} className="self-start text-xs text-brand hover:underline">← All seasons</button>
+        <button type="button" onClick={() => { setSel(null); setConnectors(null); }} className="self-start text-xs text-brand hover:underline">← All seasons</button>
         <div className="flex items-center gap-2">
           <h4 className="text-base font-semibold">{sel.label}</h4>
           <span className="flex items-center gap-1 text-xs">
@@ -123,7 +132,33 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
             <button type="button" onClick={onCreateTask}
               className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand">Create research task</button>
           )}
+          <button type="button" disabled={discoBusy || !workspaceId}
+            onClick={() => { if (!workspaceId) return; setDiscoBusy(true); api.autosyncConnectors(workspaceId).then(setConnectors).catch(() => setConnectors([])).finally(() => setDiscoBusy(false)); }}
+            className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand disabled:opacity-50">
+            {discoBusy ? "Checking…" : "Find sources"}
+          </button>
         </div>
+        {connectors && (
+          <div className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-border p-3">
+            <div className="text-xs text-muted-foreground">
+              Historical source discovery for {sel.label}. Nothing is searched unless a connector is live —
+              interface-only connectors are listed so you know what is possible, never claimed as searched.
+            </div>
+            {connectors.length === 0 && <div className="text-sm text-muted-foreground">No discovery connectors configured.</div>}
+            {connectors.map((c) => {
+              const d = discoveryStatus(c);
+              return (
+                <div key={c.connector_id} className="flex items-center gap-2 border-t border-border pt-1.5 text-sm first:border-0">
+                  <span className="font-medium">{c.provider}</span>
+                  {c.formats.length > 0 && <span className="text-xs text-muted-foreground">{c.formats.join(", ")}</span>}
+                  <span className="ml-auto text-xs" style={{ color: d.tone === "ok" ? "var(--success)" : d.tone === "warn" ? "var(--warning)" : "var(--muted-foreground)" }}>
+                    {d.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -152,7 +187,7 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
           const scoredOnly = (Math.max(r.with_scorecard - r.verified_matches, 0) / known) * 100;
           const missing = (r.missing_scorecards / known) * 100;
           return (
-            <button key={r.season_id} type="button" onClick={() => setSel(r)}
+            <button key={r.season_id} type="button" onClick={() => { setSel(r); setConnectors(null); }}
               className="grid grid-cols-[6rem_1fr_9rem] items-center gap-3 rounded-[var(--radius-app)] border border-border px-3 py-2 text-left hover:border-brand">
               <div>
                 <div className="text-sm font-medium">{r.label}</div>
