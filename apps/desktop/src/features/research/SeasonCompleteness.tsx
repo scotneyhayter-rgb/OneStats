@@ -165,7 +165,7 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => navigate("/matches")}
+          <button type="button" onClick={() => navigate(`/matches?season=${sel.season_id}&label=${encodeURIComponent(sel.label)}`)}
             className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand">View matches</button>
           {onCreateTask && (
             <button type="button" onClick={onCreateTask}

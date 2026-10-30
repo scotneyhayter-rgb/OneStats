@@ -56,8 +56,11 @@ export function Scorecard() {
   const [returnToId, setReturnToId] = useState<string | null>(null);
   // Collapsible season groups (collapsed labels); all expanded by default.
   const [collapsedSeasons, setCollapsedSeasons] = useState<Set<string>>(new Set());
-  // Deep-link: ?open=<matchId> opens that match's editor directly (e.g. from a Research Centre gap).
+  // Deep-link: ?open=<matchId> opens that match's editor directly (e.g. from a Research Centre gap);
+  // ?season=<id>&label=<label> scopes the list to one season (from the Research Centre's Season view).
   const [searchParams, setSearchParams] = useSearchParams();
+  const [seasonFilter, setSeasonFilter] = useState("");
+  const [seasonLabel, setSeasonLabel] = useState("");
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -65,7 +68,7 @@ export function Scorecard() {
     setError(null);
     try {
       const [m, c, t] = await Promise.all([
-        api.listMatches(workspaceId, { competition_id: compFilter || undefined }),
+        api.listMatches(workspaceId, { competition_id: compFilter || undefined, season_id: seasonFilter || undefined }),
         api.listCompetitions(workspaceId),
         api.listTeams(workspaceId),
       ]);
@@ -77,19 +80,23 @@ export function Scorecard() {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, compFilter]);
+  }, [workspaceId, compFilter, seasonFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Honour a ?open=<matchId> deep-link once, then strip the param so Back returns to the list.
+  // Honour ?open=<matchId> and/or ?season=<id>&label=<label> deep-links once, then strip the params
+  // (keeping the season scope in state) so Back returns to the list without re-triggering.
   useEffect(() => {
     const open = searchParams.get("open");
-    if (!open) return;
-    setOpenMatch(open);
+    const season = searchParams.get("season");
+    const label = searchParams.get("label");
+    if (!open && !season) return;
+    if (open) setOpenMatch(open);
+    if (season) { setSeasonFilter(season); setSeasonLabel(label ?? ""); }
     const next = new URLSearchParams(searchParams);
-    next.delete("open");
+    next.delete("open"); next.delete("season"); next.delete("label");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -215,6 +222,14 @@ export function Scorecard() {
           <option value="">All competitions</option>
           {comps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
+        {seasonFilter && (
+          <span className="flex items-center gap-1 rounded-full border border-brand bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand">
+            Season: {seasonLabel || "selected"}
+            <button type="button" aria-label="Clear season filter"
+              onClick={() => { setSeasonFilter(""); setSeasonLabel(""); }}
+              className="ml-0.5 rounded-full px-1 hover:bg-brand/20">✕</button>
+          </span>
+        )}
         <div className="flex-1" />
         {canManage && (
           <Button onClick={() => setShowCreate(true)}>
