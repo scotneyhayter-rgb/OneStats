@@ -50,6 +50,7 @@ export function Statistics() {
   // Master club scope: the workspace's primary club (auto-detected) and whether the default has been applied.
   const [primaryClub, setPrimaryClub] = useState<{ organisation_id?: string; name?: string }>({});
   const scopeApplied = useRef(false);
+  const reqSeq = useRef(0);   // monotonic request id; only the latest report response may render
   const [gradeId, setGradeId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [seasonId, setSeasonId] = useState("");
@@ -170,14 +171,19 @@ export function Statistics() {
 
   const load = useCallback(async () => {
     if (!current) return;
+    // Guard against out-of-order responses: the report fires once on the default (unscoped) query and
+    // again once the club scope is applied. Only the latest request's result may win, so a stale unscoped
+    // response can never overwrite the scoped figures.
+    const seq = ++reqSeq.current;
     setBusy(true);
     setError(null);
     try {
-      setData(await api.statsReport(current.id, report, query));
+      const d = await api.statsReport(current.id, report, query);
+      if (seq === reqSeq.current) setData(d);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load the report.");
+      if (seq === reqSeq.current) setError(e instanceof ApiError ? e.message : "Could not load the report.");
     } finally {
-      setBusy(false);
+      if (seq === reqSeq.current) setBusy(false);
     }
   }, [current, report, query]);
   useEffect(() => {
