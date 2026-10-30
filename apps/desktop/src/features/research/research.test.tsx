@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
   researchDashboard: vi.fn(),
+  researchSeasonCompleteness: vi.fn(),
   researchProjects: vi.fn(),
   researchSources: vi.fn(),
   researchCreateProject: vi.fn(),
@@ -33,6 +34,7 @@ const DASH = {
 
 function setup() {
   H.researchDashboard.mockResolvedValue(DASH);
+  H.researchSeasonCompleteness.mockResolvedValue({ seasons: [], methodology: { note: "x" }, statuses: [] });
   H.researchProjects.mockResolvedValue([
     { id: "p1", title: "RMCC 1891-1900", description: null, status: "active", scope: null, owner: "scotney",
       created_at: "2026-10-25", updated_at: "2026-10-25" },
@@ -52,8 +54,8 @@ describe("Research Centre page", () => {
   it("shows the real DB-backed dashboard", async () => {
     setup();
     render(<MemoryRouter><ResearchCentre /></MemoryRouter>);
-    await screen.findByText("Active projects");
-    expect(screen.getByText("Matches under investigation")).toBeTruthy();
+    await screen.findByText("Verified matches");
+    expect(screen.getByText("Research priorities")).toBeTruthy();
     await screen.findByText("Ararat Advertiser 1931");   // recent source from real data
   });
 
@@ -61,7 +63,7 @@ describe("Research Centre page", () => {
     setup();
     const user = userEvent.setup();
     render(<MemoryRouter><ResearchCentre /></MemoryRouter>);
-    await screen.findByText("Active projects");
+    await screen.findByText("Verified matches");
 
     await user.click(screen.getByRole("button", { name: /Research Projects/i }));
     await screen.findByText("RMCC 1891-1900");
