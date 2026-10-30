@@ -161,8 +161,11 @@ def seasonal_leaders(conn: Connection, workspace_id: UUID, *, competition_id: UU
             if not rows:
                 return None
             top_val = rows[0][metric]
-            tied = [names.get(r["subject_id"], "Unknown") for r in rows if r[metric] == top_val]
-            return {"player": tied[0], "value": top_val, "tied": tied if len(tied) > 1 else []}
+            top = [r for r in rows if r[metric] == top_val]
+            tied = [names.get(r["subject_id"], "Unknown") for r in top]
+            # subject_ids of the leader(s) so callers can match a specific player (names can collide)
+            return {"player": tied[0], "value": top_val, "tied": tied if len(tied) > 1 else [],
+                    "subject_ids": [r["subject_id"] for r in top]}
 
         out.append({"season_id": str(s["id"]), "label": s["label"],
                     "leading_run_scorer": _lead(bat, "runs"), "leading_wicket_taker": _lead(bowl, "wickets")})

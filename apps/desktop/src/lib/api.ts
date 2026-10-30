@@ -169,6 +169,7 @@ export interface PlayerFullProfile {
   seasons: Record<string, unknown>[];
   clubs: { team_id: string; team: string; org_id: string; club: string }[];
   records: { title: string; value: number | null; tied: boolean; known_minimum: boolean }[];
+  season_leaderships: { title: string; season: string; value: number | null }[];
   grand_finals: {
     appearances: number;
     premierships: number;

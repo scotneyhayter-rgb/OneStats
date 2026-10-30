@@ -29,6 +29,7 @@ const FULL = {
   ],
   clubs: [{ team_id: "t1", team: "1st XI", org_id: "o1", club: "Rhymney/Moyston CC" }],
   records: [{ title: "Most Career Runs", value: 1850, tied: false, known_minimum: true }],
+  season_leaderships: [{ title: "Leading Run Scorer", season: "2024/25", value: 600 }],
   grand_finals: { appearances: 3, premierships: 2, batting: { runs: 180, average: 60, highest_score: 92 },
     bowling: { wickets: 8 }, fielding: { catches: 3 }, captaincy: { captained: 2, gf_wins: 2 },
     matches: [{ match_date: "2024-03-23", runs: 92, wickets: 2, catches: 1, result_type: "home_win" }],
@@ -50,7 +51,8 @@ describe("PlayerProfile", () => {
     </MemoryRouter>);
     await screen.findByText("A G Steel");
     expect(screen.getByText("All-rounder")).toBeTruthy();   // derived role is title-cased for display
-    expect(screen.getByText("Record holder")).toBeTruthy();
+    expect(screen.getAllByText(/Most Career Runs/).length).toBeGreaterThan(0);   // specific record as a top badge
+    expect(screen.getByText(/Leading Run Scorer 2024\/25/)).toBeTruthy();   // season leadership badge
     expect(screen.getByText("2× premierships")).toBeTruthy();
     expect(screen.getAllByText("1,850".replace(",", "") === "1850" ? "1850" : "1850").length).toBeGreaterThan(0);
     // known-minimum indicator present on runs

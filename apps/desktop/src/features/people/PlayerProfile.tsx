@@ -285,7 +285,6 @@ export function PlayerProfile() {
                   <Medal className="mr-1 h-3 w-3" aria-hidden />{r.label}
                 </Badge>
               ))}
-              {(full?.records ?? []).length > 0 && <Badge variant="warning"><Trophy className="mr-1 h-3 w-3" aria-hidden />Record holder</Badge>}
               {Number(full?.grand_finals?.premierships ?? 0) > 0 && (
                 <Badge variant="brand"><Trophy className="mr-1 h-3 w-3" aria-hidden />
                   {full!.grand_finals.premierships}× premiership{full!.grand_finals.premierships === 1 ? "" : "s"}</Badge>
@@ -304,6 +303,25 @@ export function PlayerProfile() {
             <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
           </div>
         </CardContent></Card>
+
+        {/* Honours strip — all-time records held and season leaderships (Leading Run Scorer 2017/18, …),
+            surfaced as badges at the top so a player's standout achievements are immediately visible. */}
+        {((full?.records ?? []).length > 0 || (full?.season_leaderships ?? []).length > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {(full?.records ?? []).map((r, i) => (
+              <Badge key={`rec${i}`} variant="warning">
+                <Trophy className="mr-1 h-3 w-3" aria-hidden />
+                {r.title}{r.value != null ? ` — ${r.value}` : ""}{r.tied ? " (tied)" : ""}
+              </Badge>
+            ))}
+            {(full?.season_leaderships ?? []).map((s, i) => (
+              <Badge key={`sl${i}`} variant="brand">
+                <Medal className="mr-1 h-3 w-3" aria-hidden />
+                {s.title} {s.season}
+              </Badge>
+            ))}
+          </div>
+        )}
 
         {/* Club scope — a player who has turned out for more than one club can view one club or their
             whole career. The figures below (and the PDF) follow this choice; the badges/clubs stay full. */}

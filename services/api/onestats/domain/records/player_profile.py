@@ -162,6 +162,21 @@ def records_held(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[
     return held
 
 
+def season_leaderships(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[dict[str, Any]]:
+    """Seasons in which this player was the No.1 (or tied No.1) run scorer or wicket taker — the
+    "Leading Run Scorer 2017/18" style honours, surfaced as badges. Most recent season first."""
+    ids = {str(person_id)} | set(_merge_ids(conn, person_id))
+    out: list[dict[str, Any]] = []
+    for s in records.seasonal_leaders(conn, workspace_id):
+        rs, wt = s.get("leading_run_scorer"), s.get("leading_wicket_taker")
+        if rs and ids & set(rs.get("subject_ids") or []):
+            out.append({"title": "Leading Run Scorer", "season": s["label"], "value": rs.get("value")})
+        if wt and ids & set(wt.get("subject_ids") or []):
+            out.append({"title": "Leading Wicket Taker", "season": s["label"], "value": wt.get("value")})
+    out.reverse()   # seasonal_leaders is oldest-first; show most recent season first
+    return out
+
+
 def grand_finals(conn: Connection, workspace_id: UUID, person_id: UUID, *,
                  organisation_id: UUID | None = None) -> dict[str, Any]:
     """Grand-final career record for the player: figures restricted to matches classified as grand
@@ -264,6 +279,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
         "seasons": season_breakdown(conn, workspace_id, person_id),
         "clubs": clubs_and_teams(conn, workspace_id, person_id),
         "records": records_held(conn, workspace_id, person_id),
+        "season_leaderships": season_leaderships(conn, workspace_id, person_id),
         "grand_finals": grand_finals(conn, workspace_id, person_id, organisation_id=organisation_id),
         "milestones": milestones.person_milestones(conn, workspace_id, person_id),
         "badges": badges.person_badges(conn, workspace_id, person_id),
