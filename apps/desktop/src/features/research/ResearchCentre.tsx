@@ -9,6 +9,7 @@
  */
 import { CalendarRange, FileText, FolderGit2, Library, ListChecks, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { SeasonCompleteness } from "./SeasonCompleteness";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
@@ -59,6 +60,7 @@ const COVERAGE_VARIANT: Record<string, "success" | "warning" | "muted" | "brand"
 
 export function ResearchCentre() {
   const { workspaceId } = useManage();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("overview");
   const [gapsSub, setGapsSub] = useState<"overview" | "seasons" | "matches" | "tasks">("overview");
   const [dash, setDash] = useState<ResearchDashboard | null>(null);
@@ -350,9 +352,12 @@ export function ResearchCentre() {
                         </Button>
                       </div>
                       {(cat.sample ?? []).slice(0, 3).map((s) => (
-                        <div key={s.match_id} className="ml-1 text-xs text-muted-foreground">
+                        <button key={s.match_id} type="button"
+                          onClick={() => navigate(`/matches?open=${s.match_id}`)}
+                          className="ml-1 flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-brand hover:underline">
                           · {s.match_date ?? "date unknown"}{s.round ? ` · ${s.round}` : ""}
-                        </div>
+                          <span aria-hidden>→</span>
+                        </button>
                       ))}
                     </div>
                   ))}

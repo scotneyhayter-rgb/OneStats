@@ -6,7 +6,7 @@
  * recorded — a season is NEVER called complete just because its entered matches have scorecards. Colours
  * come from the theme's semantic tokens (success/warning/danger/muted), so all eight OneStats themes work.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
 import { api, ApiError, type AutoSyncConnector, type SeasonCompleteness as SC, type SeasonCompletenessRow } from "../../lib/api";
@@ -38,6 +38,13 @@ const STATUS_COLOR: Record<SeasonCompletenessRow["status"], string> = {
   coverage_unknown: "var(--muted-foreground)",
   conflicting_evidence: "var(--danger)",
 };
+const ASSESS_LABEL: Record<string, string> = {
+  comprehensive: "Complete — every fixture accounted for",
+  partial: "Mostly complete, minor gaps",
+  significant_gaps: "Significant gaps remain",
+  inactive: "No matches played",
+  unassessed: "Not assessed",
+};
 const ISSUE_LABEL: Record<string, string> = {
   missing_scorecards: "Missing scorecards",
   missing_results: "Missing results",
@@ -57,15 +64,42 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
   const [sel, setSel] = useState<SeasonCompletenessRow | null>(null);
   const [connectors, setConnectors] = useState<AutoSyncConnector[] | null>(null);
   const [discoBusy, setDiscoBusy] = useState(false);
+  // "Confirm season complete" — records an evidence-backed coverage assessment (washout/forfeit etc.).
+  const [assessOpen, setAssessOpen] = useState(false);
+  const [assessClass, setAssessClass] = useState<"comprehensive" | "partial" | "significant_gaps" | "inactive">("comprehensive");
+  const [assessBasis, setAssessBasis] = useState("");
+  const [assessBusy, setAssessBusy] = useState(false);
+  const [assessErr, setAssessErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback((keepSelId?: string) => {
     if (!workspaceId) return;
     setLoading(true); setError(null);
     api.researchSeasonCompleteness(workspaceId)
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        if (keepSelId) setSel(d.seasons.find((s) => s.season_id === keepSelId) ?? null);
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Could not load season completeness."))
       .finally(() => setLoading(false));
   }, [workspaceId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveAssessment = () => {
+    if (!workspaceId || !sel) return;
+    if ((assessClass === "comprehensive" || assessClass === "inactive") && !assessBasis.trim()) {
+      setAssessErr("Please record the evidence (e.g. the fixture source, and any washouts or forfeits).");
+      return;
+    }
+    setAssessBusy(true); setAssessErr(null);
+    api.researchSetAssessment(workspaceId, {
+      season_id: sel.season_id, assessed_class: assessClass,
+      competition_id: sel.competition_id, basis: assessBasis.trim() || null,
+    })
+      .then(() => { setAssessOpen(false); setAssessBasis(""); load(sel.season_id); })
+      .catch((e) => setAssessErr(e instanceof ApiError ? e.message : "Could not save the assessment."))
+      .finally(() => setAssessBusy(false));
+  };
 
   const seasons = useMemo(() => {
     const rows = [...(data?.seasons ?? [])];
@@ -94,7 +128,7 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
     );
     return (
       <div className="flex flex-col gap-3">
-        <button type="button" onClick={() => { setSel(null); setConnectors(null); }} className="self-start text-xs text-brand hover:underline">← All seasons</button>
+        <button type="button" onClick={() => { setSel(null); setConnectors(null); setAssessOpen(false); }} className="self-start text-xs text-brand hover:underline">← All seasons</button>
         <div className="flex items-center gap-2">
           <h4 className="text-base font-semibold">{sel.label}</h4>
           <span className="flex items-center gap-1 text-xs">
@@ -125,6 +159,11 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
             ))}
           </div>
         )}
+        {sel.assessed_class && !assessOpen && (
+          <p className="text-xs text-muted-foreground">
+            Recorded assessment: <span className="font-medium text-foreground">{ASSESS_LABEL[sel.assessed_class] ?? sel.assessed_class}</span>.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => navigate("/matches")}
             className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand">View matches</button>
@@ -137,7 +176,48 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
             className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand disabled:opacity-50">
             {discoBusy ? "Checking…" : "Find sources"}
           </button>
+          <button type="button" onClick={() => { setAssessOpen((o) => !o); setAssessClass((sel.assessed_class as typeof assessClass) || "comprehensive"); setAssessErr(null); }}
+            className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand">
+            {sel.assessed_class ? "Update assessment" : "Confirm season complete"}
+          </button>
         </div>
+        {assessOpen && (
+          <div className="flex flex-col gap-2 rounded-[var(--radius-app)] border border-border p-3">
+            <div className="text-xs text-muted-foreground">
+              Record an evidence-backed assessment of this season's fixtures. A season is only marked complete
+              when every expected fixture is accounted for — including washouts, forfeits and abandoned matches
+              that have no scorecard. This is the only way a season becomes "Verified"; it is never inferred
+              from the matches entered.
+            </div>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs text-muted-foreground">Fixture coverage</span>
+              <select value={assessClass} onChange={(e) => setAssessClass(e.target.value as typeof assessClass)}
+                className="rounded-[var(--radius-app)] border border-border bg-background px-2 py-1.5 text-sm">
+                <option value="comprehensive">Complete — every fixture accounted for</option>
+                <option value="partial">Mostly complete — minor gaps remain</option>
+                <option value="significant_gaps">Significant gaps remain</option>
+                <option value="inactive">No matches played this season</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs text-muted-foreground">
+                Evidence / basis{(assessClass === "comprehensive" || assessClass === "inactive") ? " (required)" : " (optional)"}
+              </span>
+              <textarea value={assessBasis} onChange={(e) => setAssessBasis(e.target.value)} rows={3}
+                placeholder="e.g. 14 fixtures confirmed from the ADCA handbook; Round 12 washed out (no play) and Round 7 was a forfeit, so no scorecards exist."
+                className="rounded-[var(--radius-app)] border border-border bg-background px-2 py-1.5 text-sm" />
+            </label>
+            {assessErr && <p className="text-xs text-danger">{assessErr}</p>}
+            <div className="flex gap-2">
+              <button type="button" disabled={assessBusy} onClick={saveAssessment}
+                className="rounded-[var(--radius-app)] bg-brand px-3 py-1.5 text-sm font-medium text-brand-foreground hover:opacity-90 disabled:opacity-50">
+                {assessBusy ? "Saving…" : "Save assessment"}
+              </button>
+              <button type="button" disabled={assessBusy} onClick={() => { setAssessOpen(false); setAssessErr(null); }}
+                className="rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm hover:border-brand">Cancel</button>
+            </div>
+          </div>
+        )}
         {connectors && (
           <div className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-border p-3">
             <div className="text-xs text-muted-foreground">
@@ -187,7 +267,7 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
           const scoredOnly = (Math.max(r.with_scorecard - r.verified_matches, 0) / known) * 100;
           const missing = (r.missing_scorecards / known) * 100;
           return (
-            <button key={r.season_id} type="button" onClick={() => { setSel(r); setConnectors(null); }}
+            <button key={r.season_id} type="button" onClick={() => { setSel(r); setConnectors(null); setAssessOpen(false); }}
               className="grid grid-cols-[6rem_1fr_9rem] items-center gap-3 rounded-[var(--radius-app)] border border-border px-3 py-2 text-left hover:border-brand">
               <div>
                 <div className="text-sm font-medium">{r.label}</div>

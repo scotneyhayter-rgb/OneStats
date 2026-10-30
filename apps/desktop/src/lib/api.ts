@@ -1607,6 +1607,10 @@ export const api = {
   researchSeasonCompleteness: (w: string, competition_id?: string) =>
     request<SeasonCompleteness>(`/api/v1/workspaces/${w}/research/season-completeness${competition_id ? `?competition_id=${competition_id}` : ""}`),
   researchGaps: (w: string) => request<ResearchGaps>(`/api/v1/workspaces/${w}/research/gaps`),
+  researchSetAssessment: (w: string, body: {
+    season_id: string; assessed_class: "comprehensive" | "partial" | "significant_gaps" | "unassessed" | "inactive";
+    competition_id?: string | null; grade_id?: string | null; basis?: string | null;
+  }) => request<unknown>(`/api/v1/workspaces/${w}/research/timeline/assessment`, { method: "POST", body }),
   researchTasks: (w: string, statusFilter?: string) =>
     request<ResearchTask[]>(`/api/v1/workspaces/${w}/research/tasks${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
   researchCreateTask: (w: string, body: Record<string, unknown>) =>

@@ -7,6 +7,7 @@
 
 import { ChevronDown, ChevronRight, Plus, Trophy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -55,6 +56,8 @@ export function Scorecard() {
   const [returnToId, setReturnToId] = useState<string | null>(null);
   // Collapsible season groups (collapsed labels); all expanded by default.
   const [collapsedSeasons, setCollapsedSeasons] = useState<Set<string>>(new Set());
+  // Deep-link: ?open=<matchId> opens that match's editor directly (e.g. from a Research Centre gap).
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -79,6 +82,16 @@ export function Scorecard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Honour a ?open=<matchId> deep-link once, then strip the param so Back returns to the list.
+  useEffect(() => {
+    const open = searchParams.get("open");
+    if (!open) return;
+    setOpenMatch(open);
+    const next = new URLSearchParams(searchParams);
+    next.delete("open");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // After returning from a match, scroll it into view and briefly highlight it, so the user lands back
   // where they were in the list instead of at the top.
