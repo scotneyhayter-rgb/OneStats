@@ -262,6 +262,20 @@ def team_records(conn: Connection, filters: dict[str, Any], *, order_by: str = "
     return rows[:limit]
 
 
+def primary_club(conn: Connection, workspace_id: UUID) -> dict[str, Any] | None:
+    """The workspace's main club — the organisation whose teams have the most player appearances. In a
+    single-club workspace this is the home club, so the Stats screen can default to it ("show my club")
+    with "All clubs" as the alternative. None when there are no appearances yet."""
+    row = conn.execute(
+        text("SELECT t.organisation_id AS oid, o.name AS name, count(DISTINCT c.match_id) AS m "
+             "FROM match_stat_contribution c JOIN team t ON t.id = c.team_id "
+             "JOIN organisation o ON o.id = t.organisation_id "
+             "WHERE c.calculator = 'player_appearance' AND c.workspace_id = :w "
+             "GROUP BY t.organisation_id, o.name ORDER BY m DESC, o.name LIMIT 1"),
+        {"w": workspace_id}).mappings().first()
+    return {"organisation_id": str(row["oid"]), "name": row["name"]} if row else None
+
+
 # ---- helpers ------------------------------------------------------------------------------------
 def _sort(rows: list[dict[str, Any]], order_by: str) -> None:
     rows.sort(key=lambda r: (r.get(order_by) is None, -(r.get(order_by) or 0)))

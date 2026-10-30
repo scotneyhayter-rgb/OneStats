@@ -4,7 +4,7 @@
  * numeric columns, fixed decimals, sticky header, client-side sorting, qualification-aware.
  */
 import { Download, RefreshCw, Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -47,6 +47,9 @@ export function Statistics() {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [organisationId, setOrganisationId] = useState("");
+  // Master club scope: the workspace's primary club (auto-detected) and whether the default has been applied.
+  const [primaryClub, setPrimaryClub] = useState<{ organisation_id?: string; name?: string }>({});
+  const scopeApplied = useRef(false);
   const [gradeId, setGradeId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [seasonId, setSeasonId] = useState("");
@@ -70,8 +73,26 @@ export function Statistics() {
     if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
     if (current) api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
     if (current) api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
+    if (current) api.statsPrimaryClub(current.id).then(setPrimaryClub).catch(() => setPrimaryClub({}));
     loadSaved();
   }, [current, loadSaved]);
+
+  // Master filter default: on entering a workspace, scope the stats to the user's last choice, or — first
+  // time — to the primary club ("show my club"). The user can switch to All clubs or any specific club.
+  useEffect(() => { scopeApplied.current = false; }, [current]);
+  useEffect(() => {
+    if (!current || scopeApplied.current) return;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(`stats-club-${current.id}`); } catch { /* storage unavailable */ }
+    if (saved !== null) { setOrganisationId(saved); scopeApplied.current = true; }
+    else if (primaryClub.organisation_id) { setOrganisationId(primaryClub.organisation_id); scopeApplied.current = true; }
+  }, [current, primaryClub]);
+
+  // Change the club scope and remember it per workspace, so the master filter sticks across visits.
+  const setClub = useCallback((orgId: string) => {
+    setOrganisationId(orgId);
+    try { if (current) localStorage.setItem(`stats-club-${current.id}`, orgId); } catch { /* storage unavailable */ }
+  }, [current]);
 
   // Grades and seasons belong to a competition — load them when one is chosen, and clear the picks.
   useEffect(() => {
@@ -241,6 +262,21 @@ export function Statistics() {
               </Button>
             )}
           </div>
+          {primaryClub.organisation_id && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Show</span>
+              <Button size="sm" variant={organisationId === primaryClub.organisation_id ? "primary" : "outline"}
+                onClick={() => setClub(primaryClub.organisation_id!)}>
+                {primaryClub.name ?? "My club"}
+              </Button>
+              <Button size="sm" variant={organisationId === "" ? "primary" : "outline"} onClick={() => setClub("")}>
+                All clubs
+              </Button>
+              {organisationId && organisationId !== primaryClub.organisation_id && (
+                <span className="text-xs text-muted-foreground">· filtered to a specific club below</span>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-2 text-xs">
             <label className="flex flex-col gap-1">
               <span className="text-muted-foreground">Competition</span>
@@ -270,7 +306,7 @@ export function Statistics() {
             {organisations.length > 0 && (
               <label className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Club</span>
-                <Select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)} className="w-44">
+                <Select value={organisationId} onChange={(e) => setClub(e.target.value)} className="w-44">
                   <option value="">All clubs</option>
                   {organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </Select>

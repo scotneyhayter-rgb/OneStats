@@ -86,6 +86,14 @@ def _common(workspace_id: UUID, season_id: UUID | None = None, grade_id: UUID | 
                           date_from, date_to, organisation_id), "order_by": order_by, "limit": limit}
 
 
+@router.get("/primary-club")
+def primary_club(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """The workspace's main club (most player appearances) so the Stats screen can default to it, with
+    "All clubs" as the alternative. Returns {} when there are no appearances yet."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return engine.primary_club(conn, workspace_id) or {}
+
+
 @router.get("/batting")
 def batting(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
             grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
