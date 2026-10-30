@@ -283,8 +283,16 @@ def derive_from_fow(conn: Connection, workspace_id: UUID, actor: str, innings_id
         create_partnership(conn, workspace_id, actor, innings_id=innings_id, wicket_number=d["wicket_number"],
                            runs=d["runs"], player1_person_id=p1, player2_person_id=p2, end_reason="wicket",
                            unbroken=False, origin="calculated")
-    # unbroken final stand, only when the innings total is known and higher than the last fall
-    inn = conn.execute(text("SELECT official_total FROM innings WHERE id = :i"), {"i": innings_id}).mappings().first()
+    # unbroken final stand, only when the innings total is higher than the last recorded fall. The total
+    # is the official/authoritative figure if set, else derived from the batting card (Σ batting runs +
+    # the five extras). A complete card gives the exact total; an incomplete card gives a lower bound, so
+    # the stand is only added when the total genuinely exceeds the last fall (never invented).
+    inn = conn.execute(
+        text("SELECT coalesce(official_total, "
+             " (SELECT coalesce(sum(runs),0) FROM batting_entry WHERE innings_id = :i) "
+             " + coalesce(byes,0)+coalesce(legbyes,0)+coalesce(wides,0)+coalesce(noballs,0)+coalesce(penalty,0)"
+             ") AS official_total FROM innings WHERE id = :i"),
+        {"i": innings_id}).mappings().first()
     if derived and inn and inn["official_total"] is not None and inn["official_total"] > last_score:
         fp1, fp2 = (crease[0] if len(crease) > 0 else None), (crease[1] if len(crease) > 1 else None)
         create_partnership(conn, workspace_id, actor, innings_id=innings_id,

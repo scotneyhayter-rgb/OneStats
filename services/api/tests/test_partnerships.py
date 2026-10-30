@@ -116,6 +116,25 @@ def test_fow_partial_and_duplicate_protection(conn):
         pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=2, team_score=99)
 
 
+def test_derive_adds_unbroken_final_stand_from_batting_total(conn):
+    """The unbroken final stand (not-out pair at the innings end) must be reconstructed even when the
+    innings official_total is unset — the total is then taken from the batting card (Σ runs + extras).
+    Without this the top not-out partnerships are missing from the records."""
+    wid = _ws(conn, "PART DERIVE")
+    iid = _innings(conn, wid)
+    p1, p2, p3 = _person(conn, wid, "Opener"), _person(conn, wid, "NotOutA"), _person(conn, wid, "NotOutB")
+    bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=p1, batting_position=1, runs=23, dismissal_type="bowled")
+    bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=p2, batting_position=2, runs=50, dismissal_type="not_out")
+    bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=p3, batting_position=3, runs=40, dismissal_type="not_out")
+    pshp.create_fow(conn, wid, ACTOR, innings_id=iid, wicket_number=1, team_score=40, dismissed_person_id=p1)
+    # no official_total set — derived total = 23+50+40 = 113
+    parts = pshp.derive_from_fow(conn, wid, ACTOR, iid)
+    unbroken = [p for p in parts if p["unbroken"]]
+    assert len(unbroken) == 1
+    assert unbroken[0]["runs"] == 113 - 40                    # total minus the last fall
+    assert {unbroken[0]["player1_person_id"], unbroken[0]["player2_person_id"]} == {p2, p3}
+
+
 def test_partnership_participants_and_unbroken(conn):
     wid = _ws(conn, "PART WS1")
     iid = _innings(conn, wid)
