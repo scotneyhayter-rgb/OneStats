@@ -1,5 +1,5 @@
-import { Building2, GitMerge, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Building2, GitMerge, ImageUp, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -15,7 +15,94 @@ import {
   type Organisation,
   type OrganisationDetail,
 } from "../../lib/api";
+import { compressImage } from "../../lib/utils";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
+
+/**
+ * A club's logo, or a neutral building icon when it has none. Fetches the image as an authenticated
+ * object URL and revokes it on cleanup. `size` is the square px edge.
+ */
+function OrgLogo({ workspaceId, org, size = 20 }: { workspaceId: string; org: { id: string; logo_ref: string | null }; size?: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let made: string | null = null;
+    if (org.logo_ref) {
+      api.orgLogoObjectUrl(workspaceId, org.id).then((u) => {
+        if (!active) { if (u) URL.revokeObjectURL(u); return; }
+        made = u; setUrl(u);
+      }).catch(() => {});
+    } else {
+      setUrl(null);
+    }
+    return () => { active = false; if (made) URL.revokeObjectURL(made); };
+  }, [workspaceId, org.id, org.logo_ref]);
+  if (url) {
+    return <img src={url} alt="" width={size} height={size}
+      className="shrink-0 rounded-[var(--radius-app)] object-contain" style={{ width: size, height: size }} />;
+  }
+  return <Building2 className="shrink-0 text-muted-foreground" aria-hidden style={{ width: size, height: size }} />;
+}
+
+/** Club logo with upload / replace / remove, used in the organisation detail. */
+function OrgLogoSection({ workspaceId, org, canManage, onChanged }: {
+  workspaceId: string; org: OrganisationDetail; canManage: boolean; onChanged: (msg: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const upload = async (file: File) => {
+    setBusy(true); setErr(null);
+    try {
+      const compressed = await compressImage(file, 512, 0.9);
+      await api.uploadOrgLogo(workspaceId, org.id, compressed);
+      onChanged("Logo updated.");
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not upload the logo (use a PNG or JPG image).");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await api.deleteOrgLogo(workspaceId, org.id);
+      onChanged("Logo removed.");
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not remove the logo.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex items-center gap-4 rounded-[var(--radius-app)] border border-border p-3">
+      <OrgLogo workspaceId={workspaceId} org={org} size={64} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="text-sm font-medium">Club logo</div>
+        <div className="text-xs text-muted-foreground">
+          {org.logo_ref ? "This club's crest, shown in lists and on this club." : "No logo set for this club yet."}
+        </div>
+        {err && <div className="text-xs text-danger">{err}</div>}
+        {canManage && !org.merged_into_id && (
+          <div className="mt-1 flex gap-2">
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
+              <ImageUp className="h-4 w-4" aria-hidden /> {org.logo_ref ? "Replace" : "Upload logo"}
+            </Button>
+            {org.logo_ref && (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void remove()}>
+                <Trash2 className="h-4 w-4" aria-hidden /> Remove
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 const KINDS = ["club", "association", "intl_team", "historical_club"];
 // Properly capitalised display labels for the organisation kinds (the stored values stay lower_snake).
@@ -120,7 +207,7 @@ export function Organisations() {
           {filtered.map((o) => (
             <Card key={o.id} className="cursor-pointer hover:border-brand" >
               <CardContent className="flex items-center gap-3 py-4" onClick={() => setSelected(o.id)}>
-                <Building2 className="h-5 w-5 text-muted-foreground" aria-hidden />
+                <OrgLogo workspaceId={workspaceId} org={o} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{o.name}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -377,6 +464,8 @@ function OrganisationDetailModal({
       {!loading && err && <ErrorState message={err} onRetry={() => void load()} />}
       {!loading && org && (
         <div className="flex flex-col gap-5">
+          <OrgLogoSection workspaceId={workspaceId} org={org} canManage={canManage}
+            onChanged={(m) => { void load(); onChanged(m); }} />
           <section>
             {!editing ? (
               <>

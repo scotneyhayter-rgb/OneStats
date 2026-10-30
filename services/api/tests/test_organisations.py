@@ -298,3 +298,40 @@ def test_cannot_merge_an_already_merged_record(conn):
     organisations.merge_organisations(conn, wid, ACTOR, a, b)
     with pytest.raises(ValueError, match="already_merged"):
         organisations.merge_organisations(conn, wid, ACTOR, c, b)
+
+
+# per-club logo: store → attach → read back → remove -------------------------
+
+
+def _png_bytes(size=(16, 16)) -> bytes:
+    import io
+
+    from PIL import Image
+
+    im = Image.new("RGBA", size, (12, 34, 56, 255))
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_organisation_logo_store_attach_and_remove(conn, tmp_path):
+    from onestats.domain import logos
+
+    wid = _ws_with_context(conn, "ORG LOGO WS")
+    oid = organisations.create_organisation(conn, wid, ACTOR, name="Buangor CC", kind="club")
+    assert organisations.get_organisation(conn, oid)["logo_ref"] is None   # additive default
+
+    cfg = settings.model_copy(update={"media_root": str(tmp_path)})
+    stored = logos.store_logo(cfg, wid, _png_bytes(), "image/png")
+    organisations.set_logo(conn, oid, stored["logo_ref"])
+
+    org = organisations.get_organisation(conn, oid)
+    assert org["logo_ref"] == stored["logo_ref"]
+    path = logos.logo_path(cfg, wid, org["logo_ref"])
+    assert path is not None and path.exists()                               # bytes actually on disk
+
+    # removing clears the reference and the file
+    organisations.set_logo(conn, oid, None)
+    logos.remove_logo(cfg, wid, stored["logo_ref"])
+    assert organisations.get_organisation(conn, oid)["logo_ref"] is None
+    assert logos.logo_path(cfg, wid, stored["logo_ref"]) is None

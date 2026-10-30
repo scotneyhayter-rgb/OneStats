@@ -441,6 +441,7 @@ export interface Organisation {
   merged_into_id: string | null;
   source_system: string | null;
   source_ref: string | null;
+  logo_ref: string | null;
 }
 export interface OrganisationDetail extends Organisation {
   name_history: NameHistory[];
@@ -1293,6 +1294,21 @@ export const api = {
     request<Organisation>(`/api/v1/workspaces/${w}/organisations/${id}`, { method: "PATCH", body }),
   orgDuplicateCandidates: (w: string, id: string) =>
     request<DuplicateCandidate[]>(`/api/v1/workspaces/${w}/organisations/${id}/duplicate-candidates`),
+  uploadOrgLogo: (w: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ logo_ref: string }>(`/api/v1/workspaces/${w}/organisations/${id}/logo`, { method: "POST", form });
+  },
+  deleteOrgLogo: (w: string, id: string) =>
+    request<{ removed: boolean }>(`/api/v1/workspaces/${w}/organisations/${id}/logo`, { method: "DELETE" }),
+  orgLogoObjectUrl: async (w: string, id: string): Promise<string | null> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/organisations/${id}/logo`, { headers });
+    if (!resp.ok) return null;
+    return URL.createObjectURL(await resp.blob());
+  },
   orgAssertDistinct: (w: string, body: { organisation_a_id: string; organisation_b_id: string; reason?: string }) =>
     request<{ assertion_id: string }>(`/api/v1/workspaces/${w}/organisations/assert-distinct`, { method: "POST", body }),
   orgMerge: (w: string, body: { canonical_organisation_id: string; merged_organisation_id: string; reason?: string }) =>

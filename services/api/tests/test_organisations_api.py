@@ -35,6 +35,7 @@ def test_organisation_routes_are_registered(client):
     assert f"{base}/merge" in paths
     assert f"{base}/assert-distinct" in paths
     assert f"{base}/{{organisation_id}}/duplicate-candidates" in paths
+    assert f"{base}/{{organisation_id}}/logo" in paths   # per-club logo upload/get/delete
 
 
 def test_endpoints_require_authentication(client):
@@ -48,3 +49,8 @@ def test_endpoints_require_authentication(client):
         "merged_organisation_id": str(uuid.uuid4()),
     }).status_code == 401
     assert client.get(f"{base}/{uuid.uuid4()}").status_code == 401
+    # per-club logo endpoints are gated too (no bearer token → 401)
+    oid = uuid.uuid4()
+    assert client.get(f"{base}/{oid}/logo").status_code == 401
+    assert client.post(f"{base}/{oid}/logo", files={"file": ("x.png", b"data", "image/png")}).status_code == 401
+    assert client.delete(f"{base}/{oid}/logo").status_code == 401

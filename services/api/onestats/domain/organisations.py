@@ -37,7 +37,7 @@ from onestats.domain import audit
 _KINDS = ("club", "association", "intl_team", "historical_club")
 _ORG_COLS = (
     "id, workspace_id, name, short_name, kind, is_historical, status, notes, "
-    "merged_into_id, source_system, source_ref, created_at"
+    "merged_into_id, source_system, source_ref, logo_ref, created_at"
 )
 _MAX_CHAIN = 16  # cycle guard when resolving a canonical organisation
 
@@ -60,6 +60,15 @@ def get_organisation(conn: Connection, org_id: UUID) -> dict[str, Any] | None:
         text(f"SELECT {_ORG_COLS} FROM organisation WHERE id = :id"), {"id": org_id}
     ).mappings().first()
     return dict(row) if row else None
+
+
+def set_logo(conn: Connection, org_id: UUID, logo_ref: str | None) -> None:
+    """Point an organisation at a stored logo (or clear it). The image bytes are managed by
+    ``domain.logos`` in workspace-isolated media; only the filename reference lives on the row."""
+    conn.execute(
+        text("UPDATE organisation SET logo_ref = :ref WHERE id = :id"),
+        {"ref": logo_ref, "id": org_id},
+    )
 
 
 def list_organisations(
