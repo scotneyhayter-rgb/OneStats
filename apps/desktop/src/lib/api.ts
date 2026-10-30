@@ -740,6 +740,32 @@ export interface ResearchTimeline {
   seasons: TimelineSeason[];
   methodology: { note: string };
 }
+export interface SeasonCompletenessRow {
+  season_id: string;
+  label: string;
+  competition_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  known_matches: number;
+  with_scorecard: number;
+  missing_scorecards: number;
+  verified_matches: number;
+  missing_results: number;
+  draft_matches: number;
+  disputed_matches: number;
+  scorecard_completeness_pct: number | null;
+  verification_pct: number | null;
+  fixture_coverage: "established" | "unknown";
+  assessed_class: string | null;
+  research_recorded: boolean;
+  status: "verified" | "needs_attention" | "incomplete" | "not_researched" | "coverage_unknown" | "conflicting_evidence";
+  issues: string[];
+}
+export interface SeasonCompleteness {
+  seasons: SeasonCompletenessRow[];
+  methodology: { note: string };
+  statuses: string[];
+}
 export interface GapCategory {
   count: number;
   sample?: { match_id: string; match_date: string | null; round: string | null }[];
@@ -1578,6 +1604,8 @@ export const api = {
     request<ResearchExtraction>(`/api/v1/workspaces/${w}/research/extractions/${extractionId}/correct`,
       { method: "POST", body: { corrected_text } }),
   researchTimeline: (w: string) => request<ResearchTimeline>(`/api/v1/workspaces/${w}/research/timeline`),
+  researchSeasonCompleteness: (w: string, competition_id?: string) =>
+    request<SeasonCompleteness>(`/api/v1/workspaces/${w}/research/season-completeness${competition_id ? `?competition_id=${competition_id}` : ""}`),
   researchGaps: (w: string) => request<ResearchGaps>(`/api/v1/workspaces/${w}/research/gaps`),
   researchTasks: (w: string, statusFilter?: string) =>
     request<ResearchTask[]>(`/api/v1/workspaces/${w}/research/tasks${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
