@@ -103,6 +103,23 @@ def test_multi_innings_requires_review(conn):
     assert results.compute_result(conn, mid)["status"] == "requires_review"
 
 
+def test_multi_innings_recorded_result_gets_margin(conn):
+    """A recorded two-innings-per-side result with no margin is completed from the aggregated totals:
+    by wickets when the winner batted last (wickets in hand there), else by runs."""
+    wid = _ws(conn, "RES MULTI MARGIN")
+    mid, home, away = _match(conn, wid)
+    iids = []
+    for n, (bt, bo) in enumerate([(home, away), (away, home), (home, away), (away, home)], start=1):
+        iids.append(inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=n, batting_team_id=bt, bowling_team_id=bo))
+    for i, (tot, wk) in zip(iids, [(100, 10), (80, 10), (90, 10), (120, 2)]):
+        inn.set_official_total(conn, wid, ACTOR, i, total=tot, wickets=wk, reason="t")
+    # away aggregate 200 > home 190, away batted last → won by wickets (10 - 2)
+    matches.set_result(conn, wid, ACTOR, mid, result_type="away_win", won_by_team_id=away, result_source="recorded")
+    results.auto_apply_result(conn, wid, ACTOR, mid)
+    m = matches.get_match(conn, mid)
+    assert m["margin_wickets"] == 8 and m["margin_runs"] is None
+
+
 def test_auto_apply_sets_calculated_and_is_idempotent(conn):
     wid = _ws(conn, "RES AUTO")
     mid, home, away = _match(conn, wid)

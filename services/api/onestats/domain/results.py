@@ -131,20 +131,32 @@ def _augment_authoritative_margin(conn: Connection, workspace_id: UUID, actor: s
     if winner is None or match.get("result_type") not in ("home_win", "away_win"):
         return {"applied": False, "reason": "no winning margin applies"}
     inns = innings_domain.list_innings(conn, mid)
-    if len(inns) != 2:
-        return {"applied": False, "reason": "multi/single-innings margin not auto-calculated"}
-    first, second = inns[0], inns[1]
-    t1, _w1 = _innings_figures(conn, first)
-    t2, w2 = _innings_figures(conn, second)
-    if t1 is None or t2 is None:
-        return {"applied": False, "reason": "one or both innings totals are unknown"}
-    bat1, bat2 = first.get("batting_team_id"), second.get("batting_team_id")
+    if len(inns) < 2:
+        return {"applied": False, "reason": "single-innings margin not auto-calculated"}
+    # Aggregate each side's runs across ITS innings — one each in a limited-overs match, two each in a
+    # two-innings-per-side (multi-innings) match. An unknown total anywhere means the margin can't be
+    # trusted. The FINAL innings decides a by-wickets result (wickets in hand there).
+    team_totals: dict[Any, int] = {}
+    for one in inns:
+        t, _w = _innings_figures(conn, one)
+        tid = one.get("batting_team_id")
+        if t is None or tid is None:
+            return {"applied": False, "reason": "an innings total or batting side is unknown"}
+        team_totals[tid] = team_totals.get(tid, 0) + t
+    if len(team_totals) != 2 or winner not in team_totals:
+        return {"applied": False, "reason": "could not resolve the two sides' totals"}
+    loser = next(t for t in team_totals if t != winner)
+    winner_total, loser_total = team_totals[winner], team_totals[loser]
+    final = inns[-1]
+    _ft, final_w = _innings_figures(conn, final)
     margin_runs: int | None = None
     margin_wickets: int | None = None
-    if _same_team(winner, bat1) and t1 > t2:          # recorded winner batted first and made more → by runs
-        margin_runs = t1 - t2
-    elif _same_team(winner, bat2) and t2 > t1:        # recorded winner batted second and passed it → by wickets
-        margin_wickets = (MAX_WICKETS - w2) if w2 is not None else None
+    if _same_team(winner, final.get("batting_team_id")) and winner_total > loser_total:
+        # the winner batted last and passed the loser's aggregate → by wickets (wickets still in hand)
+        margin_wickets = (MAX_WICKETS - final_w) if final_w is not None else None
+    elif winner_total > loser_total:
+        # the winner out-scored the loser and did not bat last → by runs
+        margin_runs = winner_total - loser_total
     else:
         # the scorecard does not support the recorded winner (they did not out-score the loser) — leave
         # the margin for review; the recorded/calculated conflict is surfaced by result_warnings.
