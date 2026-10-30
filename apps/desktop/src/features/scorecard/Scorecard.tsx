@@ -19,6 +19,7 @@ import {
   api, ApiError, type Competition, type CompetitionDetail, type Match, type Team, type Venue,
 } from "../../lib/api";
 // (Team is used by the create modal and the list's team-name lookup.)
+import { formatDate, useDateStyle } from "../../lib/dates";
 import { Field, NoWorkspace, useManage } from "../manage/_shared";
 import { ScorecardEditor } from "./ScorecardEditor";
 
@@ -49,6 +50,7 @@ export function Scorecard() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const dateStyle = useDateStyle();   // re-render the list when the date-format preference changes
   // Return-to-last-match: remember the match just closed, then scroll to & highlight it in the list.
   const [returnToId, setReturnToId] = useState<string | null>(null);
   // Collapsible season groups (collapsed labels); all expanded by default.
@@ -181,7 +183,7 @@ export function Scorecard() {
             <div className="truncate text-xs text-muted-foreground">
               {compName(m.competition_id)}
               {m.round ? ` · ${m.round}` : ""}
-              {m.match_date ? ` · ${m.match_date}` : " · date unknown"}
+              {m.match_date ? ` · ${formatDate(m.match_date, dateStyle)}` : " · date unknown"}
               {m.format ? ` · ${m.format}` : ""}
             </div>
           </div>

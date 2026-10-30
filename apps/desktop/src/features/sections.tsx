@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { api, ApiError, type MatchFormat } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { formatDate, getDateStyle, setDateStyle, type DateStyle } from "../lib/dates";
 import { canManage } from "../lib/permissions";
 import { getUserScoreFormat, setUserScoreFormat } from "../lib/score-format";
 import { APP_VERSION } from "../lib/version";
@@ -42,6 +43,7 @@ export function Settings() {
   const [userFormat, setUserFmt] = useState<string>(getUserScoreFormat() ?? "");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [dateStyle, setDS] = useState<DateStyle>(getDateStyle);
 
   const saveWorkspace = async (v: string) => {
     if (!current) return;
@@ -77,6 +79,21 @@ export function Settings() {
               <option value="en">English — runs/wickets (e.g. 127/10)</option>
             </Select>
             <span className="text-xs text-muted-foreground">Applies to your view across the app; it does not change anyone else's display or any stored data.</span>
+          </label>
+        </CardContent></Card>
+        <Card><CardContent className="flex flex-col gap-4">
+          <div>
+            <h3 className="text-sm font-semibold">Date Format</h3>
+            <p className="text-xs text-muted-foreground">How dates are shown across the app. Display only — it never changes stored dates.</p>
+          </div>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">My preference</span>
+            <Select value={dateStyle} className="max-w-xs"
+              onChange={(e) => { const v = e.target.value as DateStyle; setDS(v); setDateStyle(v); setMsg("Your date format was updated."); }}>
+              <option value="dmy">Day/Month/Year — {formatDate("2026-10-30", "dmy")}</option>
+              <option value="mdy">Month/Day/Year — {formatDate("2026-10-30", "mdy")}</option>
+            </Select>
+            <span className="text-xs text-muted-foreground">Applies to your view on this device.</span>
           </label>
         </CardContent></Card>
         <UpdatesVersion />
