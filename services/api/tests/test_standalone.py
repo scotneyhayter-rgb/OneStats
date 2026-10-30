@@ -41,6 +41,27 @@ def test_load_config_sets_but_never_overrides(monkeypatch, tmp_path):
     assert os.environ["ONESTATS_DB_USER"] == "quoted_user"  # loaded, quotes stripped
 
 
+def test_load_config_merges_multiple_locations(monkeypatch, tmp_path):
+    """Settings may be split across config files: the backend's primary (data-dir) config holds the DB
+    credentials, while server mode (ONESTATS_BIND_HOST) is written to a different one by the admin script.
+    load_config must merge all locations so both take effect — not stop at the first file found."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "onestats.env").write_text("ONESTATS_DB_NAME=onestats\n", encoding="utf-8")
+    # a later candidate (USERPROFILE/AppData/Local/OneStats) carries ONLY the server-mode setting
+    up = tmp_path / "home"
+    (up / "AppData" / "Local" / "OneStats").mkdir(parents=True)
+    (up / "AppData" / "Local" / "OneStats" / "onestats.env").write_text("ONESTATS_BIND_HOST=0.0.0.0\n", encoding="utf-8")
+    monkeypatch.setenv("USERPROFILE", str(up))
+    monkeypatch.delenv("ONESTATS_CONFIG", raising=False)
+    monkeypatch.delenv("ONESTATS_DB_NAME", raising=False)
+    monkeypatch.delenv("ONESTATS_BIND_HOST", raising=False)
+    launcher.load_config(data_dir)
+    assert os.environ["ONESTATS_DB_NAME"] == "onestats"        # from the primary config
+    assert os.environ["ONESTATS_BIND_HOST"] == "0.0.0.0"       # merged from the second config
+    assert launcher.resolve_bind_host() == "0.0.0.0"           # server mode actually takes effect
+
+
 def test_conn_parts_parses_runtime_url():
     s = Settings(env="test", db_host="localhost", db_port=5432, db_name="onestats",
                  db_user="onestats_app", db_password="secret", _env_file=None)

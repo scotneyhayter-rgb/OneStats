@@ -86,7 +86,12 @@ def _config_candidates(dir_: Path) -> list[Path]:
 
 def load_config(dir_: Path) -> None:
     """Load onestats.env (KEY=VALUE lines) into os.environ without overriding values already set in the
-    environment. Tries several locations; secrets live only in these files, never in source."""
+    environment. MERGES every candidate location (earlier candidates win per key, via setdefault) rather
+    than stopping at the first file found: the database config and a setting like ONESTATS_BIND_HOST
+    (server mode) can live in different files — e.g. the admin "Enable OneStats Server.bat" writes the
+    install-dir config while the backend's primary config is the per-user one — and both must take effect.
+    Secrets live only in these files, never in source."""
+    loaded_any = False
     for cfg in _config_candidates(dir_):
         try:
             if not cfg.exists():
@@ -98,9 +103,11 @@ def load_config(dir_: Path) -> None:
                 key, _, value = line.partition("=")
                 os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
             log.info("Loaded per-user config from %s", cfg)
-            return
+            loaded_any = True
         except OSError:
             continue
+    if loaded_any:
+        return
     # Nothing found — log what this process actually sees, to diagnose launch-context differences.
     try:
         listing = ", ".join(sorted(p.name for p in dir_.iterdir())) if dir_.exists() else "<dir missing>"
