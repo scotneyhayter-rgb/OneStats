@@ -143,6 +143,16 @@ def test_backfill_recomputes_all_and_excludes_unapproved(conn):
     assert out["matches"] == 2 and out["contributions"] == rows and rows > 0  # only the approved match contributes
 
 
+def test_overs_text_parses_to_balls_and_overs():
+    """A recorded 'Overs' value becomes balls + overs, honouring the over length. Economy uses overs, so
+    the whole-over economy is over-length-independent. No DB needed."""
+    assert recalc._overs_to_balls_overs("8", 6) == (48, 8.0)          # 8 six-ball overs
+    assert recalc._overs_to_balls_overs("8", 8) == (64, 8.0)          # 8 eight-ball overs: same over count
+    assert recalc._overs_to_balls_overs("3.2", 6) == (20, 3 + 2 / 6)  # 3 overs + 2 balls
+    assert recalc._overs_to_balls_overs(None, 6) == (None, None)       # unrecorded
+    assert recalc._overs_to_balls_overs("", 6) == (None, None)
+
+
 def test_did_not_bat_counts_as_a_match_played_but_not_an_innings(conn):
     """A player listed on the scoresheet as "did not bat" was in the XI and counts as a match played
     (an appearance), even though it is not a batting innings and earns no batting contribution. A genuine

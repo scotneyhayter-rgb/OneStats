@@ -169,6 +169,27 @@ def _calc_player_batting(conn: Connection, match: dict[str, Any]) -> list[dict[s
     return out
 
 
+def _overs_to_balls_overs(overs_text: Any, bpo: int | None) -> tuple[int | None, float | None]:
+    """A source 'Overs' value (e.g. '8' or '3.2' = 3 overs + 2 balls) → (legal_balls, overs).
+
+    Overs are recorded directly, so the over count is known regardless of the over length; the over
+    length (bpo) is only needed to turn a part-over's balls into a fraction and to express balls. When
+    bpo is unknown a 6-ball over is used for that conversion only (the whole-over economy is unaffected)."""
+    if overs_text is None or str(overs_text).strip() == "":
+        return None, None
+    s = str(overs_text).strip()
+    try:
+        if "." in s:
+            whole, _, part = s.partition(".")
+            full, part_balls = int(whole or 0), int((part[:1] or "0"))
+        else:
+            full, part_balls = int(s), 0
+    except ValueError:
+        return None, None
+    per = bpo or 6
+    return full * per + part_balls, full + (part_balls / per if per else 0.0)
+
+
 def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[str, Any]]:
     """One bowling contribution per person in the match. Per-innings best bowling (BBI) and five-wicket
     innings are derived here; ten-wicket-match is the per-match wicket total. **Overs** are stored for
@@ -179,7 +200,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
     bpo = (matches.effective_conditions(conn, match["id"]).get("conditions") or {}).get("balls_per_over")
     rows = conn.execute(
         text(
-            "SELECT be.person_id AS pid, coalesce(be.legal_balls,0) AS balls, be.legal_balls AS balls_raw, "
+            "SELECT be.person_id AS pid, be.legal_balls AS balls_raw, be.overs_text AS overs_text, "
             " coalesce(be.maidens,0) AS maidens, coalesce(be.runs_conceded,0) AS runs, "
             " be.runs_conceded AS runs_raw, coalesce(be.wickets,0) AS wickets, be.wickets AS wickets_raw, "
             " i.bowling_team_id AS team_id "
@@ -193,13 +214,22 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
     cls = match.get("classification")
     agg: dict[Any, dict[str, Any]] = {}
     for r in rows:
-        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "balls_known": 0,
-                                      "maidens": 0, "runs": 0, "wickets": 0, "wickets_known": 0,
+        a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "overs": 0.0,
+                                      "balls_known": 0, "maidens": 0, "runs": 0, "wickets": 0, "wickets_known": 0,
                                       "five_wkt_innings": 0, "bbi_w": -1, "bbi_r": None})
         a["innings"] += 1
-        a["balls"] += r["balls"]
+        # Balls/overs come from the recorded legal_balls when present, else from the recorded Overs
+        # (``overs_text``) — the source stores overs, not balls, so without this economy/overs read as 0.
         if r["balls_raw"] is not None:
+            a["balls"] += r["balls_raw"]
+            a["overs"] += (r["balls_raw"] / bpo) if bpo else (r["balls_raw"] / 6)
             a["balls_known"] += 1
+        else:
+            e_balls, e_overs = _overs_to_balls_overs(r["overs_text"], bpo)
+            if e_overs is not None:
+                a["balls"] += e_balls or 0
+                a["overs"] += e_overs
+                a["balls_known"] += 1
         a["maidens"] += r["maidens"]
         a["runs"] += r["runs"]
         a["wickets"] += r["wickets"]
@@ -213,11 +243,11 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
             a["bbi_w"], a["bbi_r"] = r["wickets"], r["runs"]
     out = []
     for pid, a in agg.items():
-        # overs for THIS match from its own balls-per-over (never a single assumed over length)
-        overs = round(a["balls"] / bpo, 4) if (bpo and a["balls"]) else 0
+        # overs summed from each innings' recorded overs (its own over length); economy = runs / overs
+        overs = round(a["overs"], 4)
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"innings": a["innings"], "balls": a["balls"], "balls_known": a["balls_known"],
-                                "overs": overs, "overs_known": 1 if bpo else 0,
+                                "overs": overs, "overs_known": 1 if overs > 0 else 0,
                                 "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
                                 "wickets_known": a["wickets_known"], "five_wkt_innings": a["five_wkt_innings"],
                                 "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],
