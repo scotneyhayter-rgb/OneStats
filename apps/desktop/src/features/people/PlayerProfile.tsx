@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type PlayerAnalysis, type PlayerFullProfile } from "../../lib/api";
+import { formatDate, useDateStyle } from "../../lib/dates";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -112,6 +113,7 @@ export function PlayerProfile() {
   const { personId } = useParams();
   const { current } = useWorkspace();
   const navigate = useNavigate();
+  const dateStyle = useDateStyle();   // re-render when the date-format preference changes
   const [full, setFull] = useState<PlayerFullProfile | null>(null);
   const [name, setName] = useState<string>("Player");
   const [photos, setPhotos] = useState<{ id: string; caption: string | null }[]>([]);
@@ -335,22 +337,34 @@ export function PlayerProfile() {
           </div>
         )}
 
-        {/* adaptive career summary */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {statCard("Matches", c?.matches)}
-          {c?.has_batting && statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
-          {c?.has_batting && statCard("Bat average", bat.average, 2)}
-          {c?.has_batting && statCard("Highest", bat.highest_score)}
-          {c?.has_bowling && statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
-          {c?.has_bowling && statCard("Bowl average", bowl.average, 2)}
+        {/* Career summary, grouped by discipline: Matches/Captained on top, then a row each for batting,
+            bowling and fielding. The 3-column rows keep Bat average and Bowl average in the same column,
+            so the two averages sit directly underneath each other. */}
+        <div className="grid gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {statCard("Matches", c?.matches)}
+            {c?.has_captaincy && statCard("Captained", capt.captained)}
+          </div>
+          {c?.has_batting && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
+              {statCard("Bat average", bat.average, 2)}
+              {statCard("Highest", bat.highest_score)}
+            </div>
+          )}
+          {c?.has_bowling && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
+              {statCard("Bowl average", bowl.average, 2)}
+            </div>
+          )}
           {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_outs ?? 0) > 0 && (
-            <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {statCard("Catches", field.catches ?? 0)}
               {statCard("Stumpings", field.stumpings ?? 0)}
               {statCard("Run outs", field.run_outs ?? 0)}
-            </>
+            </div>
           )}
-          {c?.has_captaincy && statCard("Captained", capt.captained)}
         </div>
 
         {/* tabs */}
@@ -375,7 +389,7 @@ export function PlayerProfile() {
               {(() => {
                 const span = full?.span;
                 const fmt = (e: { date: string | null; opposition: string | null } | null | undefined) =>
-                  e?.date ? `${new Date(e.date).toLocaleDateString()}${e.opposition ? ` v ${e.opposition}` : ""}` : null;
+                  e?.date ? `${formatDate(e.date, dateStyle)}${e.opposition ? ` v ${e.opposition}` : ""}` : null;
                 const facts: [string, string | null][] = [
                   ["First match", fmt(span?.first)],
                   ["Most recent match", fmt(span?.last)],
@@ -528,7 +542,7 @@ export function PlayerProfile() {
                     {table([{ key: "match_date", label: "Date" }, { key: "runs", label: "Runs", align: "right" },
                             { key: "wickets", label: "Wkts", align: "right" }, { key: "catches", label: "Ct", align: "right" },
                             { key: "result_type", label: "Result" }],
-                           gf.matches, () => navigate("/matches"))}
+                           gf.matches.map((r) => ({ ...r, match_date: formatDate(r.match_date as string, dateStyle) })), () => navigate("/matches"))}
                   </>
                 )}
               </>
@@ -598,10 +612,10 @@ export function PlayerProfile() {
                   <div><h4 className="mb-1 text-xs font-semibold">Best batting</h4>
                     {table([{ key: "score", label: "Score" }, { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" },
                       { key: "date", label: "Date" }, { key: "position", label: "Pos", align: "right" }],
-                      analysis.best_batting.map((r) => ({ ...r, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}</div>
+                      analysis.best_batting.map((r) => ({ ...r, date: r.date ? formatDate(r.date, dateStyle) : null })))}</div>
                   <div><h4 className="mb-1 text-xs font-semibold">Best bowling</h4>
                     {table([{ key: "figures", label: "Figures" }, { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" }, { key: "date", label: "Date" }],
-                      analysis.best_bowling.map((r) => ({ ...r, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}</div>
+                      analysis.best_bowling.map((r) => ({ ...r, date: r.date ? formatDate(r.date, dateStyle) : null })))}</div>
                 </div>
               )}
             </>
@@ -615,7 +629,7 @@ export function PlayerProfile() {
                     <h3 className="mb-1 text-sm font-semibold">Highest partnerships</h3>
                     {table([{ key: "rank", label: "#", align: "right" }, { key: "runs_disp", label: "Runs", align: "right" }, { key: "wicket", label: "Wkt", align: "right" }, { key: "partner", label: "Partner" },
                       { key: "opposition", label: "Opposition" }, { key: "ground", label: "Ground" }, { key: "date", label: "Date" }],
-                      analysis.partnerships.map((r, i) => ({ ...r, rank: i + 1, runs_disp: `${r.runs}${r.unbroken ? "*" : ""}`, date: r.date ? new Date(r.date).toLocaleDateString() : null })))}
+                      analysis.partnerships.map((r, i) => ({ ...r, rank: i + 1, runs_disp: `${r.runs}${r.unbroken ? "*" : ""}`, date: r.date ? formatDate(r.date, dateStyle) : null })))}
                   </div>
                   <div>
                     <h3 className="mb-1 text-sm font-semibold">Partnership runs by partner (career total)</h3>
@@ -635,7 +649,7 @@ export function PlayerProfile() {
               {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> : (
                 <div className="flex flex-col gap-4">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <LineChart title="Run scores (by innings)" points={analysis.scores.innings.map((s, i) => ({ label: s.date ? new Date(s.date).toLocaleDateString() : `#${i + 1}`, value: s.runs }))} />
+                    <LineChart title="Run scores (by innings)" points={analysis.scores.innings.map((s, i) => ({ label: s.date ? formatDate(s.date, dateStyle) : `#${i + 1}`, value: s.runs }))} />
                     <BarChart title="Score frequency" points={analysis.scores.frequency.map((f) => ({ label: f.range, value: f.count }))} />
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -659,7 +673,7 @@ export function PlayerProfile() {
                 table([{ key: "match_date", label: "Date" }, { key: "classification", label: "Class" },
                        { key: "runs", label: "Runs", align: "right" }, { key: "wickets", label: "Wkts", align: "right" },
                        { key: "catches", label: "Ct", align: "right" }, { key: "result_type", label: "Result" }],
-                      matches, () => navigate("/matches"))}
+                      matches.map((r) => ({ ...r, match_date: formatDate(r.match_date as string, dateStyle) })), () => navigate("/matches"))}
             </>
           )}
 
