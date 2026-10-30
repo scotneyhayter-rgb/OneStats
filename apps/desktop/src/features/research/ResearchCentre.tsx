@@ -28,6 +28,7 @@ import {
   type ResearchSource,
   type ResearchTask,
   type ResearchTimeline,
+  type SeasonCompletenessRow,
 } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
@@ -60,6 +61,7 @@ export function ResearchCentre() {
   const { workspaceId } = useManage();
   const [tab, setTab] = useState<Tab>("overview");
   const [dash, setDash] = useState<ResearchDashboard | null>(null);
+  const [scRows, setScRows] = useState<SeasonCompletenessRow[]>([]);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [timeline, setTimeline] = useState<ResearchTimeline | null>(null);
@@ -74,7 +76,10 @@ export function ResearchCentre() {
   const loadFor = useCallback(async (which: Tab) => {
     if (!workspaceId) return;
     try {
-      if (which === "overview") setDash(await api.researchDashboard(workspaceId));
+      if (which === "overview") {
+        setDash(await api.researchDashboard(workspaceId));
+        setScRows((await api.researchSeasonCompleteness(workspaceId).catch(() => null))?.seasons ?? []);
+      }
       else if (which === "sources") setSources(await api.researchSources(workspaceId));
       else if (which === "timeline") setTimeline(await api.researchTimeline(workspaceId));
       else if (which === "gaps") setGaps(await api.researchGaps(workspaceId));
@@ -124,10 +129,14 @@ export function ResearchCentre() {
     }
   };
 
-  const stat = (label: string, n: number | string) => (
-    <div className="rounded-[var(--radius-app)] border border-border p-3">
+  // One prominent headline indicator: a larger number with a colour accent only when it warrants attention.
+  const bigStat = (label: string, n: number, accent: "success" | "warning" | "brand" | "muted") => (
+    <div className="rounded-[var(--radius-app)] border border-border p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-xl font-semibold tabular-nums">{n}</div>
+      <div className="text-3xl font-semibold tabular-nums"
+        style={{ color: n > 0 && accent !== "muted" ? `var(--${accent === "brand" ? "brand" : accent})` : undefined }}>
+        {n}
+      </div>
     </div>
   );
 
@@ -178,26 +187,42 @@ export function ResearchCentre() {
                   expected fixtures are established — a season is never called complete just from entered matches.
                 </p>
               </div>
-              <SeasonCompleteness />
+              <SeasonCompleteness onCreateTask={() => setTab("tasks")} />
             </CardContent>
           </Card>
         )}
 
-        {tab === "overview" && dash && (
+        {tab === "overview" && dash && (() => {
+          const seasonsToResearch = scRows.filter((s) => s.status !== "verified").length;
+          const needsAttention = dash.draft_scorecards + dash.conflicting_evidence + dash.awaiting_verification;
+          const priorities: { label: string; go: () => void }[] = [];
+          const n = (x: number) => (x === 1 ? "" : "s");
+          if (dash.draft_scorecards > 0) priorities.push({ label: `Review ${dash.draft_scorecards} incomplete scorecard${n(dash.draft_scorecards)}`, go: () => setTab("review") });
+          if (dash.conflicting_evidence > 0) priorities.push({ label: `Resolve ${dash.conflicting_evidence} conflicting source${n(dash.conflicting_evidence)}`, go: () => setTab("review") });
+          if (dash.awaiting_verification > 0) priorities.push({ label: `Verify ${dash.awaiting_verification} scorecard${n(dash.awaiting_verification)} awaiting approval`, go: () => setTab("review") });
+          if (seasonsToResearch > 0) priorities.push({ label: `Research ${seasonsToResearch} season${n(seasonsToResearch)} needing attention`, go: () => setTab("seasons") });
+          if (dash.open_tasks > 0) priorities.push({ label: `Continue ${dash.open_tasks} open research task${n(dash.open_tasks)}`, go: () => setTab("tasks") });
+          return (
           <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {bigStat("Verified matches", dash.verified, "success")}
+              {bigStat("Needs attention", needsAttention, "warning")}
+              {bigStat("Seasons to research", seasonsToResearch, "warning")}
+              {bigStat("Open tasks", dash.open_tasks, "brand")}
+            </div>
             <Card>
-              <CardContent className="flex flex-col gap-3">
-                <h3 className="text-sm font-semibold">Research overview</h3>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {stat("Active projects", dash.projects_active)}
-                  {stat("Sources", dash.sources_total)}
-                  {stat("Matches under investigation", dash.matches_under_investigation)}
-                  {stat("Incomplete scorecards", dash.draft_scorecards)}
-                  {stat("Awaiting verification", dash.awaiting_verification)}
-                  {stat("Conflicting evidence", dash.conflicting_evidence)}
-                  {stat("Open research tasks", dash.open_tasks)}
-                  {stat("Verified matches", dash.verified)}
-                </div>
+              <CardContent className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold">Research priorities</h3>
+                <p className="text-xs text-muted-foreground">The most useful next actions, from your records.</p>
+                {priorities.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Nothing outstanding — every known record is verified.</p>
+                )}
+                {priorities.map((p, i) => (
+                  <button key={i} type="button" onClick={p.go}
+                    className="flex items-center justify-between rounded-[var(--radius-app)] border border-border px-3 py-2 text-left text-sm hover:border-brand">
+                    <span>{p.label}</span><span className="text-muted-foreground" aria-hidden>→</span>
+                  </button>
+                ))}
               </CardContent>
             </Card>
             <Card>
@@ -219,7 +244,8 @@ export function ResearchCentre() {
               </CardContent>
             </Card>
           </>
-        )}
+          );
+        })()}
 
         {tab === "sources" && (
           <Card>
