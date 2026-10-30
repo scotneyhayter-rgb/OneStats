@@ -122,6 +122,7 @@ def _bat_row(r: dict[str, Any]) -> dict[str, Any]:
 def batting_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str = "runs",
                     limit: int = 100, min_runs: int | None = None) -> list[dict[str, Any]]:
     rows = [_bat_row(r) for r in _rows(conn, "player_batting", filters, _BAT_SELECT)]
+    _overlay_matches_played(conn, filters, rows)
     if min_runs is not None:
         for r in rows:
             r["qualified"] = r["runs"] >= min_runs
@@ -178,6 +179,7 @@ def _bowl_row(r: dict[str, Any], over_length: int = 6) -> dict[str, Any]:
 def bowling_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str = "wickets",
                     limit: int = 100, over_length: int = 6, min_wickets: int | None = None) -> list[dict[str, Any]]:
     rows = [_bowl_row(r, over_length) for r in _rows(conn, "player_bowling", filters, _BOWL_SELECT)]
+    _overlay_matches_played(conn, filters, rows)   # after _bowl_row, so economy-completeness (matches-bowled) is intact
     if min_wickets is not None:
         for r in rows:
             r["qualified"] = r["wickets"] >= min_wickets
@@ -204,6 +206,7 @@ def fielding_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str
              "run_out_involvements": int(r["run_outs"]) + int(r["run_out_assists"]),
              "keeper_dismissals": int(r["keeper_dismissals"])}
             for r in _rows(conn, "player_fielding", filters, _FIELD_SELECT)]
+    _overlay_matches_played(conn, filters, rows)
     _sort(rows, order_by)
     return rows[:limit]
 
@@ -262,6 +265,25 @@ def team_records(conn: Connection, filters: dict[str, Any], *, order_by: str = "
 # ---- helpers ------------------------------------------------------------------------------------
 def _sort(rows: list[dict[str, Any]], order_by: str) -> None:
     rows.sort(key=lambda r: (r.get(order_by) is None, -(r.get(order_by) or 0)))
+
+
+def _matches_played(conn: Connection, filters: dict[str, Any]) -> dict[str, int]:
+    """Total distinct matches each person PLAYED, from the appearance ledger, honouring the same filters.
+
+    A discipline leaderboard's "Matches" column means matches played (everyone on the scoresheet,
+    did-not-bat included) — as on a scorecard and as other systems count it — not matches in that one
+    discipline. Innings / overs stay discipline-specific; only the matches total comes from here."""
+    rows = _rows(conn, "player_appearance", filters, "count(DISTINCT c.match_id) AS m")
+    return {str(r["subject_id"]): int(r["m"]) for r in rows}
+
+
+def _overlay_matches_played(conn: Connection, filters: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """Replace each row's discipline match count with matches PLAYED (falling back to the discipline
+    count if a person somehow has no appearance row). Called after the per-row figures are built, so any
+    internal use of the discipline match count (e.g. bowling's economy-completeness flag) is unaffected."""
+    played = _matches_played(conn, filters)
+    for r in rows:
+        r["matches"] = played.get(r["subject_id"], r["matches"])
 
 
 def _person_agg(conn: Connection, calculator: str, filters: dict[str, Any], person_id: UUID,

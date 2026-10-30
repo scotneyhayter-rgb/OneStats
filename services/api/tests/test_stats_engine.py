@@ -86,6 +86,34 @@ def _f(wid, **kw):
     return {"workspace_id": wid, **kw}
 
 
+def test_leaderboard_matches_is_matches_played_not_matches_batted(conn):
+    """A discipline leaderboard's Matches column counts matches PLAYED (everyone on the scoresheet,
+    did-not-bat included), not matches in that discipline. A player who batted in one of two matches
+    shows M=2, Inns=1."""
+    wid = _ws(conn, "ENG MPLAYED")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bat = _p(conn, wid, "Allrounder")
+    # match 1: batted
+    m1 = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, m1, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, m1, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=m1, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bat, batting_position=1,
+                         runs=30, balls_faced=20, dismissal_type="bowled")
+    matches.set_approval(conn, wid, ACTOR, m1, status="approved")
+    # match 2: in the XI, did not bat
+    m2 = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, m2, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, m2, team_id=away, is_home=False)
+    i2 = inn.create_innings(conn, wid, ACTOR, match_id=m2, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i2, person_id=bat, batting_position=11, dismissal_type="dnb")
+    matches.set_approval(conn, wid, ACTOR, m2, status="approved")
+
+    row = {r["subject_id"]: r for r in engine.batting_leaders(conn, _f(wid))}[str(bat)]
+    assert row["matches"] == 2 and row["innings"] == 1   # played 2, batted in 1
+
+
 def test_strike_rate_uses_only_innings_with_recorded_balls(conn):
     """Strike rate = runs from recorded-ball innings x100 / those balls — never total runs over partial
     balls (which wildly overstated it: e.g. a career total divided by a handful of recorded balls)."""
