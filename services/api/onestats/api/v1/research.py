@@ -514,6 +514,16 @@ def research_timeline(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
         return timeline.season_timeline(conn, workspace_id, competition_id=competition_id)
 
 
+@router.get("/season-completeness")
+def research_season_completeness(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
+                                 competition_id: UUID | None = None,
+                                 grade_id: UUID | None = None) -> dict[str, Any]:
+    """Per-season completeness across the four axes (fixture coverage, scorecard completeness,
+    verification, research coverage) for the Research Centre's graphical Season Completeness overview."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return timeline.season_completeness(conn, workspace_id, competition_id=competition_id, grade_id=grade_id)
+
+
 @router.post("/timeline/assessment")
 def set_coverage_assessment(workspace_id: UUID, body: CoverageAssessment, settings: SettingsDep,
                             ctx: VerifyCtx) -> dict[str, Any]:

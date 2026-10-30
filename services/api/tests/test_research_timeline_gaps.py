@@ -58,6 +58,42 @@ def test_classify_computed_never_comprehensive():
     assert timeline.classify_computed(5, 5) == "partial"   # all known verified, but still only 'partial'
 
 
+def test_season_completeness_status_logic():
+    """Stage 3/4: entered matches never establish completeness. A season whose known matches are all
+    scored and verified is still 'coverage_unknown' until an evidence-backed assessment sets the expected
+    fixtures; secondary issues are never hidden."""
+    f = timeline._completeness_status
+    # all known scored + verified, but no assessment → coverage_unknown (NOT verified)
+    status, issues = f(known=1, with_card=1, verified=1, disputed=0, draft=0, no_result=0,
+                       researched=True, assessed_class=None)
+    assert status == "coverage_unknown" and "fixture_coverage_unknown" in issues
+    # an evidence-backed comprehensive assessment with everything verified → verified
+    assert f(1, 1, 1, 0, 0, 0, True, "comprehensive")[0] == "verified"
+    # a missing scorecard → incomplete (and the issue is listed)
+    status, issues = f(2, 1, 1, 0, 0, 0, True, "comprehensive")
+    assert status == "incomplete" and "missing_scorecards" in issues
+    # a missing result → incomplete
+    assert f(2, 2, 2, 0, 0, 1, True, "comprehensive")[0] == "incomplete"
+    # disputed records → conflicting evidence
+    assert f(2, 2, 1, 1, 0, 0, True, None)[0] == "conflicting_evidence"
+    # no known matches and no research recorded → not researched
+    assert f(0, 0, 0, 0, 0, 0, False, None)[0] == "not_researched"
+
+
+def test_season_completeness_reports_axes_without_false_completeness(conn):
+    wid = _ws(conn, "SC")
+    comp = _comp(conn, wid)
+    s = _season(conn, wid, comp, "1899/00")
+    m = matches.create_match(conn, wid, ACTOR, competition_id=comp, season_id=s)
+    matches.set_approval(conn, wid, ACTOR, m, status="approved")
+    out = timeline.season_completeness(conn, wid, competition_id=comp)
+    row = next(x for x in out["seasons"] if x["season_id"] == str(s))
+    assert row["known_matches"] == 1 and row["verified_matches"] == 1
+    assert row["fixture_coverage"] == "unknown"       # never inferred from the one entered match
+    assert row["status"] in ("coverage_unknown", "incomplete")   # not "verified"
+    assert "methodology" in out and "statuses" in out
+
+
 def test_timeline_metrics_and_assessment_override(conn):
     wid = _ws(conn, "TL")
     comp = _comp(conn, wid)
