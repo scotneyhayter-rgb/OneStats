@@ -7,9 +7,10 @@
  * Historical Research Timeline (season coverage), Research Gaps, Review & Verify, Research Projects and
  * Tasks. All figures are read from the backend — nothing is fabricated; unknown stays unknown.
  */
-import { CalendarRange, FileText, FolderGit2, Library, ListChecks, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
+import { CalendarRange, FileText, FolderGit2, Library, ListChecks, Newspaper, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { NewspaperSearch } from "./NewspaperSearch";
 import { SeasonCompleteness } from "./SeasonCompleteness";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
@@ -33,7 +34,7 @@ import {
 } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
-type Tab = "overview" | "seasons" | "sources" | "timeline" | "gaps" | "review" | "projects" | "tasks";
+type Tab = "overview" | "seasons" | "sources" | "newspapers" | "timeline" | "gaps" | "review" | "projects" | "tasks";
 
 const SOURCE_TYPES: { value: string; label: string }[] = [
   { value: "newspaper_article", label: "Newspaper article" },
@@ -170,6 +171,7 @@ export function ResearchCentre() {
           {tabBtn("overview", "Dashboard", <RefreshCw className="h-4 w-4" aria-hidden />)}
           {tabBtn("seasons", "Seasons", <CalendarRange className="h-4 w-4" aria-hidden />)}
           {tabBtn("sources", "Source Library", <Library className="h-4 w-4" aria-hidden />)}
+          {tabBtn("newspapers", "Newspaper Search", <Newspaper className="h-4 w-4" aria-hidden />)}
           {tabBtn("timeline", "Timeline", <ScrollText className="h-4 w-4" aria-hidden />)}
           {tabBtn("gaps", "Research Gaps", <FileText className="h-4 w-4" aria-hidden />)}
           {tabBtn("review", "Review & Verify", <ShieldCheck className="h-4 w-4" aria-hidden />)}
@@ -269,6 +271,15 @@ export function ResearchCentre() {
         )}
 
         {tab === "sources" && <AliasPanel workspaceId={workspaceId} />}
+
+        {tab === "newspapers" && (
+          <Card>
+            <CardContent className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold">Newspaper Search</h3>
+              <NewspaperSearch workspaceId={workspaceId} onSaved={(m) => setFlash(m)} />
+            </CardContent>
+          </Card>
+        )}
 
         {tab === "timeline" && timeline && (
           <Card>

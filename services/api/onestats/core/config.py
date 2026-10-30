@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     playhq_org_id: str | None = Field(default="2a9c6833-92cb-466b-aea8-16fa8277887d")  # RMCC organisation
     # host is region-specific; None → derived from the tenant (CA → api.caprod.playhq.com). Override to pin.
     playhq_base_url: str | None = Field(default=None)
+    # Trove (National Library of Australia) API key for historical newspaper search. Free for
+    # non-commercial use (register at trove.nla.gov.au). When absent, newspaper search reports that a
+    # key is required and fetches nothing. Base URL is overridable for testing.
+    trove_api_key: str | None = Field(default=None)
+    trove_base_url: str = Field(default="https://api.trove.nla.gov.au/v3")
 
     # --- Auth / sessions ---
     session_ttl_hours: int = Field(default=12)

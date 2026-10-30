@@ -32,6 +32,7 @@ from onestats.domain.research import (
     storage,
     tasks,
     timeline,
+    trove,
 )
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
@@ -538,6 +539,23 @@ def set_coverage_assessment(workspace_id: UUID, body: CoverageAssessment, settin
 def research_gaps(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return gaps.coverage_gaps(conn, workspace_id)
+
+
+@router.get("/newspaper-search")
+def newspaper_search(
+    workspace_id: UUID, settings: SettingsDep, ctx: Ctx, q: str,
+    year_from: int | None = None, year_to: int | None = None,
+    newspaper_title: str | None = None, n: int = 20,
+) -> dict[str, Any]:
+    """Search digitised historical newspapers (Trove) for articles to save as research sources.
+    Returns article hits only — never fabricated match data. Requires a configured Trove API key."""
+    try:
+        return trove.search_newspapers(
+            settings, query=q, year_from=year_from, year_to=year_to,
+            newspaper_title=newspaper_title, n=n,
+        )
+    except trove.TroveError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 class ClaimCreate(BaseModel):

@@ -767,6 +767,21 @@ export interface SeasonCompleteness {
   methodology: { note: string };
   statuses: string[];
 }
+export interface NewspaperArticle {
+  id: string;
+  heading: string;
+  newspaper: string | null;
+  date: string | null;
+  page: string | null;
+  snippet: string | null;
+  url: string | null;
+}
+export interface NewspaperSearchResult {
+  query: string;
+  total: number;
+  results: NewspaperArticle[];
+  source: string;
+}
 export interface GapCategory {
   count: number;
   sample?: { match_id: string; match_date: string | null; round: string | null }[];
@@ -1623,6 +1638,8 @@ export const api = {
   researchSeasonCompleteness: (w: string, competition_id?: string) =>
     request<SeasonCompleteness>(`/api/v1/workspaces/${w}/research/season-completeness${competition_id ? `?competition_id=${competition_id}` : ""}`),
   researchGaps: (w: string) => request<ResearchGaps>(`/api/v1/workspaces/${w}/research/gaps`),
+  researchNewspaperSearch: (w: string, params: { q: string; year_from?: number; year_to?: number; newspaper_title?: string; n?: number }) =>
+    request<NewspaperSearchResult>(`/api/v1/workspaces/${w}/research/newspaper-search${qs(params as Record<string, string | number | undefined>)}`),
   researchSetAssessment: (w: string, body: {
     season_id: string; assessed_class: "comprehensive" | "partial" | "significant_gaps" | "unassessed" | "inactive";
     competition_id?: string | null; grade_id?: string | null; basis?: string | null;
