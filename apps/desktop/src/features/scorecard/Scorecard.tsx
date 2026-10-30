@@ -5,7 +5,7 @@
  * gated by match.manage (the backend is the authority; this only decides what to show).
  */
 
-import { Plus, Trophy } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trophy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
@@ -22,6 +22,19 @@ import {
 import { Field, NoWorkspace, useManage } from "../manage/_shared";
 import { ScorecardEditor } from "./ScorecardEditor";
 
+// The cricket season a match belongs to, derived from its date. Australian seasons span two calendar
+// years and roll over mid-winter, so e.g. Oct 2025 and Mar 2026 are both "2025/26". Undated matches group
+// under "Unknown date".
+function seasonOf(dateStr: string | null): string {
+  if (!dateStr) return "Unknown date";
+  const t = Date.parse(dateStr);
+  if (Number.isNaN(t)) return "Unknown date";
+  const d = new Date(dateStr);
+  const y = d.getUTCFullYear();
+  const start = d.getUTCMonth() + 1 >= 7 ? y : y - 1;   // July rollover
+  return `${start}/${String(start + 1).slice(-2)}`;
+}
+
 export function Scorecard() {
   const { workspaceId, canManage } = useManage();
   const [matches, setMatches] = useState<Match[]>([]);
@@ -36,6 +49,10 @@ export function Scorecard() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Return-to-last-match: remember the match just closed, then scroll to & highlight it in the list.
+  const [returnToId, setReturnToId] = useState<string | null>(null);
+  // Collapsible season groups (collapsed labels); all expanded by default.
+  const [collapsedSeasons, setCollapsedSeasons] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -61,6 +78,17 @@ export function Scorecard() {
     void load();
   }, [load]);
 
+  // After returning from a match, scroll it into view and briefly highlight it, so the user lands back
+  // where they were in the list instead of at the top.
+  useEffect(() => {
+    if (openMatch || loading || !returnToId) return;
+    const el = document.getElementById(`match-row-${returnToId}`);
+    if (!el) { setReturnToId(null); return; }
+    el.scrollIntoView({ block: "center" });
+    const t = setTimeout(() => setReturnToId(null), 1800);
+    return () => clearTimeout(t);
+  }, [openMatch, loading, returnToId]);
+
   if (!workspaceId) {
     return (
       <AppShell title="Matches" subtitle="Match management and scorecard entry">
@@ -76,7 +104,7 @@ export function Scorecard() {
           workspaceId={workspaceId}
           matchId={openMatch}
           canManage={canManage}
-          onBack={() => { setOpenMatch(null); void load(); }}
+          onBack={() => { setReturnToId(openMatch); setOpenMatch(null); void load(); }}
           onSaved={() => void load()}
         />
       </AppShell>
@@ -125,6 +153,44 @@ export function Scorecard() {
       setError(e instanceof ApiError ? e.message : "Bulk action failed.");
     } finally { setBulkBusy(false); }
   };
+
+  // Group the (already date-ordered) matches into seasons, most recent first, preserving order within.
+  const seasonGroups: { season: string; matches: Match[] }[] = [];
+  const seasonIdx = new Map<string, number>();
+  for (const m of filtered) {
+    const s = seasonOf(m.match_date);
+    let i = seasonIdx.get(s);
+    if (i === undefined) { i = seasonGroups.length; seasonIdx.set(s, i); seasonGroups.push({ season: s, matches: [] }); }
+    seasonGroups[i].matches.push(m);
+  }
+  const toggleSeason = (s: string) =>
+    setCollapsedSeasons((c) => { const n = new Set(c); n.has(s) ? n.delete(s) : n.add(s); return n; });
+
+  const matchCard = (m: Match) => (
+    <Card key={m.id} id={`match-row-${m.id}`}
+      className={`hover:border-brand ${selected.has(m.id) || returnToId === m.id ? "border-brand ring-2 ring-brand" : ""}`}>
+      <CardContent className="flex items-center gap-3 py-4">
+        {canManage && (
+          <input type="checkbox" aria-label={`Select ${matchTitle(m)}`} checked={selected.has(m.id)}
+            onChange={() => toggleSel(m.id)} onClick={(e) => e.stopPropagation()} className="h-4 w-4" />
+        )}
+        <div className="flex flex-1 cursor-pointer items-center gap-3" onClick={() => setOpenMatch(m.id)}>
+          <Trophy className="h-5 w-5 text-muted-foreground" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium">{matchTitle(m)}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {compName(m.competition_id)}
+              {m.round ? ` · ${m.round}` : ""}
+              {m.match_date ? ` · ${m.match_date}` : " · date unknown"}
+              {m.format ? ` · ${m.format}` : ""}
+            </div>
+          </div>
+          {m.classification !== "unclassified" && <Badge variant="brand">{m.classification.replace(/_/g, " ")}</Badge>}
+          <Badge variant={m.status === "final" ? "success" : m.status === "abandoned" ? "warning" : "muted"}>{m.status}</Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <AppShell title="Matches" subtitle="Match management and scorecard entry">
@@ -185,31 +251,23 @@ export function Scorecard() {
           description="Create a match to start a scorecard. Incomplete matches save as drafts." />
       )}
       {!loading && !error && filtered.length > 0 && (
-        <div className="grid gap-3">
-          {filtered.map((m) => (
-            <Card key={m.id} className={`hover:border-brand ${selected.has(m.id) ? "border-brand" : ""}`}>
-              <CardContent className="flex items-center gap-3 py-4">
-                {canManage && (
-                  <input type="checkbox" aria-label={`Select ${matchTitle(m)}`} checked={selected.has(m.id)}
-                    onChange={() => toggleSel(m.id)} onClick={(e) => e.stopPropagation()} className="h-4 w-4" />
-                )}
-                <div className="flex flex-1 cursor-pointer items-center gap-3" onClick={() => setOpenMatch(m.id)}>
-                <Trophy className="h-5 w-5 text-muted-foreground" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{matchTitle(m)}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {compName(m.competition_id)}
-                    {m.round ? ` · ${m.round}` : ""}
-                    {m.match_date ? ` · ${m.match_date}` : " · date unknown"}
-                    {m.format ? ` · ${m.format}` : ""}
-                  </div>
-                </div>
-                {m.classification !== "unclassified" && <Badge variant="brand">{m.classification.replace(/_/g, " ")}</Badge>}
-                <Badge variant={m.status === "final" ? "success" : m.status === "abandoned" ? "warning" : "muted"}>{m.status}</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="grid gap-4">
+          {seasonGroups.map((g) => {
+            const isCollapsed = collapsedSeasons.has(g.season);
+            return (
+              <div key={g.season} className="grid gap-2">
+                <button type="button" onClick={() => toggleSeason(g.season)}
+                  className="flex items-center gap-2 px-1 text-left text-sm font-semibold hover:text-brand">
+                  {isCollapsed ? <ChevronRight className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                  <span>{g.season}</span>
+                  <span className="font-normal text-muted-foreground">
+                    · {g.matches.length} match{g.matches.length === 1 ? "" : "es"}
+                  </span>
+                </button>
+                {!isCollapsed && g.matches.map(matchCard)}
+              </div>
+            );
+          })}
         </div>
       )}
 
