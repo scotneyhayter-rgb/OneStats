@@ -38,11 +38,13 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 
 ## Prioritised recommendations so far (Deliverable H, growing)
 - **P1 Correctness:** run-out fielder attribution — **fixed** (f0b3bff); broader numeric reconciliation (E) next.
-- **P2 Universal filtering:** **opposition filtering — SHIPPED** (commit b9120fa; team+club, across reports
-  and leaderboards, with a Statistics "Opposition" selector; test
-  `test_opposition_filter_scopes_stats_to_the_chosen_opponent`). Next in priority order: **user-adjustable
-  qualification** (e.g. min innings), then multi-grade/season, specific ground, innings/toss/batpos. The user's
-  "averages vs Pomonal, min 10 innings" query is the running acceptance test — opposition half now works.
+- **P2 Universal filtering:** **opposition filtering — SHIPPED** (b9120fa) and **user-adjustable min-innings
+  qualification — SHIPPED** (401b61c; batting+bowling, filtered-population, excludes small samples from rate
+  rankings). The **acceptance test now fully holds**: RMCC · date range · A Grade · vs Pomonal · home-and-away ·
+  min 10 innings · sorted by average are all expressible on the Statistics screen (tests
+  `test_opposition_filter_scopes_stats_to_the_chosen_opponent`, `test_min_innings_qualification_flags_small_sample_batters`).
+  Next increments: multi-grade/season select, specific ground, innings/toss/batting-position; then a single
+  reusable FilterBar + saved presets + chips across all surfaces.
 - **P3 Reports:** data-quality report suite (High); milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
 - **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
