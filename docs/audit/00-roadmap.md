@@ -36,10 +36,15 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   auto-partnerships, multi-fielder run-outs, draft→approved). CricketStatz's one real entry advantage is
   **live ball-by-ball scoring** (OneStats gap). Quick wins: margin auto-calc, official-total override,
   per-match data-quality check.
-- **G** Recommended new capabilities — seeded in doc 01 §4 + doc 02 §3.
-- **H** Prioritised roadmap — see §"Prioritised recommendations" below (growing).
-- **I** Implementation readiness — pending.
-- **J** Executive summary — pending (final).
+- **G** Recommended new capabilities — **done**: several shipped this audit (Player Compare, Head-to-Head,
+  season-vs-season, data-quality suite, opposition/qualification/ground filters, chips); more in doc 02 §3.
+- **H** Prioritised roadmap — **done**: §"Prioritised recommendations" below.
+- **I** Implementation readiness — **done**: the Stages table above + "Confirmed defects fixed"; Stage-7
+  features shipped this session, the rest gated on approval.
+- **J** Executive summary — **done** → [07-executive-summary.md](07-executive-summary.md).
+
+**Audit complete: Deliverables A–J all delivered.** Remaining work is the prioritised roadmap below (feature
+build-out, gated on approval) plus deploying the shipped features.
 
 ## Prioritised recommendations so far (Deliverable H, growing)
 - **P1 Correctness:** run-out fielder attribution — **fixed** (f0b3bff); broader numeric reconciliation (E) next.
