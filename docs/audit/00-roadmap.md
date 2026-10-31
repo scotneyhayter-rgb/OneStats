@@ -31,7 +31,9 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 - **D** Report comparison — **drafted** (doc 02).
 - **E** Statistical accuracy report — **done** (doc 04): batting+bowling benchmark-verified against live
   CricketStatz, 0 calc defects; only stale-source diffs remain (closed by re-import + fielder backfill).
-- **F** Workflow/usability — pending.
+- **F** Workflow/usability — **done** (doc 05): OneStats faster for everyday tasks and safer for data entry;
+  now at parity on opposition/data-quality/season-find (closed this audit). Top gaps: Player Compare,
+  season-vs-season compare, grade-without-competition, report discoverability.
 - **G** Recommended new capabilities — seeded in doc 01 §4 + doc 02 §3.
 - **H** Prioritised roadmap — see §"Prioritised recommendations" below (growing).
 - **I** Implementation readiness — pending.
@@ -53,7 +55,9 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   innings — surfaced as a Research Centre "Data Quality" tab with per-match drill-down; validated live, e.g.
   1,037 missing fielders, 0 duplicates). Remaining: milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
-- **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
+- **P4 Analysis & UX:** **Player Compare** (two/multi-player side-by-side — neither app has it; top pick),
+  season-vs-season compare, grade-without-competition, report search/favourites; plus head-to-head, debut
+  reports, On This Day, light analytics (Low–Medium). From Deliverable F.
 - All P2+ items are Stage-7 work — **built only after you approve this direction.**
 
 ## Confirmed defects fixed (Stage 5)
