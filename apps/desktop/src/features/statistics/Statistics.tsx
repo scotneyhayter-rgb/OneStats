@@ -53,6 +53,7 @@ export function Statistics() {
   const reqSeq = useRef(0);   // monotonic request id; only the latest report response may render
   const [gradeId, setGradeId] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [oppositionOrgId, setOppositionOrgId] = useState("");   // stats against a chosen opposition club
   const [seasonId, setSeasonId] = useState("");
   const [split, setSplit] = useState("");
   const [venue, setVenue] = useState("");
@@ -116,6 +117,7 @@ export function Statistics() {
     setCompetitionId(String(cfg.competition_id ?? ""));
     setOrganisationId(String(cfg.organisation_id ?? ""));
     setTeamId(String(cfg.team_id ?? ""));
+    setOppositionOrgId(String(cfg.opposition_organisation_id ?? ""));
     // grade/season depend on the competition's loaded lists; reselect them after choosing a competition
     setSplit(String(cfg.split ?? ""));
     setVenue(String(cfg.venue ?? ""));
@@ -130,6 +132,7 @@ export function Statistics() {
     const config: Record<string, unknown> = { competition_id: competitionId || undefined,
       organisation_id: organisationId || undefined, grade_id: gradeId || undefined,
       team_id: teamId || undefined, season_id: seasonId || undefined,
+      opposition_organisation_id: oppositionOrgId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined };
     if (minThreshold) {
       if (report === "batting") config.min_runs = Number(minThreshold);
@@ -159,6 +162,7 @@ export function Statistics() {
     const q: Record<string, string | number | undefined> = {
       competition_id: competitionId || undefined, organisation_id: organisationId || undefined,
       grade_id: gradeId || undefined, team_id: teamId || undefined, season_id: seasonId || undefined,
+      opposition_organisation_id: oppositionOrgId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined,
     };
     if (minThreshold) {
@@ -167,7 +171,7 @@ export function Statistics() {
       else if (report === "captaincy") q.min_eligible = Number(minThreshold);
     }
     return q;
-  }, [competitionId, organisationId, gradeId, teamId, seasonId, split, venue, format, minThreshold, report]);
+  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, seasonId, split, venue, format, minThreshold, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -324,6 +328,15 @@ export function Statistics() {
                 <Select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-44">
                   <option value="">All teams</option>
                   {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </Select>
+              </label>
+            )}
+            {organisations.length > 1 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Opposition</span>
+                <Select value={oppositionOrgId} onChange={(e) => setOppositionOrgId(e.target.value)} className="w-44">
+                  <option value="">Any opposition</option>
+                  {organisations.filter((o) => o.id !== organisationId).map((o) => <option key={o.id} value={o.id}>vs {o.name}</option>)}
                 </Select>
               </label>
             )}

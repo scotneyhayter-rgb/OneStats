@@ -39,6 +39,19 @@ def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if filters.get("organisation_id"):
         clauses.append("c.team_id IN (SELECT id FROM team WHERE organisation_id = :organisation_id)")
         params["organisation_id"] = filters["organisation_id"]
+    # Opposition filter: the contribution's side FACED this team / club in the match. Correlated on the
+    # contribution's match + own team, so it needs no join and applies to every calculator (batting,
+    # bowling, fielding, captaincy, team). Requires both sides linked on the match (match_team) — a match
+    # with an unresolved opponent simply doesn't match, never guessed.
+    if filters.get("opposition_team_id"):
+        clauses.append("(EXISTS (SELECT 1 FROM match_team mt WHERE mt.match_id = c.match_id "
+                       "AND mt.team_id = :opposition_team_id) AND c.team_id <> :opposition_team_id)")
+        params["opposition_team_id"] = filters["opposition_team_id"]
+    if filters.get("opposition_organisation_id"):
+        clauses.append("(EXISTS (SELECT 1 FROM match_team mt JOIN team t ON t.id = mt.team_id "
+                       "WHERE mt.match_id = c.match_id AND t.organisation_id = :opposition_organisation_id) "
+                       "AND c.team_id NOT IN (SELECT id FROM team WHERE organisation_id = :opposition_organisation_id))")
+        params["opposition_organisation_id"] = filters["opposition_organisation_id"]
     split = filters.get("split")
     if split and split in _SPLIT:
         clauses.append("c.metrics->>'classification' = :split_cls")

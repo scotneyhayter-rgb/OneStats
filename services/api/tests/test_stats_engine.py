@@ -310,3 +310,34 @@ def test_participation_and_only_approved(conn):
     # a draft match contributes nothing
     mid2 = matches.create_match(conn, wid, ACTOR)
     assert recalc.recompute_match(conn, wid, ACTOR, mid2)["contributions"] == 0
+
+
+def test_opposition_filter_scopes_stats_to_the_chosen_opponent(conn):
+    """A batter who faced two different opponents: the opposition filter (team or club) returns only the
+    runs made against that opponent, and never credits a side as its own opposition. This is the
+    'averages vs <opponent>' capability (universal-filter Deliverable C)."""
+    wid = _ws(conn, "ENG OPP")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away, rival = _team(conn, wid, "Home"), _team(conn, wid, "Away"), _team(conn, wid, "Rival")
+    bat = _p(conn, wid, "Opener")
+    for opp, runs in ((away, 120), (rival, 50)):
+        m = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+        matches.set_team(conn, wid, ACTOR, m, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, m, team_id=opp, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=m, inns_number=1, batting_team_id=home, bowling_team_id=opp)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=bat, batting_position=1,
+                             runs=runs, balls_faced=runs, dismissal_type="bowled")
+        matches.set_approval(conn, wid, ACTOR, m, status="approved")
+    away_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": away}).scalar_one()
+    home_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": home}).scalar_one()
+
+    def runs(**kw):
+        row = {r["subject_id"]: r for r in engine.batting_leaders(conn, _f(wid, **kw))}.get(str(bat))
+        return row["runs"] if row else None
+
+    assert runs() == 170                                    # both matches, unfiltered
+    assert runs(opposition_team_id=away) == 120             # only vs Away
+    assert runs(opposition_team_id=rival) == 50             # only vs Rival
+    assert runs(opposition_organisation_id=away_org) == 120  # club-level opposition
+    assert runs(opposition_team_id=home) is None            # a side is never its own opposition
+    assert runs(opposition_organisation_id=home_org) is None

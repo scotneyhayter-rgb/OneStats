@@ -70,9 +70,11 @@ def recalc_backfill(workspace_id: UUID, settings: SettingsDep, ctx: AdminCtx) ->
 
 def _filters(workspace_id: UUID, season_id: UUID | None, grade_id: UUID | None, competition_id: UUID | None,
              team_id: UUID | None, split: str | None, venue: str | None, format: str | None,
-             date_from: date | None, date_to: date | None, organisation_id: UUID | None = None) -> dict[str, Any]:
+             date_from: date | None, date_to: date | None, organisation_id: UUID | None = None,
+             opposition_team_id: UUID | None = None, opposition_organisation_id: UUID | None = None) -> dict[str, Any]:
     return {"workspace_id": workspace_id, "season_id": season_id, "grade_id": grade_id,
             "competition_id": competition_id, "team_id": team_id, "organisation_id": organisation_id,
+            "opposition_team_id": opposition_team_id, "opposition_organisation_id": opposition_organisation_id,
             "split": split, "venue": venue, "format": format, "date_from": date_from, "date_to": date_to}
 
 
@@ -81,9 +83,11 @@ def _common(workspace_id: UUID, season_id: UUID | None = None, grade_id: UUID | 
             competition_id: UUID | None = None, team_id: UUID | None = None, split: str | None = None,
             venue: str | None = None, format: str | None = None, date_from: date | None = None,
             date_to: date | None = None, order_by: str | None = None, limit: int = 100,
-            organisation_id: UUID | None = None) -> dict[str, Any]:
+            organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+            opposition_organisation_id: UUID | None = None) -> dict[str, Any]:
     return {"f": _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format,
-                          date_from, date_to, organisation_id), "order_by": order_by, "limit": limit}
+                          date_from, date_to, organisation_id, opposition_team_id, opposition_organisation_id),
+            "order_by": order_by, "limit": limit}
 
 
 @router.get("/primary-club")
@@ -97,12 +101,14 @@ def primary_club(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dic
 @router.get("/batting")
 def batting(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
             grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-            organisation_id: UUID | None = None,
+            organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+            opposition_organisation_id: UUID | None = None,
             split: str | None = None, venue: str | None = None, format: str | None = None,
             date_from: date | None = None, date_to: date | None = None, order_by: str = "runs",
             limit: int = 100, min_runs: int | None = None) -> list[dict[str, Any]]:
     c = _common(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, date_from, date_to,
-                organisation_id=organisation_id)
+                organisation_id=organisation_id, opposition_team_id=opposition_team_id,
+                opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.batting_leaders(conn, c["f"], order_by=order_by, limit=limit, min_runs=min_runs)
 
@@ -110,12 +116,14 @@ def batting(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: 
 @router.get("/bowling")
 def bowling(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
             grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-            organisation_id: UUID | None = None,
+            organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+            opposition_organisation_id: UUID | None = None,
             split: str | None = None, venue: str | None = None, format: str | None = None,
             date_from: date | None = None, date_to: date | None = None, order_by: str = "wickets",
             limit: int = 100, over_length: int = 6, min_wickets: int | None = None) -> list[dict[str, Any]]:
     c = _common(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, date_from, date_to,
-                organisation_id=organisation_id)
+                organisation_id=organisation_id, opposition_team_id=opposition_team_id,
+                opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.bowling_leaders(conn, c["f"], order_by=order_by, limit=limit, over_length=over_length,
                                       min_wickets=min_wickets)
@@ -124,11 +132,13 @@ def bowling(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: 
 @router.get("/fielding")
 def fielding(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
              grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-             organisation_id: UUID | None = None,
+             organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+             opposition_organisation_id: UUID | None = None,
              split: str | None = None, venue: str | None = None, order_by: str = "catches",
              limit: int = 100) -> list[dict[str, Any]]:
     c = _common(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, None, None, None,
-                organisation_id=organisation_id)
+                organisation_id=organisation_id, opposition_team_id=opposition_team_id,
+                opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.fielding_leaders(conn, c["f"], order_by=order_by, limit=limit)
 
@@ -136,11 +146,13 @@ def fielding(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id:
 @router.get("/captaincy")
 def captaincy(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
               grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-              organisation_id: UUID | None = None,
+              organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+              opposition_organisation_id: UUID | None = None,
               split: str | None = None, order_by: str = "captained", limit: int = 100,
               min_eligible: int = 20) -> list[dict[str, Any]]:
     c = _common(workspace_id, season_id, grade_id, competition_id, team_id, split, None, None, None, None,
-                organisation_id=organisation_id)
+                organisation_id=organisation_id, opposition_team_id=opposition_team_id,
+                opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.captaincy_leaders(conn, c["f"], order_by=order_by, limit=limit, min_eligible=min_eligible)
 
@@ -148,10 +160,12 @@ def captaincy(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id
 @router.get("/participation")
 def participation(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
                   grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
-                  organisation_id: UUID | None = None,
+                  organisation_id: UUID | None = None, opposition_team_id: UUID | None = None,
+                  opposition_organisation_id: UUID | None = None,
                   split: str | None = None, order_by: str = "matches", limit: int = 100) -> list[dict[str, Any]]:
     c = _common(workspace_id, season_id, grade_id, competition_id, team_id, split, None, None, None, None,
-                organisation_id=organisation_id)
+                organisation_id=organisation_id, opposition_team_id=opposition_team_id,
+                opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.participation_leaders(conn, c["f"], order_by=order_by, limit=limit)
 
@@ -159,8 +173,10 @@ def participation(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, seaso
 @router.get("/teams")
 def teams(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
           grade_id: UUID | None = None, competition_id: UUID | None = None, split: str | None = None,
-          order_by: str = "wins", limit: int = 100) -> list[dict[str, Any]]:
-    c = _common(workspace_id, season_id, grade_id, competition_id, None, split, None, None, None, None)
+          order_by: str = "wins", limit: int = 100, opposition_team_id: UUID | None = None,
+          opposition_organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    c = _common(workspace_id, season_id, grade_id, competition_id, None, split, None, None, None, None,
+                opposition_team_id=opposition_team_id, opposition_organisation_id=opposition_organisation_id)
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return engine.team_records(conn, c["f"], order_by=order_by, limit=limit)
 
@@ -308,13 +324,14 @@ def catalogue_index(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> 
 def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
                 season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
                 team_id: UUID | None = None, organisation_id: UUID | None = None,
+                opposition_team_id: UUID | None = None, opposition_organisation_id: UUID | None = None,
                 split: str | None = None, venue: str | None = None,
                 format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
                 min_wickets: int | None = None, over_length: int | None = None,
                 min_eligible: int | None = None) -> dict[str, Any]:
     """On-screen report data (columns + rows) from the one engine — matches the PDF export exactly."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
-                 organisation_id)
+                 organisation_id, opposition_team_id, opposition_organisation_id)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
     with workspace_transaction(_engine(settings), workspace_id) as conn:
@@ -327,13 +344,15 @@ def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: Vie
 @router.get("/reports/{report}/pdf")
 def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
                   season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
-                  team_id: UUID | None = None, organisation_id: UUID | None = None, split: str | None = None,
+                  team_id: UUID | None = None, organisation_id: UUID | None = None,
+                  opposition_team_id: UUID | None = None, opposition_organisation_id: UUID | None = None,
+                  split: str | None = None,
                   venue: str | None = None, format: str | None = None, order_by: str | None = None,
                   min_runs: int | None = None, min_wickets: int | None = None, over_length: int | None = None,
                   min_eligible: int | None = None, period: str | None = None, cover: bool = False) -> Response:
     """Export the report as a print-ready, branded A4 PDF (same figures as on-screen)."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
-                 organisation_id)
+                 organisation_id, opposition_team_id, opposition_organisation_id)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
     labels = [lbl for lbl in (f"Split: {split}" if split else None, f"Venue: {venue}" if venue else None,
@@ -352,13 +371,14 @@ def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: V
 def report_csv_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: ViewCtx,
                       season_id: UUID | None = None, grade_id: UUID | None = None, competition_id: UUID | None = None,
                       team_id: UUID | None = None, organisation_id: UUID | None = None,
+                      opposition_team_id: UUID | None = None, opposition_organisation_id: UUID | None = None,
                       split: str | None = None, venue: str | None = None,
                       format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
                       min_wickets: int | None = None, over_length: int | None = None,
                       min_eligible: int | None = None) -> Response:
     """Export a tabular report as CSV (same columns/figures as the on-screen report)."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
-                 organisation_id)
+                 organisation_id, opposition_team_id, opposition_organisation_id)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible}.items() if v is not None}
     with workspace_transaction(_engine(settings), workspace_id) as conn:
