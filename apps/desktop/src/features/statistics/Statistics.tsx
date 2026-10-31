@@ -271,10 +271,16 @@ export function Statistics() {
 
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">Core leaderboards with full filters. For the complete library of reports, open the catalogue.</p>
-          <a href="#/statistics/catalogue"
-            className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
-            Report Catalogue →
-          </a>
+          <div className="flex items-center gap-2">
+            <a href="#/statistics/compare"
+              className="whitespace-nowrap rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm font-medium hover:border-brand">
+              Compare players →
+            </a>
+            <a href="#/statistics/catalogue"
+              className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
+              Report Catalogue →
+            </a>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

@@ -4,6 +4,7 @@ import { EmptyState, LoadingState } from "./components/states/States";
 import { Dashboard } from "./features/Dashboard";
 import { Settings } from "./features/sections";
 import { Ask } from "./features/ask/Ask";
+import { PlayerCompare } from "./features/statistics/PlayerCompare";
 import { Statistics } from "./features/statistics/Statistics";
 import { ReportCatalogue } from "./features/statistics/ReportCatalogue";
 import { CaptaincyCompare } from "./features/statistics/CaptaincyCompare";
@@ -68,6 +69,7 @@ function AuthedApp() {
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />
         <Route path="/statistics" element={<Statistics />} />
+        <Route path="/statistics/compare" element={<PlayerCompare />} />
         <Route path="/statistics/catalogue" element={<ReportCatalogue />} />
         <Route path="/statistics/captaincy-compare" element={<CaptaincyCompare />} />
         <Route path="/ask" element={<Ask />} />

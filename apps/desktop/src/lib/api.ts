@@ -230,6 +230,15 @@ export interface DataQualityScan {
   ok: boolean;
   note: string;
 }
+export interface ComparePlayer {
+  person_id: string;
+  name: string;
+  batting: Record<string, number | null>;
+  bowling: Record<string, number | null>;
+  fielding: Record<string, number | null>;
+  captaincy: Record<string, number | null>;
+}
+export interface PlayerComparison { players: ComparePlayer[] }
 export interface CatalogueReport {
   id: string;
   name: string;
@@ -1744,6 +1753,12 @@ export const api = {
     request<{ report: string; title: string }[]>(`/api/v1/workspaces/${w}/stats/reports`),
   statsDataQuality: (w: string) =>
     request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/data-quality`),
+  statsCompare: (w: string, playerIds: string[], q: Record<string, string | number | undefined> = {}) => {
+    const all = { player_ids: playerIds.join(","), ...q };
+    const qs2 = Object.entries(all).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    return request<PlayerComparison>(`/api/v1/workspaces/${w}/stats/compare?${qs2}`);
+  },
   statsReport: (w: string, report: string, q: Record<string, string | number | undefined> = {}) => {
     const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
