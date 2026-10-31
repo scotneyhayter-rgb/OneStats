@@ -43,8 +43,10 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   rankings). The **acceptance test now fully holds**: RMCC · date range · A Grade · vs Pomonal · home-and-away ·
   min 10 innings · sorted by average are all expressible on the Statistics screen (tests
   `test_opposition_filter_scopes_stats_to_the_chosen_opponent`, `test_min_innings_qualification_flags_small_sample_batters`).
-  Next increments: multi-grade/season select, specific ground, innings/toss/batting-position; then a single
-  reusable FilterBar + saved presets + chips across all surfaces.
+  **Specific-ground filter + active-filter chips — SHIPPED** (85d25a4; venue_id via match join; the Statistics
+  screen now shows every active filter as a removable chip with Clear all, per Part 3.5). Next increments:
+  multi-grade/multi-season select, innings/toss/batting-position; then extract one reusable FilterBar (with the
+  chips) + saved presets, and reuse it on player/team profiles, dashboards and Ask OneStats.
 - **P3 Reports:** data-quality report suite (High); milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
 - **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
