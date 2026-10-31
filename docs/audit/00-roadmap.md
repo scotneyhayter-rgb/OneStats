@@ -57,7 +57,8 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   in-a-season/match/innings, winning-margin/run-chase (Medium).
 - **P4 Analysis & UX:** **Player Compare — SHIPPED** (e6a7fda; 2–6 players side-by-side across batting/
   bowling/fielding/captaincy under shared filters incl. opposition, best-value highlight + CSV; neither app
-  had it). Remaining: season-vs-season compare, grade-without-competition, report search/favourites; plus
+  had it). **Season-vs-season compare — SHIPPED** (d622b7a; a "Compare seasons" mode on Player Compare:
+  one player across seasons). Remaining: grade-without-competition, report search/favourites; plus
   head-to-head, debut reports, On This Day, light analytics (Low–Medium). From Deliverable F.
 - All P2+ items are Stage-7 work — **built only after you approve this direction.**
 
