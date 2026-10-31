@@ -357,3 +357,31 @@ def test_min_innings_qualification_flags_small_sample_batters(conn):
     assert bat1(min_innings=1)["qualified"] is True     # 1 innings meets "min 1"
     assert bat1(min_innings=2)["qualified"] is False    # fewer than 2 innings → unqualified
     assert "qualified" not in bat1()                    # no threshold → no flag, everyone shown
+
+
+def test_venue_filter_scopes_stats_to_a_specific_ground(conn):
+    """Specific-ground filter (distinct from the home/away split): a batter's runs are scoped to the
+    chosen venue only (universal-filter Deliverable C)."""
+    from onestats.domain import venues
+    wid = _ws(conn, "ENG VENUE")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    g1 = venues.create_venue(conn, wid, ACTOR, name="Oval One")
+    g2 = venues.create_venue(conn, wid, ACTOR, name="Oval Two")
+    bat = _p(conn, wid, "Opener")
+    for ground, runs in ((g1, 80), (g2, 30)):
+        m = matches.create_match(conn, wid, ACTOR, competition_id=cid, venue_id=ground)
+        matches.set_team(conn, wid, ACTOR, m, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, m, team_id=away, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=m, inns_number=1, batting_team_id=home, bowling_team_id=away)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=bat, batting_position=1,
+                             runs=runs, balls_faced=runs, dismissal_type="bowled")
+        matches.set_approval(conn, wid, ACTOR, m, status="approved")
+
+    def runs(**kw):
+        row = {r["subject_id"]: r for r in engine.batting_leaders(conn, _f(wid, **kw))}.get(str(bat))
+        return row["runs"] if row else None
+
+    assert runs() == 110                    # both grounds
+    assert runs(venue_id=g1) == 80          # only Oval One
+    assert runs(venue_id=g2) == 30          # only Oval Two

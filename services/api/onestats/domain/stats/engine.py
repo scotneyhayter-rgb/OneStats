@@ -19,9 +19,10 @@ _SPLIT = {"home_away": "home_away", "finals": "final", "grand_final": "grand_fin
 
 
 def _needs_match_join(filters: dict[str, Any]) -> bool:
-    """A join to ``match`` is only needed for format/date filters — scope, team, split and venue are all
-    on the contribution row (or in its metrics). Skipping the join keeps large-dataset queries fast."""
-    return bool(filters.get("format") or filters.get("date_from") or filters.get("date_to"))
+    """A join to ``match`` is only needed for format/date/specific-ground filters — scope, team, split and
+    home/away are all on the contribution row (or its metrics). Skipping the join keeps queries fast."""
+    return bool(filters.get("format") or filters.get("date_from") or filters.get("date_to")
+                or filters.get("venue_id"))
 
 
 def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -64,6 +65,9 @@ def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if filters.get("format"):
         clauses.append("m.format = :format")
         params["format"] = filters["format"]
+    if filters.get("venue_id"):   # a specific ground (distinct from the home/away split above)
+        clauses.append("m.venue_id = :venue_id")
+        params["venue_id"] = filters["venue_id"]
     if filters.get("date_from"):
         clauses.append("m.match_date >= :date_from")
         params["date_from"] = filters["date_from"]

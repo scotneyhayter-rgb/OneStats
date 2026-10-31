@@ -9,7 +9,7 @@ import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type Competition, type Grade, type Organisation, type Season, type StatColumn, type StatReport, type Team } from "../../lib/api";
+import { api, ApiError, type Competition, type Grade, type Organisation, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -44,6 +44,8 @@ export function Statistics() {
   const [competitionId, setCompetitionId] = useState("");
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [venueId, setVenueId] = useState("");   // a specific ground (distinct from the home/away split)
   const [grades, setGrades] = useState<Grade[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [organisationId, setOrganisationId] = useState("");
@@ -76,6 +78,7 @@ export function Statistics() {
     if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
     if (current) api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
     if (current) api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
+    if (current) api.listVenues(current.id).then(setVenues).catch(() => setVenues([]));
     if (current) api.statsPrimaryClub(current.id).then(setPrimaryClub).catch(() => setPrimaryClub({}));
     loadSaved();
   }, [current, loadSaved]);
@@ -119,6 +122,7 @@ export function Statistics() {
     setOrganisationId(String(cfg.organisation_id ?? ""));
     setTeamId(String(cfg.team_id ?? ""));
     setOppositionOrgId(String(cfg.opposition_organisation_id ?? ""));
+    setVenueId(String(cfg.venue_id ?? ""));
     // grade/season depend on the competition's loaded lists; reselect them after choosing a competition
     setSplit(String(cfg.split ?? ""));
     setVenue(String(cfg.venue ?? ""));
@@ -134,7 +138,7 @@ export function Statistics() {
     const config: Record<string, unknown> = { competition_id: competitionId || undefined,
       organisation_id: organisationId || undefined, grade_id: gradeId || undefined,
       team_id: teamId || undefined, season_id: seasonId || undefined,
-      opposition_organisation_id: oppositionOrgId || undefined,
+      opposition_organisation_id: oppositionOrgId || undefined, venue_id: venueId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined };
     if (minThreshold) {
       if (report === "batting") config.min_runs = Number(minThreshold);
@@ -165,7 +169,7 @@ export function Statistics() {
     const q: Record<string, string | number | undefined> = {
       competition_id: competitionId || undefined, organisation_id: organisationId || undefined,
       grade_id: gradeId || undefined, team_id: teamId || undefined, season_id: seasonId || undefined,
-      opposition_organisation_id: oppositionOrgId || undefined,
+      opposition_organisation_id: oppositionOrgId || undefined, venue_id: venueId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined,
     };
     if (minThreshold) {
@@ -175,7 +179,7 @@ export function Statistics() {
     }
     if (minInnings && (report === "batting" || report === "bowling")) q.min_innings = Number(minInnings);
     return q;
-  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, seasonId, split, venue, format, minThreshold, minInnings, report]);
+  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, venueId, seasonId, split, venue, format, minThreshold, minInnings, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -238,6 +242,27 @@ export function Statistics() {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
     else { setSortKey(key); setSortDir(-1); }
   };
+
+  const clearAll = () => {
+    setCompetitionId(""); setGradeId(""); setSeasonId(""); setTeamId("");
+    setOppositionOrgId(""); setVenueId(""); setSplit(""); setVenue(""); setFormat("");
+    setMinInnings(""); setMinThreshold("");   // club scope is the master default, left intact
+  };
+  // Active filters, shown as removable chips so a filtered report is never mistaken for all-time.
+  const activeChips = [
+    competitionId && { label: `Comp: ${competitions.find((c) => c.id === competitionId)?.name ?? "—"}`, clear: () => setCompetitionId("") },
+    gradeId && { label: `Grade: ${grades.find((g) => g.id === gradeId)?.name ?? "—"}`, clear: () => setGradeId("") },
+    seasonId && { label: `Season: ${seasons.find((s) => s.id === seasonId)?.label ?? "—"}`, clear: () => setSeasonId("") },
+    organisationId && { label: `Club: ${organisations.find((o) => o.id === organisationId)?.name ?? "—"}`, clear: () => setClub("") },
+    teamId && { label: `Team: ${teams.find((t) => t.id === teamId)?.name ?? "—"}`, clear: () => setTeamId("") },
+    oppositionOrgId && { label: `vs ${organisations.find((o) => o.id === oppositionOrgId)?.name ?? "—"}`, clear: () => setOppositionOrgId("") },
+    venueId && { label: `Ground: ${venues.find((v) => v.id === venueId)?.name ?? "—"}`, clear: () => setVenueId("") },
+    split && { label: SPLITS.find((s) => s.value === split)?.label ?? split, clear: () => setSplit("") },
+    venue && { label: venue === "home" ? "Home only" : "Away only", clear: () => setVenue("") },
+    format && { label: `Format: ${format}`, clear: () => setFormat("") },
+    minInnings && (report === "batting" || report === "bowling") && { label: `Min innings: ${minInnings}`, clear: () => setMinInnings("") },
+    minThreshold && { label: `${report === "batting" ? "Min runs" : report === "bowling" ? "Min wickets" : "Min eligible"}: ${minThreshold}`, clear: () => setMinThreshold("") },
+  ].filter(Boolean) as { label: string; clear: () => void }[];
 
   return (
     <AppShell title="Statistics" subtitle={current.name}>
@@ -362,6 +387,15 @@ export function Statistics() {
                 <option value="away">Away</option>
               </Select>
             </label>
+            {venues.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Ground</span>
+                <Select value={venueId} onChange={(e) => setVenueId(e.target.value)} className="w-44">
+                  <option value="">All grounds</option>
+                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </Select>
+              </label>
+            )}
             {formats.length > 0 && (
               <label className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Format</span>
@@ -395,6 +429,19 @@ export function Statistics() {
               <Download className="h-4 w-4" aria-hidden /> Export PDF
             </Button>
           </div>
+
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Filters:</span>
+              {activeChips.map((c, i) => (
+                <span key={i} className="inline-flex items-center gap-1 rounded-full border border-brand bg-brand/10 px-2 py-0.5 text-xs text-brand">
+                  {c.label}
+                  <button type="button" aria-label={`Clear ${c.label}`} className="hover:text-danger" onClick={c.clear}>×</button>
+                </span>
+              ))}
+              <button type="button" className="text-xs text-muted-foreground underline hover:text-foreground" onClick={clearAll}>Clear all</button>
+            </div>
+          )}
 
           <h3 className="text-sm font-semibold">{data?.title ?? "Report"}</h3>
           {data && data.rows.length === 0 && (
