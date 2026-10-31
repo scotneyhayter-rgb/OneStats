@@ -276,6 +276,10 @@ export function Statistics() {
               className="whitespace-nowrap rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm font-medium hover:border-brand">
               Compare players →
             </a>
+            <a href="#/statistics/head-to-head"
+              className="whitespace-nowrap rounded-[var(--radius-app)] border border-border px-3 py-1.5 text-sm font-medium hover:border-brand">
+              Head-to-Head →
+            </a>
             <a href="#/statistics/catalogue"
               className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
               Report Catalogue →

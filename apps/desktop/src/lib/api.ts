@@ -239,6 +239,14 @@ export interface ComparePlayer {
   captaincy: Record<string, number | null>;
 }
 export interface PlayerComparison { players: ComparePlayer[] }
+export interface H2HRecord {
+  organisation_id: string; name: string;
+  played: number; wins: number; losses: number; draws: number; ties: number; win_pct: number | null;
+}
+export interface HeadToHead {
+  a: H2HRecord; b: H2HRecord;
+  matches: { match_id: string; match_date: string | null; result_type: string | null; winner: "a" | "b" | null }[];
+}
 export interface CatalogueReport {
   id: string;
   name: string;
@@ -1755,6 +1763,12 @@ export const api = {
     request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/data-quality`),
   statsMatchDataQuality: (w: string, matchId: string) =>
     request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/matches/${matchId}/data-quality`),
+  statsHeadToHead: (w: string, orgA: string, orgB: string, q: Record<string, string | undefined> = {}) => {
+    const all = { organisation_a: orgA, organisation_b: orgB, ...q };
+    const qs2 = Object.entries(all).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    return request<HeadToHead>(`/api/v1/workspaces/${w}/stats/head-to-head?${qs2}`);
+  },
   statsCompare: (w: string, playerIds: string[], q: Record<string, string | number | undefined> = {}) => {
     const all = { player_ids: playerIds.join(","), ...q };
     const qs2 = Object.entries(all).filter(([, v]) => v !== undefined && v !== "")

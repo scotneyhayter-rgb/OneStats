@@ -475,6 +475,52 @@ def compare_seasons(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, per
         return {"players": cols, "player_name": pname}
 
 
+@router.get("/head-to-head")
+def head_to_head(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                 organisation_a: UUID, organisation_b: UUID, season_id: UUID | None = None,
+                 grade_id: UUID | None = None, competition_id: UUID | None = None,
+                 split: str | None = None) -> dict[str, Any]:
+    """Head-to-head record between two clubs — each club's W/L/D/T in matches they played against the other,
+    plus the match list. Reuses the one engine's team records scoped by the opposition filter."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        onames = {str(r["id"]): r["name"] for r in conn.execute(
+            text("SELECT id, name FROM organisation WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
+        torg = {str(r["id"]): str(r["organisation_id"]) for r in conn.execute(
+            text("SELECT id, organisation_id FROM team WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
+
+        def record(org_self: UUID, org_opp: UUID) -> dict[str, Any]:
+            f = _filters(workspace_id, season_id, grade_id, competition_id, None, split, None, None, None, None,
+                         str(org_self), None, str(org_opp), None)
+            agg = {"played": 0, "wins": 0, "losses": 0, "draws": 0, "ties": 0}
+            for r in engine.team_records(conn, f, limit=5000):
+                for k in agg:
+                    agg[k] += int(r.get(k) or 0)
+            decided = agg["wins"] + agg["losses"] + agg["draws"] + agg["ties"]
+            agg["win_pct"] = round(agg["wins"] * 100 / decided, 1) if decided else None
+            return agg
+
+        a, b = str(organisation_a), str(organisation_b)
+        rows = conn.execute(
+            text("SELECT m.id, m.match_date, m.result_type, m.won_by_team_id FROM match m "
+                 "WHERE m.workspace_id = :w AND m.include_in_statistics = true "
+                 "AND EXISTS (SELECT 1 FROM match_team mt JOIN team t ON t.id = mt.team_id "
+                 "            WHERE mt.match_id = m.id AND t.organisation_id = :a) "
+                 "AND EXISTS (SELECT 1 FROM match_team mt JOIN team t ON t.id = mt.team_id "
+                 "            WHERE mt.match_id = m.id AND t.organisation_id = :b) "
+                 "ORDER BY m.match_date DESC NULLS LAST LIMIT 200"),
+            {"w": workspace_id, "a": a, "b": b}).mappings().all()
+        matches = []
+        for r in rows:
+            won_org = torg.get(str(r["won_by_team_id"])) if r["won_by_team_id"] else None
+            winner = "a" if won_org == a else "b" if won_org == b else None
+            matches.append({"match_id": str(r["id"]),
+                            "match_date": r["match_date"].isoformat() if r["match_date"] else None,
+                            "result_type": r["result_type"], "winner": winner})
+        return {"a": {"organisation_id": a, "name": onames.get(a, "?"), **record(organisation_a, organisation_b)},
+                "b": {"organisation_id": b, "name": onames.get(b, "?"), **record(organisation_b, organisation_a)},
+                "matches": matches}
+
+
 @router.get("/data-quality")
 def data_quality_scan(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
     """Scorer-error checks over the entered scorecards (missing fielder/bowler, captain/keeper not set,
