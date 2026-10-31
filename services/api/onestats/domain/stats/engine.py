@@ -133,12 +133,21 @@ def _bat_row(r: dict[str, Any]) -> dict[str, Any]:
 
 
 def batting_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str = "runs",
-                    limit: int = 100, min_runs: int | None = None) -> list[dict[str, Any]]:
+                    limit: int = 100, min_runs: int | None = None,
+                    min_innings: int | None = None) -> list[dict[str, Any]]:
     rows = [_bat_row(r) for r in _rows(conn, "player_batting", filters, _BAT_SELECT)]
     _overlay_matches_played(conn, filters, rows)
-    if min_runs is not None:
+    # Qualification flags (not filters): a sub-threshold player is kept but marked unqualified, so
+    # average/strike-rate reports can rerank among the qualified. Thresholds apply to the FILTERED
+    # population (e.g. 10 innings against the chosen opposition), never the unfiltered career.
+    if min_runs is not None or min_innings is not None:
         for r in rows:
-            r["qualified"] = r["runs"] >= min_runs
+            q = True
+            if min_runs is not None:
+                q = q and r["runs"] >= min_runs
+            if min_innings is not None:
+                q = q and (r.get("innings") or 0) >= min_innings
+            r["qualified"] = q
     _sort(rows, order_by)
     return rows[:limit]
 
@@ -190,12 +199,18 @@ def _bowl_row(r: dict[str, Any], over_length: int = 6) -> dict[str, Any]:
 
 
 def bowling_leaders(conn: Connection, filters: dict[str, Any], *, order_by: str = "wickets",
-                    limit: int = 100, over_length: int = 6, min_wickets: int | None = None) -> list[dict[str, Any]]:
+                    limit: int = 100, over_length: int = 6, min_wickets: int | None = None,
+                    min_innings: int | None = None) -> list[dict[str, Any]]:
     rows = [_bowl_row(r, over_length) for r in _rows(conn, "player_bowling", filters, _BOWL_SELECT)]
     _overlay_matches_played(conn, filters, rows)   # after _bowl_row, so economy-completeness (matches-bowled) is intact
-    if min_wickets is not None:
+    if min_wickets is not None or min_innings is not None:
         for r in rows:
-            r["qualified"] = r["wickets"] >= min_wickets
+            q = True
+            if min_wickets is not None:
+                q = q and r["wickets"] >= min_wickets
+            if min_innings is not None:
+                q = q and (r.get("innings") or 0) >= min_innings
+            r["qualified"] = q
     _sort(rows, order_by)
     return rows[:limit]
 

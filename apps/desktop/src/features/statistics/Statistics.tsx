@@ -60,6 +60,7 @@ export function Statistics() {
   const [format, setFormat] = useState("");
   const [formats, setFormats] = useState<string[]>([]);
   const [minThreshold, setMinThreshold] = useState("");
+  const [minInnings, setMinInnings] = useState("");   // user-adjustable qualification (batting/bowling)
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [busy, setBusy] = useState(false);
@@ -123,6 +124,7 @@ export function Statistics() {
     setVenue(String(cfg.venue ?? ""));
     setFormat(String(cfg.format ?? ""));
     setMinThreshold(String(cfg.min_runs ?? cfg.min_wickets ?? cfg.min_eligible ?? ""));
+    setMinInnings(String(cfg.min_innings ?? ""));
   };
 
   const saveCurrent = async () => {
@@ -139,6 +141,7 @@ export function Statistics() {
       else if (report === "bowling") config.min_wickets = Number(minThreshold);
       else if (report === "captaincy") config.min_eligible = Number(minThreshold);
     }
+    if (minInnings && (report === "batting" || report === "bowling")) config.min_innings = Number(minInnings);
     try {
       await api.statsSaveReport(current.id, { name, report, config });
       loadSaved();
@@ -170,8 +173,9 @@ export function Statistics() {
       else if (report === "bowling") q.min_wickets = Number(minThreshold);
       else if (report === "captaincy") q.min_eligible = Number(minThreshold);
     }
+    if (minInnings && (report === "batting" || report === "bowling")) q.min_innings = Number(minInnings);
     return q;
-  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, seasonId, split, venue, format, minThreshold, report]);
+  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, seasonId, split, venue, format, minThreshold, minInnings, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -205,8 +209,12 @@ export function Statistics() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    if (!sortKey) return data.rows;
-    const r = [...data.rows];
+    // When a qualification threshold is set, drop players the engine flagged unqualified, so a rate
+    // ranking (average/strike rate) is never topped by a tiny-sample player.
+    const hasThreshold = Boolean(minThreshold || minInnings);
+    const base = hasThreshold ? data.rows.filter((r) => r["qualified"] !== false) : data.rows;
+    if (!sortKey) return base;
+    const r = [...base];
     r.sort((a, b) => {
       const av = a[sortKey] as number | string | null;
       const bv = b[sortKey] as number | string | null;
@@ -216,7 +224,7 @@ export function Statistics() {
       return String(av).localeCompare(String(bv)) * sortDir;
     });
     return r;
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, minThreshold, minInnings]);
 
   if (!current) {
     return (
@@ -361,6 +369,14 @@ export function Statistics() {
                   <option value="">All formats</option>
                   {formats.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
                 </Select>
+              </label>
+            )}
+            {(report === "batting" || report === "bowling") && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Min innings</span>
+                <input value={minInnings} onChange={(e) => setMinInnings(e.target.value)} type="number"
+                  placeholder="e.g. 10"
+                  className="w-24 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
               </label>
             )}
             {(report === "batting" || report === "bowling" || report === "captaincy") && (

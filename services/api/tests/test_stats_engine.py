@@ -341,3 +341,19 @@ def test_opposition_filter_scopes_stats_to_the_chosen_opponent(conn):
     assert runs(opposition_organisation_id=away_org) == 120  # club-level opposition
     assert runs(opposition_team_id=home) is None            # a side is never its own opposition
     assert runs(opposition_organisation_id=home_org) is None
+
+
+def test_min_innings_qualification_flags_small_sample_batters(conn):
+    """User-adjustable qualification: a batter with fewer than the required innings is kept but flagged
+    unqualified, so an average/strike-rate ranking excludes tiny samples (universal-filter Deliverable C).
+    With no threshold, no qualified flag is set (everyone shown)."""
+    wid = _ws(conn, "ENG MININN")
+    x = _build(conn, wid, classification=None)   # bat1 batted once in the single match
+
+    def bat1(min_innings=None):
+        rows = {r["subject_id"]: r for r in engine.batting_leaders(conn, _f(wid), min_innings=min_innings)}
+        return rows[str(x["bat1"])]
+
+    assert bat1(min_innings=1)["qualified"] is True     # 1 innings meets "min 1"
+    assert bat1(min_innings=2)["qualified"] is False    # fewer than 2 innings → unqualified
+    assert "qualified" not in bat1()                    # no threshold → no flag, everyone shown
