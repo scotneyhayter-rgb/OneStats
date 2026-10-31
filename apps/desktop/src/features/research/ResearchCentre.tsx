@@ -7,9 +7,10 @@
  * Historical Research Timeline (season coverage), Research Gaps, Review & Verify, Research Projects and
  * Tasks. All figures are read from the backend — nothing is fabricated; unknown stays unknown.
  */
-import { CalendarRange, FileText, FolderGit2, Library, ListChecks, Newspaper, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
+import { CalendarRange, ClipboardCheck, FileText, FolderGit2, Library, ListChecks, Newspaper, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { DataQuality } from "./DataQuality";
 import { NewspaperSearch } from "./NewspaperSearch";
 import { SeasonCompleteness } from "./SeasonCompleteness";
 import { AppShell } from "../../components/layout/AppShell";
@@ -34,7 +35,7 @@ import {
 } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
-type Tab = "overview" | "seasons" | "sources" | "newspapers" | "timeline" | "gaps" | "review" | "projects" | "tasks";
+type Tab = "overview" | "seasons" | "sources" | "newspapers" | "timeline" | "gaps" | "review" | "dataquality" | "projects" | "tasks";
 
 const SOURCE_TYPES: { value: string; label: string }[] = [
   { value: "newspaper_article", label: "Newspaper article" },
@@ -175,6 +176,7 @@ export function ResearchCentre() {
           {tabBtn("timeline", "Timeline", <ScrollText className="h-4 w-4" aria-hidden />)}
           {tabBtn("gaps", "Research Gaps", <FileText className="h-4 w-4" aria-hidden />)}
           {tabBtn("review", "Review & Verify", <ShieldCheck className="h-4 w-4" aria-hidden />)}
+          {tabBtn("dataquality", "Data Quality", <ClipboardCheck className="h-4 w-4" aria-hidden />)}
           {tabBtn("projects", "Research Projects", <FolderGit2 className="h-4 w-4" aria-hidden />)}
           {tabBtn("tasks", "Tasks", <ListChecks className="h-4 w-4" aria-hidden />)}
           <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={() => void loadFor(tab)}>
@@ -438,6 +440,19 @@ export function ResearchCentre() {
                 </div>
               ))}
               {matches.length === 0 && <p className="text-xs text-muted-foreground">Nothing under review yet.</p>}
+            </CardContent>
+          </Card>
+        )}
+
+        {tab === "dataquality" && (
+          <Card>
+            <CardContent className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold">Data Quality</h3>
+              <p className="text-xs text-muted-foreground">
+                Scorer-error checks over the entered scorecards — a missing fielder or bowler, a captain or
+                keeper not recorded, a player entered twice. Click any issue to open the match and fix it.
+              </p>
+              <DataQuality workspaceId={workspaceId} />
             </CardContent>
           </Card>
         )}

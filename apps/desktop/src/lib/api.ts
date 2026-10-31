@@ -216,6 +216,20 @@ export interface StatReport {
   columns: StatColumn[];
   rows: Record<string, unknown>[];
 }
+export interface DataQualityCheck {
+  key: string;
+  title: string;
+  description: string;
+  severity: "warning" | "info";
+  count: number;
+  sample: { match_id: string; match_date: string | null; detail: string }[];
+}
+export interface DataQualityScan {
+  checks: DataQualityCheck[];
+  total_issues: number;
+  ok: boolean;
+  note: string;
+}
 export interface CatalogueReport {
   id: string;
   name: string;
@@ -1728,6 +1742,8 @@ export const api = {
   // --- Phase 12: statistics reports ---
   statsReportCatalogue: (w: string) =>
     request<{ report: string; title: string }[]>(`/api/v1/workspaces/${w}/stats/reports`),
+  statsDataQuality: (w: string) =>
+    request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/data-quality`),
   statsReport: (w: string, report: string, q: Record<string, string | number | undefined> = {}) => {
     const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");

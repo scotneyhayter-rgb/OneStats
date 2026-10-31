@@ -17,7 +17,7 @@ from sqlalchemy import text
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import recalc
+from onestats.domain import data_quality, recalc
 from onestats.domain.stats import (
     competition_points,
     engine,
@@ -414,6 +414,14 @@ def data_integrity(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> d
     """Data-integrity summary: reconciliation issues across approved matches + unknown-data counts."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return integrity.workspace_integrity(conn, workspace_id)
+
+
+@router.get("/data-quality")
+def data_quality_scan(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """Scorer-error checks over the entered scorecards (missing fielder/bowler, captain/keeper not set,
+    a batter/bowler listed twice, …), each with the offending matches for drill-down. Read-only."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return data_quality.scan(conn, workspace_id)
 
 
 @router.get("/matches/{match_id}/reconciliation")
