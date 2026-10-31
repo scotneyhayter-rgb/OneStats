@@ -214,12 +214,27 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<{ candidateId: string; name: string; kind: "merge" | "distinct" } | null>(null);
   const [busy, setBusy] = useState(false);
+  // core-detail editing (name / status / date of birth)
+  const [editOpen, setEditOpen] = useState(false);
+  const [edName, setEdName] = useState("");
+  const [edStatus, setEdStatus] = useState("active");
+  const [edDob, setEdDob] = useState("");
+  const [edDobPrec, setEdDobPrec] = useState("unknown");
+  // manual merge: search for any other record to merge into this one (beyond auto-suggestions)
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeResults, setMergeResults] = useState<Person[]>([]);
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
     try {
       const v = await api.getProfile(workspaceId, personId);
       setView(v);
+      const pp = v.person as any;
+      setEdName((pp?.display_name as string) ?? "");
+      setEdStatus((pp?.status as string) || "active");
+      setEdDob((pp?.dob as string) ?? "");
+      setEdDobPrec((pp?.dob_precision as string) || "unknown");
       setBio(((v.profile as any)?.biography as string) ?? "");
       setBatStyle(((v.profile as any)?.batting_style as string) ?? "");
       setBowlStyle(((v.profile as any)?.bowling_style as string) ?? "");
@@ -265,6 +280,33 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
     catch (e) { setErr(e instanceof ApiError ? e.message : "Save failed"); }
     finally { setBusy(false); }
   };
+
+  const protectedDob = Boolean((view?.person as any)?.protected_fields_hidden);
+  const saveDetails = async () => {
+    if (!edName.trim()) { setErr("Name cannot be empty."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const body: Record<string, unknown> = { display_name: edName.trim(), status: edStatus };
+      // only touch the date of birth when it isn't privacy-protected (never overwrite a hidden value)
+      if (!protectedDob) { body.set_dob = true; body.dob = edDob || null; body.dob_precision = edDob ? edDobPrec : "unknown"; }
+      await api.updatePerson(workspaceId, personId, body);
+      setEditOpen(false); onChanged("Details saved."); await load();
+    }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save details."); }
+    finally { setBusy(false); }
+  };
+
+  // live search for any other record to merge into this one (the auto-suggestions below are name-based only)
+  useEffect(() => {
+    const q = mergeSearch.trim();
+    if (q.length < 2) { setMergeResults([]); return; }
+    let active = true; setSearching(true);
+    api.listPeople(workspaceId, { search: q })
+      .then((ppl) => { if (active) setMergeResults(ppl.filter((p) => p.id !== personId && !p.merged_into_id).slice(0, 8)); })
+      .catch(() => { if (active) setMergeResults([]); })
+      .finally(() => { if (active) setSearching(false); });
+    return () => { active = false; };
+  }, [mergeSearch, workspaceId, personId]);
 
   const removeAttr = async (kind: "number" | "leadership" | "recognition", attrId: string) => {
     try {
@@ -330,7 +372,7 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
         await api.identityAssertDistinct(workspaceId, { person_a_id: personId, person_b_id: confirm.candidateId, reason: "distinct (desktop)" });
         onChanged(`Marked "${confirm.name}" as distinct.`);
       }
-      setConfirm(null); await load();
+      setConfirm(null); setMergeSearch(""); setMergeResults([]); await load();
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Action failed"); setBusy(false); }
   };
 
@@ -369,12 +411,55 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
             </div>
           </section>
           <section>
-            <Detail label="Status">{person.status}</Detail>
-            <Detail label="Roles">{(view?.person?.roles ?? []).map((r: string) => humanise(r)).join(", ") || "—"}</Detail>
-            <Detail label="Date of birth"><Unknown value={person.dob} /></Detail>
-            {person.is_junior && <Detail label="Junior"><Badge variant="warning">personal data protected</Badge></Detail>}
-            {person.protected_fields_hidden && (
-              <p className="text-xs text-muted-foreground">Some personal fields are hidden by privacy protection.</p>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase text-muted-foreground">Details</h3>
+              {canManage && (
+                <Button size="sm" variant="ghost" onClick={() => { setEditOpen((o) => !o); setErr(null); }}>
+                  {editOpen ? "Cancel" : "Edit details"}
+                </Button>
+              )}
+            </div>
+            {!editOpen ? (
+              <>
+                <Detail label="Name">{person.display_name}</Detail>
+                <Detail label="Status">{person.status}</Detail>
+                <Detail label="Roles">{(view?.person?.roles ?? []).map((r: string) => humanise(r)).join(", ") || "—"}</Detail>
+                <Detail label="Date of birth"><Unknown value={person.dob} /></Detail>
+                {person.is_junior && <Detail label="Junior"><Badge variant="warning">personal data protected</Badge></Detail>}
+                {person.protected_fields_hidden && (
+                  <p className="text-xs text-muted-foreground">Some personal fields are hidden by privacy protection.</p>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-[var(--radius-app)] border border-border p-3">
+                <label className="flex flex-col gap-1 text-xs">Name
+                  <Input value={edName} onChange={(e) => setEdName(e.target.value)} placeholder="Display name" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs">Status
+                  <Select value={edStatus} onChange={(e) => setEdStatus(e.target.value)}>
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                  </Select>
+                </label>
+                {protectedDob ? (
+                  <p className="text-xs text-muted-foreground">Date of birth is privacy-protected and can't be edited here.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-xs">Date of birth
+                      <Input type="date" value={edDob} onChange={(e) => setEdDob(e.target.value)} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">Precision
+                      <Select value={edDobPrec} onChange={(e) => setEdDobPrec(e.target.value)} disabled={!edDob}>
+                        {["exact", "year", "month", "approx", "unknown"].map((p) => <option key={p} value={p}>{p}</option>)}
+                      </Select>
+                    </label>
+                  </div>
+                )}
+                <div className="mt-1 flex gap-2">
+                  <Button size="sm" onClick={() => void saveDetails()} disabled={busy || !edName.trim()}>Save details</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditOpen(false); setErr(null); void load(); }}>Cancel</Button>
+                </div>
+              </div>
             )}
           </section>
 
@@ -459,8 +544,34 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
           )}
 
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Possible duplicates</h3>
-            <p className="mb-2 text-xs text-muted-foreground">Suggestions only — a name match is never proof. Merges are reversible.</p>
+            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Duplicates &amp; merging</h3>
+            {canManage && (
+              <div className="mb-3 rounded-[var(--radius-app)] border border-border p-2">
+                <p className="mb-1 text-xs text-muted-foreground">
+                  Entered more than once? Search for the other record and merge it into this one. Reversible.
+                </p>
+                <Input value={mergeSearch} onChange={(e) => setMergeSearch(e.target.value)}
+                  placeholder="Search a player to merge (name)…" className="h-8 text-sm" />
+                {mergeSearch.trim().length >= 2 && (
+                  <div className="mt-2">
+                    {searching && <p className="text-xs text-muted-foreground">Searching…</p>}
+                    {!searching && mergeResults.length === 0 && <p className="text-xs text-muted-foreground">No other records match.</p>}
+                    <ul className="space-y-1">
+                      {mergeResults.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between gap-2 rounded-[var(--radius-app)] border border-border p-2 text-sm">
+                          <span className="min-w-0 truncate">{p.display_name}</span>
+                          <Button size="sm" variant="outline" className="shrink-0"
+                            onClick={() => setConfirm({ candidateId: p.id, name: p.display_name, kind: "merge" })}>
+                            <GitMerge className="h-4 w-4" aria-hidden /> Merge
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="mb-2 text-xs text-muted-foreground">Suggested matches — a name match is never proof. Merges are reversible.</p>
             {candidates.length === 0 ? (
               <p className="text-sm text-muted-foreground">No duplicate suggestions.</p>
             ) : (

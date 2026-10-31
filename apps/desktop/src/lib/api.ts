@@ -1436,6 +1436,8 @@ export const api = {
       `/api/v1/workspaces/${w}/people/${id}${qs({ include_protected })}`),
   createPerson: (w: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people`, { method: "POST", body }),
+  updatePerson: (w: string, id: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}`, { method: "PATCH", body }),
   addPersonName: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/names`, { method: "POST", body }),
   addPersonRole: (w: string, id: string, role: string) =>
