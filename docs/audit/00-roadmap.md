@@ -19,7 +19,7 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 | 1. Discovery | Inventory CricketStatz + OneStats capabilities | **Done** — CricketStatz → [01](01-cricketstatz-capability-inventory.md); OneStats catalogue (79) + engine filters captured in [02](02-report-comparison.md) |
 | 2. Filtering analysis | CricketStatz filter model; design OneStats universal filter | **Done (proposal)** → [03-universal-filter-proposal.md](03-universal-filter-proposal.md) (Deliverable C), awaiting approval |
 | 3. Report analysis | Report-by-report CricketStatz vs OneStats | **Done** → [02-report-comparison.md](02-report-comparison.md) (Deliverable D) |
-| 4. Statistical reconciliation | Numeric comparison on equivalent data+filters | Run-outs done (see below). Broader: TODO |
+| 4. Statistical reconciliation | Numeric comparison on equivalent data+filters | **Done (batting+bowling)** → [04-statistical-reconciliation.md](04-statistical-reconciliation.md): 19 comparisons, 17 exact parity, 2 stale-source, **0 calc defects**. Fielding = known source staleness. |
 | 5. Correct critical defects | Fix verified calc/validation/integrity bugs + tests | **In progress** — run-out attribution fixed (commit f0b3bff) |
 | 6. Recommendations | Prioritised roadmap (Deliverables F–J) | TODO |
 | 7. Implement approved items | Only after user approves the programme | Not started (gated) |
@@ -29,7 +29,8 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 - **B** Filtering analysis — **done** (doc 01 §2 + doc 03 §2).
 - **C** OneStats universal filtering proposal — **drafted** (doc 03), awaiting approval.
 - **D** Report comparison — **drafted** (doc 02).
-- **E** Statistical accuracy report — pending; run-out reconciliation complete.
+- **E** Statistical accuracy report — **done** (doc 04): batting+bowling benchmark-verified against live
+  CricketStatz, 0 calc defects; only stale-source diffs remain (closed by re-import + fielder backfill).
 - **F** Workflow/usability — pending.
 - **G** Recommended new capabilities — seeded in doc 01 §4 + doc 02 §3.
 - **H** Prioritised roadmap — see §"Prioritised recommendations" below (growing).
