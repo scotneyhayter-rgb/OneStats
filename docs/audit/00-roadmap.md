@@ -31,9 +31,11 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 - **D** Report comparison — **drafted** (doc 02).
 - **E** Statistical accuracy report — **done** (doc 04): batting+bowling benchmark-verified against live
   CricketStatz, 0 calc defects; only stale-source diffs remain (closed by re-import + fielder backfill).
-- **F** Workflow/usability — **done** (doc 05): OneStats faster for everyday tasks and safer for data entry;
-  now at parity on opposition/data-quality/season-find (closed this audit). Top gaps: Player Compare,
-  season-vs-season compare, grade-without-competition, report discoverability.
+- **F** Workflow/usability — **done** (doc 05) + **scorecard-entry deep-dive** (doc 06): OneStats faster for
+  everyday tasks and the stronger/safer *post-match* editor (inline advisories, inline player creation,
+  auto-partnerships, multi-fielder run-outs, draft→approved). CricketStatz's one real entry advantage is
+  **live ball-by-ball scoring** (OneStats gap). Quick wins: margin auto-calc, official-total override,
+  per-match data-quality check.
 - **G** Recommended new capabilities — seeded in doc 01 §4 + doc 02 §3.
 - **H** Prioritised roadmap — see §"Prioritised recommendations" below (growing).
 - **I** Implementation readiness — pending.
@@ -60,6 +62,9 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   had it). **Season-vs-season compare — SHIPPED** (d622b7a; a "Compare seasons" mode on Player Compare:
   one player across seasons). Remaining: grade-without-competition, report search/favourites; plus
   head-to-head, debut reports, On This Day, light analytics (Low–Medium). From Deliverable F.
+- **Scorecard entry (doc 06):** margin auto-calc + official-total override (Low); a per-match data-quality
+  check button (Low, reuses the `data_quality` module); **live ball-by-ball scoring** (Large — the one
+  CricketStatz entry capability OneStats lacks; scope separately).
 - All P2+ items are Stage-7 work — **built only after you approve this direction.**
 
 ## Confirmed defects fixed (Stage 5)
