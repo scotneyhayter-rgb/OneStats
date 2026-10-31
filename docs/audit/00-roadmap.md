@@ -61,7 +61,8 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   bowling/fielding/captaincy under shared filters incl. opposition, best-value highlight + CSV; neither app
   had it). **Season-vs-season compare — SHIPPED** (d622b7a; a "Compare seasons" mode on Player Compare:
   one player across seasons). Remaining: grade-without-competition, report search/favourites; plus
-  head-to-head, debut reports, On This Day, light analytics (Low–Medium). From Deliverable F.
+  **head-to-head — SHIPPED** (feed4af; club-vs-club record + win bar + match list, reuses the
+  opposition filter). Remaining: debut reports, On This Day, light analytics (Low–Medium). From Deliverable F.
 - **Scorecard entry (doc 06):** **per-match data-quality check — SHIPPED** (cca5aea; a "Check this scorecard"
   button in the editor, scoped `data_quality` scan). Found that **official-total override and automatic
   result/margin already exist** (OneStats auto-calculates margin; CricketStatz needs a manual Calc) — no work
