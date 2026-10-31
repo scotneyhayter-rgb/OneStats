@@ -38,9 +38,11 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 
 ## Prioritised recommendations so far (Deliverable H, growing)
 - **P1 Correctness:** run-out fielder attribution — **fixed** (f0b3bff); broader numeric reconciliation (E) next.
-- **P2 Universal filtering:** add **opposition** + **user-adjustable qualification** first (doc 03), then
-  multi-grade/season, specific ground, innings/toss/batpos. Biggest capability unlock; the user's own example
-  query is the acceptance test.
+- **P2 Universal filtering:** **opposition filtering — SHIPPED** (commit b9120fa; team+club, across reports
+  and leaderboards, with a Statistics "Opposition" selector; test
+  `test_opposition_filter_scopes_stats_to_the_chosen_opponent`). Next in priority order: **user-adjustable
+  qualification** (e.g. min innings), then multi-grade/season, specific ground, innings/toss/batpos. The user's
+  "averages vs Pomonal, min 10 innings" query is the running acceptance test — opposition half now works.
 - **P3 Reports:** data-quality report suite (High); milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
 - **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
