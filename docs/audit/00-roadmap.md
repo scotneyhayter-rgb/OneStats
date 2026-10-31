@@ -55,9 +55,10 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   innings — surfaced as a Research Centre "Data Quality" tab with per-match drill-down; validated live, e.g.
   1,037 missing fielders, 0 duplicates). Remaining: milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
-- **P4 Analysis & UX:** **Player Compare** (two/multi-player side-by-side — neither app has it; top pick),
-  season-vs-season compare, grade-without-competition, report search/favourites; plus head-to-head, debut
-  reports, On This Day, light analytics (Low–Medium). From Deliverable F.
+- **P4 Analysis & UX:** **Player Compare — SHIPPED** (e6a7fda; 2–6 players side-by-side across batting/
+  bowling/fielding/captaincy under shared filters incl. opposition, best-value highlight + CSV; neither app
+  had it). Remaining: season-vs-season compare, grade-without-competition, report search/favourites; plus
+  head-to-head, debut reports, On This Day, light analytics (Low–Medium). From Deliverable F.
 - All P2+ items are Stage-7 work — **built only after you approve this direction.**
 
 ## Confirmed defects fixed (Stage 5)
