@@ -1759,6 +1759,12 @@ export const api = {
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return request<PlayerComparison>(`/api/v1/workspaces/${w}/stats/compare?${qs2}`);
   },
+  statsCompareSeasons: (w: string, personId: string, seasonIds: string[], q: Record<string, string | number | undefined> = {}) => {
+    const all = { person_id: personId, season_ids: seasonIds.join(","), ...q };
+    const qs2 = Object.entries(all).filter(([, v]) => v !== undefined && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+    return request<PlayerComparison>(`/api/v1/workspaces/${w}/stats/compare-seasons?${qs2}`);
+  },
   statsReport: (w: string, report: string, q: Record<string, string | number | undefined> = {}) => {
     const qs2 = Object.entries(q).filter(([, v]) => v !== undefined && v !== "")
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");

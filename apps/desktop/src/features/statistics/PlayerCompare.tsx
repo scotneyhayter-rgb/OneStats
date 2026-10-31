@@ -43,7 +43,9 @@ const GROUPS: { key: Row["group"]; label: string }[] = [
 export function PlayerCompare() {
   const { current } = useWorkspace();
   const workspaceId = current?.id;
+  const [mode, setMode] = useState<"players" | "seasons">("players");
   const [sel, setSel] = useState<{ id: string; name: string }[]>([]);
+  const [selSeasons, setSelSeasons] = useState<string[]>([]);   // seasons-mode columns
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const [orgs, setOrgs] = useState<Organisation[]>([]);
@@ -88,15 +90,24 @@ export function PlayerCompare() {
   }), [competitionId, gradeId, seasonId, oppositionOrgId]);
 
   const run = useCallback(() => {
-    if (!workspaceId || sel.length < 2) { setData(null); return; }
-    api.statsCompare(workspaceId, sel.map((s) => s.id), filters)
-      .then((d) => setData(d.players))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Compare failed."));
-  }, [workspaceId, sel, filters]);
+    if (!workspaceId) { setData(null); return; }
+    if (mode === "players") {
+      if (sel.length < 2) { setData(null); return; }
+      api.statsCompare(workspaceId, sel.map((s) => s.id), filters)
+        .then((d) => setData(d.players)).catch((e) => setError(e instanceof ApiError ? e.message : "Compare failed."));
+    } else {
+      if (sel.length !== 1 || selSeasons.length < 2) { setData(null); return; }
+      api.statsCompareSeasons(workspaceId, sel[0].id, selSeasons,
+        { competition_id: competitionId || undefined, grade_id: gradeId || undefined, opposition_organisation_id: oppositionOrgId || undefined })
+        .then((d) => setData(d.players)).catch((e) => setError(e instanceof ApiError ? e.message : "Compare failed."));
+    }
+  }, [workspaceId, mode, sel, selSeasons, filters, competitionId, gradeId, oppositionOrgId]);
   useEffect(() => { run(); }, [run]);
 
-  const add = (p: Person) => { if (sel.length < 6) setSel((s) => [...s, { id: p.id, name: p.display_name }]); setTerm(""); setResults([]); };
+  // in seasons mode only one player is compared (across seasons), so replace rather than append
+  const add = (p: Person) => { setSel((s) => (mode === "seasons" ? [{ id: p.id, name: p.display_name }] : s.length < 6 ? [...s, { id: p.id, name: p.display_name }] : s)); setTerm(""); setResults([]); };
   const remove = (id: string) => setSel((s) => s.filter((x) => x.id !== id));
+  const toggleSeason = (id: string) => setSelSeasons((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const fmt = (v: number | null | undefined, dec?: number) =>
     v === null || v === undefined ? "—" : typeof v === "number" && dec !== undefined ? v.toFixed(dec) : String(v);
@@ -126,7 +137,19 @@ export function PlayerCompare() {
     <AppShell title="Compare players" subtitle={current.name}>
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <Card><CardContent className="flex flex-col gap-3">
-          <p className="text-xs text-muted-foreground">Pick two or more players (up to 6) to compare side by side, under the same filters.</p>
+          <div className="flex items-center gap-1.5">
+            {(["players", "seasons"] as const).map((m) => (
+              <button key={m} type="button" onClick={() => { setMode(m); setData(null); }}
+                className={`rounded-[var(--radius-app)] border px-2.5 py-1 text-xs ${mode === m ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground"}`}>
+                {m === "players" ? "Compare players" : "Compare seasons"}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {mode === "players"
+              ? "Pick two or more players (up to 6) to compare side by side, under the same filters."
+              : "Pick one player and two or more seasons to compare that player across seasons."}
+          </p>
           <div className="flex flex-wrap items-center gap-1.5">
             {sel.map((s) => (
               <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-brand bg-brand/10 px-2 py-0.5 text-xs text-brand">
@@ -160,7 +183,7 @@ export function PlayerCompare() {
                 <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} className="w-32"><option value="">All</option>
                   {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></label>
             )}
-            {seasons.length > 0 && (
+            {mode === "players" && seasons.length > 0 && (
               <label className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Season</span>
                 <Select value={seasonId} onChange={(e) => setSeasonId(e.target.value)} className="w-28"><option value="">All</option>
                   {seasons.map((se) => <option key={se.id} value={se.id}>{se.label}</option>)}</Select></label>
@@ -172,10 +195,24 @@ export function PlayerCompare() {
             )}
             {data && data.length > 0 && <Button size="sm" variant="outline" className="ml-auto" onClick={exportCsv}><Download className="h-4 w-4" aria-hidden /> CSV</Button>}
           </div>
+          {mode === "seasons" && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Seasons {competitionId ? "" : "(choose a competition first)"}</span>
+              <div className="flex flex-wrap gap-1">
+                {seasons.map((se) => (
+                  <button key={se.id} type="button" onClick={() => toggleSeason(se.id)}
+                    className={`rounded-full border px-2 py-0.5 text-xs ${selSeasons.includes(se.id) ? "border-brand bg-brand/10 text-brand" : "border-border text-muted-foreground"}`}>
+                    {se.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {error && <p className="text-sm text-danger">{error}</p>}
         </CardContent></Card>
 
-        {sel.length < 2 && <p className="text-sm text-muted-foreground">Add at least two players to compare.</p>}
+        {mode === "players" && sel.length < 2 && <p className="text-sm text-muted-foreground">Add at least two players to compare.</p>}
+        {mode === "seasons" && (sel.length !== 1 || selSeasons.length < 2) && <p className="text-sm text-muted-foreground">Pick one player and at least two seasons.</p>}
 
         {data && data.length >= 2 && (
           <Card><CardContent className="overflow-auto p-0">

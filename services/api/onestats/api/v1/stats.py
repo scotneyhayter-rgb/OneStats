@@ -446,6 +446,35 @@ def compare_players(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, pla
         return {"players": players}
 
 
+@router.get("/compare-seasons")
+def compare_seasons(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, person_id: UUID, season_ids: str,
+                    grade_id: UUID | None = None, competition_id: UUID | None = None,
+                    opposition_organisation_id: UUID | None = None, venue_id: UUID | None = None,
+                    split: str | None = None, over_length: int = 6) -> dict[str, Any]:
+    """Compare ONE player across several seasons side by side — same metrics as Player Compare, each column
+    scoped to a season (other filters shared). Reuses the one engine; columns follow the requested season order."""
+    sids = [s.strip() for s in season_ids.split(",") if s.strip()][:8]
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        pname = conn.execute(text("SELECT display_name FROM person WHERE id = :p AND workspace_id = :w"),
+                             {"p": person_id, "w": workspace_id}).scalar_one_or_none()
+        labels = {str(r["id"]): r["label"] for r in conn.execute(
+            text("SELECT id, label FROM season WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
+        cols = []
+        for sid in sids:
+            if sid not in labels:
+                continue
+            f = _filters(workspace_id, UUID(sid), grade_id, competition_id, None, split, None, None, None, None,
+                         None, None, opposition_organisation_id, venue_id)
+            cols.append({
+                "person_id": sid, "name": labels[sid],
+                "batting": engine.person_batting(conn, f, person_id),
+                "bowling": engine.person_bowling(conn, f, person_id, over_length=over_length),
+                "fielding": engine.person_fielding(conn, f, person_id),
+                "captaincy": engine.person_captaincy(conn, f, person_id),
+            })
+        return {"players": cols, "player_name": pname}
+
+
 @router.get("/data-quality")
 def data_quality_scan(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
     """Scorer-error checks over the entered scorecards (missing fielder/bowler, captain/keeper not set,
