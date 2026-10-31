@@ -113,7 +113,9 @@ export function ImportWizard() {
     setFixBusy(true); setFixMsg(null); setError(null);
     try {
       const r = await api.fixImportedData(workspaceId);
-      setFixMsg(`Re-filed ${r.refiled.moved} match(es) by date (${r.refiled.unmatched} had no covering season); fixed ${r.dismissals.updated} dismissal(s).`);
+      setFixMsg(`Re-filed ${r.refiled.moved} match(es) by date (${r.refiled.unmatched} had no covering season); `
+        + `fixed ${r.dismissals.updated} dismissal(s); filled ${r.match_details.roles_filled} captain/keeper role(s); `
+        + `filled ${r.fielders.fielders_filled} fielder(s) and recomputed ${r.fielders.matches_recomputed} match(es).`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Fix failed.");
     } finally { setFixBusy(false); }

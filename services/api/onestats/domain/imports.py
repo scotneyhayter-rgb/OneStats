@@ -1141,6 +1141,59 @@ def backfill_imported_match_details(conn: Connection, workspace_id: UUID, actor:
     return {"sides_updated": sides_updated, "roles_filled": roles_filled, "toss_set": toss_set}
 
 
+def backfill_imported_fielders(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, int]:
+    """Fill the fielder on already-imported CricketStatz batting entries from their staged source rows,
+    WITHOUT re-importing — then recompute fielding for every affected match.
+
+    Why this exists: CricketStatz records the run-out/catch fielder per dismissal on the batting card,
+    but an export taken before the scorer filled those fielders in omits them. Re-importing a fresher
+    export re-stages the updated rows, yet promotion is idempotent on source_ref and never rewrites an
+    entry it has already created — so the newly-known fielders would never reach the canonical cards.
+    This applies them: for every staged batting_entry matched to a canonical entry that currently has
+    NO fielder, resolve the source fielder and set it.
+
+    Non-destructive and idempotent: only a currently-unset ``fielder_person_id`` is filled, so any
+    manual correction is preserved; an absent/unresolved source fielder is left unset (never invented).
+    Safe to re-run. Returns how many entries were filled and how many matches were recomputed.
+    """
+    from onestats.domain import recalc  # local import avoids a module-load cycle (recalc imports domain)
+
+    rows = conn.execute(
+        text("SELECT r.normalised AS norm, r.matched_canonical_id AS eid "
+             "FROM import_staging_record r "
+             "JOIN batting_entry be ON be.id = r.matched_canonical_id "
+             "WHERE r.entity_type = 'batting_entry' AND r.matched_canonical_id IS NOT NULL "
+             "AND be.fielder_person_id IS NULL"),
+    ).mappings().all()
+    filled = 0
+    affected: set[UUID] = set()
+    for row in rows:
+        norm = row["norm"] or {}
+        pid = _person_by_source(conn, _ref0(norm.get("fielder_source_ref")))
+        if pid is None:
+            continue
+        res = conn.execute(
+            text("UPDATE batting_entry SET fielder_person_id = CAST(:p AS uuid) "
+                 "WHERE id = :e AND fielder_person_id IS NULL"),
+            {"p": pid, "e": row["eid"]},
+        )
+        if res.rowcount:
+            filled += res.rowcount
+            mid = conn.execute(
+                text("SELECT i.match_id FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
+                     "WHERE be.id = :e"),
+                {"e": row["eid"]},
+            ).scalar_one_or_none()
+            if mid is not None:
+                affected.add(mid)
+    for mid in affected:
+        recalc.recompute_match(conn, workspace_id, actor, mid)
+    audit.write_audit(conn, workspace_id, actor, "import.backfill_fielders", entity="workspace",
+                      entity_id=str(workspace_id),
+                      after={"fielders_filled": filled, "matches_recomputed": len(affected)})
+    return {"fielders_filled": filled, "matches_recomputed": len(affected)}
+
+
 def _canonical_by_source(conn: Connection, table: str, ref: str, source_system: str = SOURCE_SYSTEM) -> UUID | None:
     return conn.execute(
         text(f"SELECT id FROM {table} WHERE source_system = :ss AND source_ref = :sr LIMIT 1"),

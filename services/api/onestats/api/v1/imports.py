@@ -226,9 +226,15 @@ def rollback(workspace_id: UUID, batch_id: UUID, settings: SettingsDep, ctx: Imp
 def fix_imported_data(workspace_id: UUID, settings: SettingsDep, ctx: ImportCtx) -> dict[str, Any]:
     """Backfill already-imported matches without re-importing: re-file matches in the generic import
     container into the competition/season their date falls in (needs the competitions' season dates
-    set), and apply the current dismissal legend to unresolved dismissals (e.g. caught & bowled)."""
+    set), apply the current dismissal legend to unresolved dismissals (e.g. caught & bowled), fill
+    captains/keepers/toss, and fill fielders added to the source since the original export (then
+    recompute fielding for the affected matches). Re-stage a fresher CricketStatz export first so the
+    newly-entered fielders are available to copy across."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         actor = str(ctx.user["id"])
         refiled = imports.refile_imported_matches_by_season_date(conn, workspace_id, actor)
         dismissals = imports.remap_howout_dismissals(conn, workspace_id, actor)
-        return {"refiled": refiled, "dismissals": dismissals}
+        match_details = imports.backfill_imported_match_details(conn, workspace_id, actor)
+        fielders = imports.backfill_imported_fielders(conn, workspace_id, actor)
+        return {"refiled": refiled, "dismissals": dismissals,
+                "match_details": match_details, "fielders": fielders}

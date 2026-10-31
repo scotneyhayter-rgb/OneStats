@@ -196,3 +196,52 @@ def test_backfill_fills_missing_roles_without_overwriting_manual_entry(conn):
     # idempotent: a second backfill changes nothing further
     out2 = imports.backfill_imported_match_details(conn, wid, ACTOR)
     assert out2["sides_updated"] == 0 and out2["toss_set"] == 0
+
+
+def _payload_runout(fielder):
+    """A one-match payload whose only dismissal is a run-out, with the given Fielder source id (0 = none)."""
+    return {
+        **PAYLOAD,
+        "matches": [{**PAYLOAD["matches"][0], "MatchID": 600}],
+        "innings": [{"MatchID": 600, "cricket_Innings": [
+            {"InningsID": 760, "InnsNumber": 1, "battingteam": 100, "bowlingteam": 200, "iresult": 1}]}],
+        "batting": [{"MatchID": 600, "cricket_Innings": [
+            {"InningsID": 760, "InnsNumber": 1, "cricket_batting": [
+                {"Batpos": 1, "BatsmanID": 10, "Howout": 7, "Bowler": 0, "Fielder": fielder, "Score": 5,
+                 "Balls": 10, "mins": 0, "sixes": 0, "fours": 0, "FOW": 5, "FOWPos": 1, "FOWBatID": 10, "FOWOvers": 2.0}]}]}],
+        "bowling": [{"MatchID": 600, "cricket_Innings": [
+            {"InningsID": 760, "InnsNumber": 1, "cricket_bowling": [
+                {"bowlerID": 20, "Maidens": 0, "Overs": 5.0, "Wickets": 0, "RunsA": 20, "wides": 0, "noballs": 0}]}]}],
+    }
+
+
+def test_backfill_fills_fielders_added_to_source_after_original_export(conn):
+    """A run-out whose fielder was entered in CricketStatz AFTER the original export: a fresh re-import
+    re-stages the row but idempotent promotion never rewrites the existing entry, so the fielder would
+    stay unset. The backfill copies it across and recomputes, crediting the fielder's run-out — without
+    re-importing, duplicating, or overwriting a fielder already set."""
+    wid = _ws(conn, "FIELDER BACKFILL")
+    # original export: the run-out has no fielder recorded
+    imports.controlled_import(conn, wid, ACTOR, data=_payload_runout(0), people=PEOPLE, commit=True)
+    mid = conn.execute(text("SELECT id FROM match WHERE source_ref = '600'")).scalar_one()
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")   # a real, stats-eligible match
+    p21 = _person(conn, "21")
+    eid = conn.execute(text("SELECT be.id FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
+                            "WHERE i.match_id = :m AND be.dismissal_type = 'run_out'"), {"m": mid}).scalar_one()
+    assert conn.execute(text("SELECT fielder_person_id FROM batting_entry WHERE id = :e"), {"e": eid}).scalar_one() is None
+
+    # a fresher export where the scorer has since named the fielder; promotion matches, does not update
+    imports.controlled_import(conn, wid, ACTOR, data=_payload_runout(21), people=PEOPLE, commit=True)
+    assert conn.execute(text("SELECT fielder_person_id FROM batting_entry WHERE id = :e"), {"e": eid}).scalar_one() is None
+
+    out = imports.backfill_imported_fielders(conn, wid, ACTOR)
+    assert out["fielders_filled"] == 1 and out["matches_recomputed"] == 1
+    assert conn.execute(text("SELECT fielder_person_id FROM batting_entry WHERE id = :e"), {"e": eid}).scalar_one() == p21
+    # the ledger now credits player 21 with the run-out
+    ro = conn.execute(text("SELECT (metrics->>'run_outs')::int FROM match_stat_contribution "
+                           "WHERE match_id = :m AND calculator = 'player_fielding' AND subject_id = :p"),
+                      {"m": mid, "p": p21}).scalar_one()
+    assert ro == 1
+
+    # idempotent, and a fielder already set is never overwritten
+    assert imports.backfill_imported_fielders(conn, wid, ACTOR)["fielders_filled"] == 0

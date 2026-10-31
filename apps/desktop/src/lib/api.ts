@@ -1545,7 +1545,9 @@ export const api = {
             assign_by_season_date?: boolean; suggest_classifications?: boolean },
   ) => request<CricketStatzImportResult>(`/api/v1/workspaces/${w}/imports/cricketstatz`, { method: "POST", body }),
   fixImportedData: (w: string) =>
-    request<{ refiled: { moved: number; unmatched: number }; dismissals: { updated: number } }>(`/api/v1/workspaces/${w}/imports/fix-imported-data`, { method: "POST" }),
+    request<{ refiled: { moved: number; unmatched: number }; dismissals: { updated: number };
+              match_details: { sides_updated: number; roles_filled: number; toss_set: number };
+              fielders: { fielders_filled: number; matches_recomputed: number } }>(`/api/v1/workspaces/${w}/imports/fix-imported-data`, { method: "POST" }),
   listImports: (w: string) => request<ImportBatch[]>(`/api/v1/workspaces/${w}/imports`),
 
   // --- Phase 8: universal import (any format) ---
