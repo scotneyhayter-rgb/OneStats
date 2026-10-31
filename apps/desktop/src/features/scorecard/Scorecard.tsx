@@ -17,7 +17,7 @@ import { Modal } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import {
-  api, ApiError, type Competition, type CompetitionDetail, type Match, type Team, type Venue,
+  api, ApiError, type Competition, type CompetitionDetail, type Match, type MatchFormat, type Team, type Venue,
 } from "../../lib/api";
 // (Team is used by the create modal and the list's team-name lookup.)
 import { formatDate, useDateStyle } from "../../lib/dates";
@@ -327,14 +327,21 @@ function CreateMatchModal({ workspaceId, comps, onClose, onCreated }: {
   const [venueId, setVenueId] = useState("");
   const [matchDate, setMatchDate] = useState("");
   const [format, setFormat] = useState("");
+  const [formats, setFormats] = useState<MatchFormat[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const [t, v] = await Promise.all([api.listTeams(workspaceId), api.listVenues(workspaceId)]);
+      const [t, v, f] = await Promise.all([
+        api.listTeams(workspaceId), api.listVenues(workspaceId),
+        api.listMatchFormats(workspaceId, { enabled_only: true }).catch(() => [] as MatchFormat[]),
+      ]);
       setTeams(t);
       setVenues(v);
+      setFormats(f);
+      // preselect the configured default, so the common case needs no interaction
+      setFormat((cur) => cur || f.find((x) => x.is_default)?.label || "");
     })();
   }, [workspaceId]);
 
@@ -413,7 +420,14 @@ function CreateMatchModal({ workspaceId, comps, onClose, onCreated }: {
           </Select></Field>
           <Field label="Date" hint="Leave blank if unknown."><Input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} /></Field>
         </div>
-        <Field label="Format"><Input value={format} placeholder="e.g. two-day, limited overs" onChange={(e) => setFormat(e.target.value)} /></Field>
+        <Field label="Format" hint="Playing format only — separate from the statistical classification. Configure the list in Settings.">
+          <Select value={format} onChange={(e) => setFormat(e.target.value)}>
+            <option value="">— none —</option>
+            {/* preserve any current value that isn't in the enabled list */}
+            {format && !formats.some((f) => f.label === format) && <option value={format}>{format} (current)</option>}
+            {formats.map((f) => <option key={f.id} value={f.label}>{f.label}{f.is_default ? " (default)" : ""}</option>)}
+          </Select>
+        </Field>
       </div>
     </Modal>
   );
