@@ -70,3 +70,23 @@ def test_scan_flags_scorer_errors_without_inventing_data(conn):
     mf = next(c for c in out["checks"] if c["key"] == "missing_fielder")
     assert mf["sample"][0]["match_id"] == str(m)
     assert out["ok"] is False
+
+
+def test_scan_can_scope_to_one_match(conn):
+    wid = _ws(conn, "DQ SCOPE")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bat = people.create_person(conn, wid, ACTOR, display_name="Victim")
+    # two matches, each with a fielderless run-out
+    mids = []
+    for _ in range(2):
+        m = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+        matches.set_team(conn, wid, ACTOR, m, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, m, team_id=away, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=m, inns_number=1, batting_team_id=home, bowling_team_id=away)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=bat, batting_position=1, runs=1, dismissal_type="run_out")
+        mids.append(m)
+    whole = {c["key"]: c["count"] for c in data_quality.scan(conn, wid)["checks"]}
+    one = {c["key"]: c["count"] for c in data_quality.scan(conn, wid, match_id=mids[0])["checks"]}
+    assert whole["missing_fielder"] == 2      # both matches, workspace-wide
+    assert one["missing_fielder"] == 1        # scoped to a single match

@@ -340,8 +340,43 @@ export function ScorecardEditor({
             catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save result"); }
           }} />
         <MatchSourcesSection workspaceId={workspaceId} matchId={matchId} />
+        <MatchDataQualitySection workspaceId={workspaceId} matchId={matchId} />
       </div>
     </div>
+  );
+}
+
+/** A one-click scorer-error check for THIS match (reuses the data_quality module), so issues are caught
+ *  while the card is open rather than later in the workspace-wide report. */
+function MatchDataQualitySection({ workspaceId, matchId }: { workspaceId: string; matchId: string }) {
+  const [data, setData] = useState<import("../../lib/api").DataQualityScan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    setBusy(true);
+    try { setData(await api.statsMatchDataQuality(workspaceId, matchId)); } catch { setData(null); } finally { setBusy(false); }
+  };
+  const issues = (data?.checks ?? []).filter((c) => c.count > 0);
+  return (
+    <SectionCard icon={ClipboardCheck} title="Data Quality"
+      description="Check this scorecard for scorer errors — missing fielder/bowler, captain/keeper not set, a player entered twice.">
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void check()}>
+        {busy ? "Checking…" : "Check this scorecard"}
+      </Button>
+      {data && (
+        issues.length === 0 ? (
+          <p className="mt-2 text-sm text-success">No scorer-error issues on this match. ✓</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1">
+            {issues.map((c) => (
+              <li key={c.key} className="flex items-center justify-between gap-2 rounded-[var(--radius-app)] border border-warning/40 bg-warning/5 px-2 py-1 text-xs">
+                <span>{c.title}</span>
+                <span className="font-semibold text-warning tabular-nums">{c.count}</span>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </SectionCard>
   );
 }
 

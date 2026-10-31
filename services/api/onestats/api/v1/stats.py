@@ -489,3 +489,10 @@ def match_reconciliation(workspace_id: UUID, match_id: UUID, settings: SettingsD
     outs count and warnings where the scorecard is incomplete (never an invented dismissal)."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return reconciliation.reconcile_match(conn, workspace_id, match_id)
+
+
+@router.get("/matches/{match_id}/data-quality")
+def match_data_quality(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+    """The scorer-error checks scoped to one match — for a quick quality check on the card being edited."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return data_quality.scan(conn, workspace_id, match_id=match_id)

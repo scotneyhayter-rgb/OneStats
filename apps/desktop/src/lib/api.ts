@@ -1753,6 +1753,8 @@ export const api = {
     request<{ report: string; title: string }[]>(`/api/v1/workspaces/${w}/stats/reports`),
   statsDataQuality: (w: string) =>
     request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/data-quality`),
+  statsMatchDataQuality: (w: string, matchId: string) =>
+    request<DataQualityScan>(`/api/v1/workspaces/${w}/stats/matches/${matchId}/data-quality`),
   statsCompare: (w: string, playerIds: string[], q: Record<string, string | number | undefined> = {}) => {
     const all = { player_ids: playerIds.join(","), ...q };
     const qs2 = Object.entries(all).filter(([, v]) => v !== undefined && v !== "")

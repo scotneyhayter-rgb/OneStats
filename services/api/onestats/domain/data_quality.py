@@ -74,13 +74,20 @@ _CHECKS: list[tuple[str, str, str, str, str]] = [
 ]
 
 
-def scan(conn: Connection, workspace_id: UUID, *, sample: int = 100) -> dict[str, Any]:
-    """Run every data-quality check over the workspace. Returns each check with its total issue count and
-    a bounded sample of offending matches (id + date + detail) for drill-down. Read-only; nothing changes."""
+def scan(conn: Connection, workspace_id: UUID, *, match_id: UUID | None = None,
+         sample: int = 100) -> dict[str, Any]:
+    """Run every data-quality check over the workspace, or a single match when ``match_id`` is given (so the
+    scorecard editor can check the card in front of the scorer). Returns each check with its total issue count
+    and a bounded sample of offending matches (id + date + detail) for drill-down. Read-only; nothing changes."""
     checks: list[dict[str, Any]] = []
     total = 0
+    params: dict[str, Any] = {"w": workspace_id}
+    if match_id is not None:
+        params["mid"] = match_id
     for key, title, desc, severity, sql in _CHECKS:
-        rows = conn.execute(text(sql), {"w": workspace_id}).mappings().all()
+        # every check filters on ``m.workspace_id = :w``; scope to one match by extending that same clause
+        q = sql.replace("m.workspace_id = :w", "m.workspace_id = :w AND m.id = :mid") if match_id is not None else sql
+        rows = conn.execute(text(q), params).mappings().all()
         total += len(rows)
         checks.append({
             "key": key, "title": title, "description": desc, "severity": severity,
