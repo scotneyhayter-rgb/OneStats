@@ -16,25 +16,35 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
 
 | Stage | Scope | Status |
 |---|---|---|
-| 1. Discovery | Inventory CricketStatz + OneStats capabilities | **CricketStatz side captured** → [01-cricketstatz-capability-inventory.md](01-cricketstatz-capability-inventory.md). OneStats side: TODO |
-| 2. Filtering analysis | CricketStatz filter model; design OneStats universal filter | CricketStatz model captured (Deliverable A §2). Proposal (C): TODO |
-| 3. Report analysis | Report-by-report CricketStatz vs OneStats | CricketStatz catalogue captured (A §3). Comparison (D): TODO |
+| 1. Discovery | Inventory CricketStatz + OneStats capabilities | **Done** — CricketStatz → [01](01-cricketstatz-capability-inventory.md); OneStats catalogue (79) + engine filters captured in [02](02-report-comparison.md) |
+| 2. Filtering analysis | CricketStatz filter model; design OneStats universal filter | **Done (proposal)** → [03-universal-filter-proposal.md](03-universal-filter-proposal.md) (Deliverable C), awaiting approval |
+| 3. Report analysis | Report-by-report CricketStatz vs OneStats | **Done** → [02-report-comparison.md](02-report-comparison.md) (Deliverable D) |
 | 4. Statistical reconciliation | Numeric comparison on equivalent data+filters | Run-outs done (see below). Broader: TODO |
 | 5. Correct critical defects | Fix verified calc/validation/integrity bugs + tests | **In progress** — run-out attribution fixed (commit f0b3bff) |
 | 6. Recommendations | Prioritised roadmap (Deliverables F–J) | TODO |
 | 7. Implement approved items | Only after user approves the programme | Not started (gated) |
 
 ## Deliverables (A–J) — tracking
-- **A** Capability inventory — CricketStatz captured (doc 01). OneStats side pending.
-- **B** Filtering analysis — captured in doc 01 §2; write-up pending.
-- **C** OneStats universal filtering proposal — pending (design for approval).
-- **D** Report comparison — pending (needs OneStats catalogue pull).
+- **A** Capability inventory — **CricketStatz done** (doc 01); OneStats catalogue+filters captured in doc 02 §0.
+- **B** Filtering analysis — **done** (doc 01 §2 + doc 03 §2).
+- **C** OneStats universal filtering proposal — **drafted** (doc 03), awaiting approval.
+- **D** Report comparison — **drafted** (doc 02).
 - **E** Statistical accuracy report — pending; run-out reconciliation complete.
 - **F** Workflow/usability — pending.
-- **G** Recommended new capabilities — seeded in doc 01 §4.
-- **H** Prioritised roadmap — this file will grow into it.
+- **G** Recommended new capabilities — seeded in doc 01 §4 + doc 02 §3.
+- **H** Prioritised roadmap — see §"Prioritised recommendations" below (growing).
 - **I** Implementation readiness — pending.
 - **J** Executive summary — pending (final).
+
+## Prioritised recommendations so far (Deliverable H, growing)
+- **P1 Correctness:** run-out fielder attribution — **fixed** (f0b3bff); broader numeric reconciliation (E) next.
+- **P2 Universal filtering:** add **opposition** + **user-adjustable qualification** first (doc 03), then
+  multi-grade/season, specific ground, innings/toss/batpos. Biggest capability unlock; the user's own example
+  query is the acceptance test.
+- **P3 Reports:** data-quality report suite (High); milestones Achieved/Over-Time, hat-tricks, catches
+  in-a-season/match/innings, winning-margin/run-chase (Medium).
+- **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
+- All P2+ items are Stage-7 work — **built only after you approve this direction.**
 
 ## Confirmed defects fixed (Stage 5)
 1. **Run-out fielder attribution undercounted.** OneStats faithfully reproduced a *stale* CricketStatz export
