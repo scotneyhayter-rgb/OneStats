@@ -47,7 +47,10 @@ gated on the user's approval. Verified statistical bug fixes may proceed immedia
   screen now shows every active filter as a removable chip with Clear all, per Part 3.5). Next increments:
   multi-grade/multi-season select, innings/toss/batting-position; then extract one reusable FilterBar (with the
   chips) + saved presets, and reuse it on player/team profiles, dashboards and Ask OneStats.
-- **P3 Reports:** data-quality report suite (High); milestones Achieved/Over-Time, hat-tricks, catches
+- **P3 Reports:** **data-quality report suite — SHIPPED** (534df4c; a `data_quality` module of scorer-error
+  checks — missing fielder/bowler, bowler-is-fielder, captain/keeper missing, duplicate batter/bowler, empty
+  innings — surfaced as a Research Centre "Data Quality" tab with per-match drill-down; validated live, e.g.
+  1,037 missing fielders, 0 duplicates). Remaining: milestones Achieved/Over-Time, hat-tricks, catches
   in-a-season/match/innings, winning-margin/run-chase (Medium).
 - **P4 Analysis:** head-to-head, debut reports, On This Day, light analytics (Low–Medium).
 - All P2+ items are Stage-7 work — **built only after you approve this direction.**
