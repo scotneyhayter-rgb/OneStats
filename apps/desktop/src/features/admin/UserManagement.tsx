@@ -9,27 +9,70 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
-import { api, ApiError, type ManagedUser, type UserInvitation } from "../../lib/api";
+import { api, ApiError, type ManagedUser, type UserInvitation, type Workspace, type WorkspaceMember } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { roleLabel } from "../../lib/permissions";
+
+/** The workspace roles a Super Admin can assign through this screen. `super_admin` is a platform
+ * flag (managed via "Make admin"), never a workspace membership, so it is deliberately excluded. */
+const ASSIGNABLE_ROLES = ["workspace_admin", "researcher", "scorecard_entry", "reviewer", "viewer"];
 
 export function UserManagement() {
   const { user } = useAuth();
   const [usersList, setUsers] = useState<ManagedUser[]>([]);
   const [invites, setInvites] = useState<UserInvitation[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [newName, setNewName] = useState("");
   const [newDisplay, setNewDisplay] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // inline per-user role editor
+  const [roleUser, setRoleUser] = useState<string | null>(null);
+  const [roleWs, setRoleWs] = useState<string>("");
+  const [roleKey, setRoleKey] = useState<string>(ASSIGNABLE_ROLES[0]);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [roleBusy, setRoleBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [u, i] = await Promise.all([api.usersList(), api.invitationsList()]);
-      setUsers(u); setInvites(i);
+      const [u, i, w] = await Promise.all([api.usersList(), api.invitationsList(), api.myWorkspaces()]);
+      setUsers(u); setInvites(i); setWorkspaces(w);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load users.");
     }
   }, []);
   useEffect(() => { if (user?.is_super_admin) void load(); }, [user, load]);
+
+  const loadMembers = useCallback(async (ws: string) => {
+    if (!ws) { setMembers([]); return; }
+    try { setMembers(await api.workspaceMembers(ws)); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not load members."); setMembers([]); }
+  }, []);
+
+  const openRoles = useCallback((uid: string) => {
+    setError(null);
+    if (roleUser === uid) { setRoleUser(null); return; }
+    const ws = roleWs || workspaces[0]?.id || "";
+    setRoleUser(uid); setRoleWs(ws); void loadMembers(ws);
+  }, [roleUser, roleWs, workspaces, loadMembers]);
+
+  const changeRoleWs = useCallback((ws: string) => { setRoleWs(ws); void loadMembers(ws); }, [loadMembers]);
+
+  const grantRole = useCallback(async () => {
+    if (!roleUser || !roleWs) return;
+    setError(null); setRoleBusy(true);
+    try { await api.userAssignWorkspaceRole(roleUser, roleWs, roleKey); await loadMembers(roleWs); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not grant role."); }
+    finally { setRoleBusy(false); }
+  }, [roleUser, roleWs, roleKey, loadMembers]);
+
+  const revokeRole = useCallback(async (uid: string, role: string) => {
+    if (!roleWs) return;
+    setError(null); setRoleBusy(true);
+    try { await api.userRevokeWorkspaceRole(uid, roleWs, role); await loadMembers(roleWs); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Could not revoke role."); }
+    finally { setRoleBusy(false); }
+  }, [roleWs, loadMembers]);
 
   const act = useCallback(async (fn: () => Promise<unknown>, onSecret?: (s: string) => void) => {
     setError(null); setSecret(null);
@@ -75,25 +118,67 @@ export function UserManagement() {
         <Card><CardContent className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Users</h3>
           <div className="flex flex-col divide-y divide-border">
-            {usersList.map((u) => (
-              <div key={u.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <span className="font-medium">{u.username}</span>
-                {u.display_name && <span className="text-muted-foreground">{u.display_name}</span>}
-                {statusBadge(u.status)}
-                {u.is_super_admin && <Badge variant="warning">super admin</Badge>}
-                {u.must_change_password && <Badge variant="muted">temp password</Badge>}
-                <span className="text-xs text-muted-foreground">last login {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "—"}</span>
-                <div className="ml-auto flex flex-wrap gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => void act(() => api.userResetPassword(u.id), (s) => setSecret(`temporary password: ${s}`))}>Reset password</Button>
-                  {u.status === "suspended"
-                    ? <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { status: "active" }))}>Reactivate</Button>
-                    : <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { status: "suspended" }))}>Suspend</Button>}
-                  {u.is_super_admin
-                    ? <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { is_super_admin: false }))}>Revoke admin</Button>
-                    : <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { is_super_admin: true }))}>Make admin</Button>}
+            {usersList.map((u) => {
+              const currentRoles = members.find((m) => m.user_id === u.id)?.roles ?? [];
+              return (
+              <div key={u.id} className="flex flex-col gap-2 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{u.username}</span>
+                  {u.display_name && <span className="text-muted-foreground">{u.display_name}</span>}
+                  {statusBadge(u.status)}
+                  {u.is_super_admin && <Badge variant="warning">super admin</Badge>}
+                  {u.must_change_password && <Badge variant="muted">temp password</Badge>}
+                  <span className="text-xs text-muted-foreground">last login {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "—"}</span>
+                  <div className="ml-auto flex flex-wrap gap-1">
+                    <Button size="sm" variant={roleUser === u.id ? "outline" : "ghost"} onClick={() => openRoles(u.id)}>Roles</Button>
+                    <Button size="sm" variant="ghost" onClick={() => void act(() => api.userResetPassword(u.id), (s) => setSecret(`temporary password: ${s}`))}>Reset password</Button>
+                    {u.status === "suspended"
+                      ? <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { status: "active" }))}>Reactivate</Button>
+                      : <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { status: "suspended" }))}>Suspend</Button>}
+                    {u.is_super_admin
+                      ? <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { is_super_admin: false }))}>Revoke admin</Button>
+                      : <Button size="sm" variant="ghost" onClick={() => void act(() => api.userUpdate(u.id, { is_super_admin: true }))}>Make admin</Button>}
+                  </div>
                 </div>
+                {roleUser === u.id && (
+                  <div className="rounded-[var(--radius-app)] border border-border bg-muted/30 p-3 text-xs">
+                    {u.is_super_admin && (
+                      <p className="mb-2 text-muted-foreground">
+                        {u.username} is a Super Admin with full access to every workspace; workspace roles are optional and only matter if Super Admin is later revoked.
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="flex flex-col gap-1">Workspace
+                        <select className="h-9 rounded-[var(--radius-app)] border border-border bg-background px-2"
+                          value={roleWs} onChange={(e) => changeRoleWs(e.target.value)}>
+                          {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1">Role
+                        <select className="h-9 rounded-[var(--radius-app)] border border-border bg-background px-2"
+                          value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
+                          {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                        </select>
+                      </label>
+                      <Button size="sm" disabled={roleBusy || !roleWs || currentRoles.includes(roleKey)} onClick={() => void grantRole()}>Grant role</Button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <span className="text-muted-foreground">Roles in this workspace:</span>
+                      {currentRoles.length === 0
+                        ? <span className="text-muted-foreground">none</span>
+                        : currentRoles.map((r) => (
+                          <span key={r} className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5">
+                            {roleLabel(r)}
+                            <button type="button" disabled={roleBusy} className="text-danger hover:underline disabled:opacity-50"
+                              aria-label={`Revoke ${roleLabel(r)}`} onClick={() => void revokeRole(u.id, r)}>×</button>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent></Card>
 

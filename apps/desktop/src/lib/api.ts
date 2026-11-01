@@ -122,6 +122,12 @@ export interface ManagedUser {
   last_login_at: string | null;
   created_at: string | null;
 }
+export interface WorkspaceMember {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  roles: string[];
+}
 export interface UserInvitation {
   id: string;
   user_id: string;
@@ -1282,6 +1288,9 @@ export const api = {
     request<{ logins: { success: boolean; ip: string | null; at: string | null }[]; admin_events: { action: string; actor: string | null; at: string | null }[] }>(`/api/v1/users/${id}/audit`),
   userAssignWorkspaceRole: (id: string, workspace_id: string, role: string) =>
     request<{ granted: boolean }>(`/api/v1/users/${id}/workspace-roles`, { method: "POST", body: { workspace_id, role } }),
+  userRevokeWorkspaceRole: (id: string, workspace_id: string, role: string) =>
+    request<{ revoked: boolean }>(`/api/v1/users/${id}/workspace-roles`, { method: "DELETE", body: { workspace_id, role } }),
+  workspaceMembers: (w: string) => request<WorkspaceMember[]>(`/api/v1/workspaces/${w}/members`),
   invitationsList: () => request<UserInvitation[]>("/api/v1/invitations"),
   invitationCreate: (body: { username: string; display_name?: string; is_super_admin?: boolean }) =>
     request<{ invitation_id: string; user_id: string; username: string; token: string; expires_at: string }>("/api/v1/invitations", { method: "POST", body }),
