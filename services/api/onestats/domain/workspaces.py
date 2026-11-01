@@ -133,6 +133,31 @@ def list_for_user(
     return [dict(r) | {"permissions": sorted(r["permissions"] or []), "roles": sorted(r["roles"] or [])} for r in rows]
 
 
+def delete_workspace(conn: Connection, workspace_id: UUID, actor: str, confirm_short_name: str) -> dict[str, Any]:
+    """Permanently delete a workspace and ALL its data (Super-Admin only, high-impact).
+
+    Guarded by an exact short-name confirmation the caller must supply (the UI makes the user type
+    it). Records the deletion in the global admin_audit log BEFORE removing anything, so the platform
+    log survives. The only direct workspace references that do not cascade are audit_log (RESTRICT —
+    cleared here under the workspace's RLS context) and onboarding_draft (SET NULL, handled by the
+    FK); every other workspace-scoped table is removed by ON DELETE CASCADE."""
+    ws = get_workspace(conn, workspace_id)
+    if ws is None:
+        raise ValueError("workspace_not_found")
+    if (confirm_short_name or "").strip().lower() != (ws["short_name"] or "").strip().lower():
+        raise ValueError("confirmation_mismatch")
+    # global platform record first (admin_audit is not workspace-scoped, so it outlives the delete)
+    conn.execute(
+        text("INSERT INTO admin_audit(actor, action, target_user_id) VALUES (:a, :act, NULL)"),
+        {"a": actor, "act": f"workspace.delete:{ws['short_name']}:{workspace_id}"},
+    )
+    # audit_log has a RESTRICT FK to workspace — remove this workspace's rows under its RLS context
+    set_workspace(conn, workspace_id)
+    conn.execute(text("DELETE FROM audit_log"))
+    conn.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": workspace_id})
+    return {"deleted": True, "name": ws["name"], "short_name": ws["short_name"]}
+
+
 def user_is_member(conn: Connection, user_id: UUID, workspace_id: UUID) -> bool:
     return conn.execute(
         text(

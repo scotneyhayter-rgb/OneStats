@@ -18,6 +18,7 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 _VALUE_ERR_STATUS = {
     "duplicate_identifier": status.HTTP_409_CONFLICT,
     "workspace_not_found": status.HTTP_404_NOT_FOUND,
+    "confirmation_mismatch": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -49,6 +50,10 @@ class WorkspaceUpdate(BaseModel):
 class MemberAdd(BaseModel):
     user_id: UUID
     role: str
+
+
+class WorkspaceDelete(BaseModel):
+    confirm_short_name: str = Field(min_length=1, max_length=60)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -97,6 +102,22 @@ def update_workspace(
                 conn, workspace_id, ctx.user["id"], body.name, body.short_name, body.status,
                 score_format=body.score_format,
             )
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.delete("/{workspace_id}")
+def delete_workspace(
+    workspace_id: UUID,
+    body: WorkspaceDelete,
+    settings: SettingsDep,
+    admin: Annotated[dict, Depends(require_super_admin)],
+) -> dict[str, Any]:
+    """Permanently delete a workspace and all its data. Super-Admin only; the caller must supply the
+    workspace's exact short name as confirmation (validated server-side). Irreversible."""
+    with _engine(settings).begin() as conn:
+        try:
+            return workspaces.delete_workspace(conn, workspace_id, str(admin["id"]), body.confirm_short_name)
         except ValueError as exc:
             raise _value_error(exc) from exc
 

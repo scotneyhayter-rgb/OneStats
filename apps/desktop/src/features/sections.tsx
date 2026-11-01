@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { AppShell } from "../components/layout/AppShell";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { Modal } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
-import { api, ApiError, type MatchFormat } from "../lib/api";
+import { api, ApiError, type MatchFormat, type Workspace } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { formatDate, getDateStyle, setDateStyle, type DateStyle } from "../lib/dates";
 import { canManage } from "../lib/permissions";
@@ -38,6 +41,7 @@ export function Statistics() {
 export function Settings() {
   const { current, reload } = useWorkspace();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const admin = canManage(user, current);
   const [wsFormat, setWsFormat] = useState<string>(current?.score_format ?? "au");
   const [userFormat, setUserFmt] = useState<string>(getUserScoreFormat() ?? "");
@@ -115,6 +119,12 @@ export function Settings() {
             <a href="#/admin/users" className="whitespace-nowrap rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">User Management →</a>
           </CardContent></Card>
         )}
+        {user?.is_super_admin && current && (
+          <DangerZone
+            workspace={current}
+            onDeleted={async () => { await reload(); navigate("/platform"); }}
+          />
+        )}
         <Card><CardContent className="flex flex-col gap-4">
           <ConnectionSettings />
         </CardContent></Card>
@@ -125,6 +135,88 @@ export function Settings() {
         </CardContent></Card>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * Danger zone — permanently delete the current workspace (Super Admin only). Deliberately a
+ * multi-step action: open the dialog, type the workspace's exact short name, then confirm. The
+ * server re-validates the confirmation and the Super-Admin privilege; the deletion is audited.
+ */
+function DangerZone({ workspace, onDeleted }: { workspace: Workspace; onDeleted: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const expected = (workspace.short_name ?? "").trim();
+  const matches = confirm.trim().toLowerCase() === expected.toLowerCase() && expected !== "";
+
+  const doDelete = async () => {
+    if (!matches) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.deleteWorkspace(workspace.id, confirm.trim());
+      setOpen(false);
+      await onDeleted();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not delete the workspace.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="border-danger/40"><CardContent className="flex flex-col gap-3">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden />
+        <div>
+          <h3 className="text-sm font-semibold text-danger">Danger zone</h3>
+          <p className="text-xs text-muted-foreground">
+            Permanently delete <b>{workspace.name}</b> and all of its data — matches, players,
+            scorecards, competitions, media and history. This cannot be undone.
+          </p>
+        </div>
+      </div>
+      <div>
+        <button
+          type="button"
+          onClick={() => { setConfirm(""); setErr(null); setOpen(true); }}
+          className="rounded-[var(--radius-app)] border border-danger/50 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+        >
+          Delete this workspace…
+        </button>
+      </div>
+
+      <Modal open={open} title={`Delete ${workspace.name}?`} onClose={() => !busy && setOpen(false)}>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            This permanently removes the workspace and <b>everything in it</b>. It cannot be undone.
+          </p>
+          <label className="flex flex-col gap-1 text-sm">
+            <span>Type the workspace short name <b>{expected}</b> to confirm:</span>
+            <Input
+              value={confirm}
+              autoFocus
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder={expected}
+              aria-label="Confirm workspace short name"
+            />
+          </label>
+          {err && <p className="text-xs text-danger">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+            <button
+              type="button"
+              disabled={!matches || busy}
+              onClick={() => void doDelete()}
+              className="rounded-[var(--radius-app)] bg-danger px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {busy ? "Deleting…" : "Delete permanently"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </CardContent></Card>
   );
 }
 

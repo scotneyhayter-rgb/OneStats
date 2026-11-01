@@ -1311,6 +1311,10 @@ export const api = {
     request<Workspace>("/api/v1/workspaces", { method: "POST", body: { name, short_name, type } }),
   updateWorkspace: (w: string, body: Record<string, unknown>) =>
     request<Workspace>(`/api/v1/workspaces/${w}`, { method: "PATCH", body }),
+  // Super Admin only — permanently delete a workspace; requires the exact short name as confirmation
+  deleteWorkspace: (w: string, confirm_short_name: string) =>
+    request<{ deleted: boolean; name: string; short_name: string }>(
+      `/api/v1/workspaces/${w}`, { method: "DELETE", body: { confirm_short_name } }),
   // --- Phase 7.8: official-statistics recalculation ---
   recalcStats: (w: string) =>
     request<{ matches: number; contributions: number }>(`/api/v1/workspaces/${w}/stats/recalc`, { method: "POST" }),
