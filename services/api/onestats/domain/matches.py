@@ -360,6 +360,23 @@ def official_for_stats(match: dict[str, Any]) -> bool:
     return match.get("approval_status") in VERIFIED_STATUSES and bool(match.get("include_in_statistics"))
 
 
+def delete_match(conn: Connection, workspace_id: UUID, actor: str, match_id: UUID) -> dict[str, Any]:
+    """Permanently delete a match and its whole scorecard (e.g. a duplicate created by an import).
+
+    Every scorecard child table (innings, batting/bowling via innings, match_team, match_source,
+    field_provenance) and the official-statistics ledger rows (match_stat_contribution) are removed
+    by ON DELETE CASCADE, so deleting the match row also removes its contribution to statistics —
+    no separate recalculation is needed. Finals/premiership/research links are SET NULL by their FKs.
+    The deletion is audited with the match's prior state. Returns the deleted match (the `before`)."""
+    before = get_match(conn, match_id)
+    if before is None:
+        raise ValueError("match_not_found")
+    conn.execute(text("DELETE FROM match WHERE id = :id"), {"id": match_id})
+    audit.write_audit(conn, workspace_id, actor, "match.delete", entity="match",
+                      entity_id=str(match_id), before=before)
+    return before
+
+
 def set_toss(
     conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *,
     toss_winner_team_id: UUID | None = None, toss_decision: str | None = None,

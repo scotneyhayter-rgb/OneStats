@@ -5,7 +5,7 @@
  * gated by match.manage (the backend is the authority; this only decides what to show).
  */
 
-import { ChevronDown, ChevronRight, Plus, Trophy } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
@@ -50,6 +50,7 @@ export function Scorecard() {
   const [openMatch, setOpenMatch] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const dateStyle = useDateStyle();   // re-render the list when the date-format preference changes
   // Return-to-last-match: remember the match just closed, then scroll to & highlight it in the list.
@@ -267,6 +268,10 @@ export function Scorecard() {
                 onClick={() => void runBulk((chunk) => api.bulkApproveMatches(workspaceId, { match_ids: chunk, status: "approved" }), "Approved")}>
                 Approve
               </Button>
+              <button type="button" disabled={bulkBusy} onClick={() => setConfirmDelete(true)}
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-app)] border border-danger/50 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-40">
+                <Trash2 className="h-4 w-4" aria-hidden /> Delete
+              </button>
               <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
             </>
           )}
@@ -309,6 +314,26 @@ export function Scorecard() {
           onCreated={(id) => { setShowCreate(false); setOpenMatch(id); }}
         />
       )}
+
+      <Modal open={confirmDelete} title={`Delete ${selected.size} match${selected.size === 1 ? "" : "es"}?`}
+        onClose={() => !bulkBusy && setConfirmDelete(false)}>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            This permanently removes the selected match{selected.size === 1 ? "" : "es"} and
+            {selected.size === 1 ? " its" : " their"} full scorecard{selected.size === 1 ? "" : "s"} —
+            innings, batting, bowling and any statistics. This cannot be undone. Use it to remove
+            duplicates. An approved match is skipped unless you can verify.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            <button type="button" disabled={bulkBusy}
+              onClick={() => { setConfirmDelete(false); void runBulk((chunk) => api.bulkDeleteMatches(workspaceId, { match_ids: chunk }), "Deleted"); }}
+              className="rounded-[var(--radius-app)] bg-danger px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
+              {bulkBusy ? "Deleting…" : "Delete permanently"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </AppShell>
   );
 }

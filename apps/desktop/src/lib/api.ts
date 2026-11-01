@@ -1958,6 +1958,10 @@ export const api = {
     request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-status`, { method: "POST", body }),
   bulkClassifyMatches: (w: string, body: { match_ids: string[]; classification?: string; finals_stage?: string; verify_existing?: boolean }) =>
     request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-classify`, { method: "POST", body }),
+  deleteMatch: (w: string, id: string) =>
+    request<{ deleted: boolean; match_id: string }>(`/api/v1/workspaces/${w}/matches/${id}`, { method: "DELETE" }),
+  bulkDeleteMatches: (w: string, body: { match_ids: string[] }) =>
+    request<{ updated: number; skipped: { match_id: string; reason: string }[] }>(`/api/v1/workspaces/${w}/matches/bulk-delete`, { method: "POST", body }),
   setMatchTeam: (w: string, id: string, body: Record<string, unknown>) =>
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
   setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>

@@ -240,6 +240,54 @@ def reject_scorecard(workspace_id: UUID, match_id: UUID, body: ApprovalReason, s
         return _approve_to(conn, workspace_id, str(ctx.user["id"]), match_id, status_="rejected", reason=body.reason)
 
 
+def _may_delete(match: dict[str, Any], perms: set[str]) -> bool:
+    """A draft/rejected match can be deleted with match.manage; a verified (approved/verified_partial)
+    match additionally needs scorecard.approve, so an editor cannot remove an approved record."""
+    if match["approval_status"] in matches.VERIFIED_STATUSES:
+        return "scorecard.approve" in perms
+    return True
+
+
+@router.delete("/{match_id}")
+def delete_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    """Delete a match and its whole scorecard (e.g. a duplicate). Requires match.manage; deleting an
+    approved/verified match also requires scorecard.approve. Removes its statistics (cascade)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        m = matches.get_match(conn, match_id)
+        if m is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "match_not_found")
+        if not _may_delete(m, ctx.permissions):
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "An approved scorecard can only be deleted by a verifier or administrator.")
+        matches.delete_match(conn, workspace_id, str(ctx.user["id"]), match_id)
+    return {"deleted": True, "match_id": str(match_id)}
+
+
+class BulkDelete(BaseModel):
+    match_ids: list[UUID] = Field(min_length=1)
+
+
+@router.post("/bulk-delete")
+def bulk_delete(workspace_id: UUID, body: BulkDelete, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    """Delete several matches at once (used to clear selected duplicates). Each is removed
+    independently; a match that cannot be deleted (missing, or approved without verifier rights) is
+    skipped and reported. Shape matches the other bulk actions ({updated, skipped})."""
+    deleted = 0
+    skipped: list[dict[str, str]] = []
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        for mid in body.match_ids:
+            m = matches.get_match(conn, mid)
+            if m is None:
+                skipped.append({"match_id": str(mid), "reason": "not_found"})
+                continue
+            if not _may_delete(m, ctx.permissions):
+                skipped.append({"match_id": str(mid), "reason": "approved_needs_verifier"})
+                continue
+            matches.delete_match(conn, workspace_id, str(ctx.user["id"]), mid)
+            deleted += 1
+    return {"updated": deleted, "skipped": skipped}
+
+
 class BulkApproval(BaseModel):
     match_ids: list[UUID] = Field(min_length=1)
     status: str = Field(pattern="^(awaiting_approval|approved|rejected|draft)$")
