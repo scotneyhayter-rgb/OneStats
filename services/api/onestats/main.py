@@ -70,6 +70,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_error_handlers(app)
 
+    # Per-request id (Part 6 accountability): stamp every request with a stable id so a
+    # sensitive action in the audit log can be traced back to the exact request. Echoed as a
+    # response header for client-side correlation. No secrets; a client-supplied value is
+    # accepted (for cross-tier tracing) but length-bounded.
+    import uuid as _uuid
+
+    @app.middleware("http")
+    async def request_id(request: Request, call_next):
+        rid = (request.headers.get("X-Request-Id") or "")[:64] or _uuid.uuid4().hex
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = rid
+        return response
+
     # Maintenance-mode gate (update system): while a controlled server update is in progress, reject
     # new writes with 503 so no scorecard/data change lands mid-migration. Reads stay available
     # (preserve read-only access). Auth, setup and the Super-Admin system-update routes are exempt so

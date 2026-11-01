@@ -116,6 +116,7 @@ def add_member(
         audit.write_audit(
             conn, workspace_id, str(ctx.user["id"]), "membership.grant",
             entity="app_user", entity_id=str(body.user_id), after={"role": body.role},
+            **ctx.audit_kwargs(reason=f"grant {body.role}"),
         )
     return {"granted": True, "user_id": str(body.user_id), "role": body.role}
 

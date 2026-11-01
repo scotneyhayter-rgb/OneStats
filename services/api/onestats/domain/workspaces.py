@@ -102,14 +102,25 @@ def list_for_user(
     """Workspaces the user may access. Super Admin: all. Others: memberships (requires the
     user context GUC to be set so own memberships are visible across workspaces)."""
     if is_super_admin:
+        # Super Admin holds every permission in every workspace (by the is_super_admin flag,
+        # never a membership) — attach the full permission catalogue so the client can gate
+        # the UI identically to the server's effective_permissions().
+        all_perms = sorted(conn.execute(text("SELECT key FROM permission")).scalars().all())
         rows = conn.execute(
             text(f"SELECT {_SELECT} FROM workspace ORDER BY name")
         ).mappings().all()
-        return [dict(r) | {"roles": ["super_admin"]} for r in rows]
+        return [dict(r) | {"roles": ["super_admin"], "permissions": all_perms} for r in rows]
+    # Member path: roles AND the derived permission set per workspace, resolved from
+    # role_permission so the client mirrors the server authority (no duplicated role->perm map).
     rows = conn.execute(
         text(
             "SELECT w.id, w.name, w.short_name, w.type, w.status, w.created_at, "
-            "array_agg(r.key ORDER BY r.key) AS roles "
+            "array_agg(DISTINCT r.key) AS roles, "
+            "(SELECT array_agg(DISTINCT p.key) "
+            " FROM app_user_workspace_role m2 "
+            " JOIN role_permission rp ON rp.role_id = m2.role_id "
+            " JOIN permission p ON p.id = rp.permission_id "
+            " WHERE m2.app_user_id = :u AND m2.workspace_id = w.id) AS permissions "
             "FROM app_user_workspace_role m "
             "JOIN workspace w ON w.id = m.workspace_id "
             "JOIN role r ON r.id = m.role_id "
@@ -119,7 +130,7 @@ def list_for_user(
         ),
         {"u": user_id},
     ).mappings().all()
-    return [dict(r) for r in rows]
+    return [dict(r) | {"permissions": sorted(r["permissions"] or []), "roles": sorted(r["roles"] or [])} for r in rows]
 
 
 def user_is_member(conn: Connection, user_id: UUID, workspace_id: UUID) -> bool:

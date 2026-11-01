@@ -37,6 +37,7 @@ _COLS = (
     "won_by_team_id, first_innings_winner_team_id, margin_runs, margin_wickets, "
     "toss_winner_team_id, toss_decision, "
     "include_in_statistics, approval_status, approval_reason, approved_by, approved_at, "
+    "submitted_by, submitted_at, "
     "revised_since_approval, notes, source_system, source_ref, created_at, updated_at"
 )
 
@@ -246,20 +247,29 @@ def set_approval(
     if status not in APPROVAL_STATUSES:
         raise ValueError("invalid_approval_status")
     verified = status in VERIFIED_STATUSES
+    submitting = status == "awaiting_approval"
+    # Separation of duties (Part 1 role 5): record who submitted for approval; on a verified
+    # decision flag whether the approver is the same person (self-approval). This is captured and
+    # audited, not hard-blocked — single-administrator clubs must still be able to approve their
+    # own work. A stricter "require a separate approver" policy can gate on self_approved later.
+    self_approved = bool(verified and before.get("submitted_by") and before["submitted_by"] == actor)
     # a verified decision (approved / verified_partial) clears the revision flag and records the reviewer
     conn.execute(
         text("UPDATE match SET approval_status = :s, approval_reason = :r, "
              "approved_by = :by, approved_at = :at, "
+             "submitted_by = CASE WHEN :submitting THEN :actor ELSE submitted_by END, "
+             "submitted_at = CASE WHEN :submitting THEN now() ELSE submitted_at END, "
              "revised_since_approval = (revised_since_approval AND NOT :verified), updated_at = now() "
              "WHERE id = :id"),
         {"s": status, "r": reason, "by": actor if verified else None,
-         "at": None, "verified": verified, "id": match_id},
+         "at": None, "verified": verified, "submitting": submitting, "actor": actor, "id": match_id},
     )
     if verified:
         conn.execute(text("UPDATE match SET approved_at = now() WHERE id = :id"), {"id": match_id})
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.approval", entity="match", entity_id=str(match_id),
-                      before=before, after=after)
+                      before=before, after=after | {"self_approved": self_approved} if verified else after,
+                      reason=reason)
     # update the official-statistics ledger (Stage 7.8): approving writes the match's contributions,
     # any other status removes them. Editing an approved scorecard does NOT run this, so the ledger
     # keeps the last approved version until re-approval.

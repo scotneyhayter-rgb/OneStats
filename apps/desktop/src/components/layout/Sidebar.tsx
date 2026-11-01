@@ -7,15 +7,23 @@ import onestatsLogo from "../../assets/onestats-logo.png";
 import { useAuth } from "../../lib/auth";
 import { useLayout } from "../../lib/layout";
 import { APP_VERSION, PHASE } from "../../lib/version";
+import { can } from "../../lib/permissions";
+import { useWorkspace } from "../../lib/workspace-context";
 import { cn } from "../../lib/utils";
 import { Modal } from "../ui/dialog";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const { current } = useWorkspace();
   const { sidebarCollapsed } = useLayout();
   const collapsed = sidebarCollapsed;
   const [aboutOpen, setAboutOpen] = useState(false);
+
+  // Role-based nav gating: a section with a `perm` shows only when the user holds it in the
+  // selected workspace (Super Admin holds all). Sections without a `perm` are always visible.
+  // The backend independently enforces every action — hiding a link is convenience, not security.
+  const visible = (s: NavSection) => !s.perm || can(user, current, s.perm);
 
   const navItem = (s: { path: string; label: string; icon: NavSection["icon"] }) => {
     const Icon = s.icon;
@@ -70,15 +78,19 @@ export function Sidebar() {
 
       <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 sidebar-scroll">
         {navItem({ path: "/workspaces", label: "My Workspaces", icon: Building2 })}
-        {NAV_SECTIONS.map(navItem)}
+        {NAV_SECTIONS.filter(visible).map(navItem)}
 
-        {!collapsed && (
-          <li className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-            Club Management
-          </li>
+        {MANAGEMENT_SECTIONS.some(visible) && (
+          <>
+            {!collapsed && (
+              <li className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
+                Club Management
+              </li>
+            )}
+            {collapsed && <li className="my-2 border-t border-[color:var(--sidebar-active)]" aria-hidden />}
+            {MANAGEMENT_SECTIONS.filter(visible).map(navItem)}
+          </>
         )}
-        {collapsed && <li className="my-2 border-t border-[color:var(--sidebar-active)]" aria-hidden />}
-        {MANAGEMENT_SECTIONS.map(navItem)}
       </ul>
 
       {user && (

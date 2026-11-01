@@ -18,9 +18,12 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { api, ApiError, type WorkspaceDashboard } from "../lib/api";
 import { useWorkspace } from "../lib/workspace-context";
+import { useAuth } from "../lib/auth";
+import { can, roleLabels } from "../lib/permissions";
 
 export function Dashboard() {
   const { current } = useWorkspace();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<WorkspaceDashboard | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
@@ -81,9 +84,12 @@ export function Dashboard() {
     { label: "Failed AutoSync jobs", n: at?.failed_autosync_jobs ?? 0, to: "/manage/autosync" },
   ].filter((i) => i.n > 0);
 
-  const action = (label: string, icon: React.ReactNode, to: string) => (
-    <Button size="sm" variant="outline" onClick={() => navigate(to)}>{icon}{label}</Button>
-  );
+  // Quick actions are gated by the user's permissions in THIS workspace — a viewer sees none of
+  // the editing actions. Passing a required permission hides the button when it is not held.
+  const action = (label: string, icon: React.ReactNode, to: string, perm?: string) =>
+    perm && !can(user, current, perm) ? null : (
+      <Button key={label} size="sm" variant="outline" onClick={() => navigate(to)}>{icon}{label}</Button>
+    );
 
   return (
     <AppShell title="Dashboard" subtitle={current.name}>
@@ -100,7 +106,7 @@ export function Dashboard() {
               <div className="text-lg font-semibold">{current.name}</div>
               <div className="text-sm text-muted-foreground">
                 {[current.short_name, current.type].filter(Boolean).join(" · ")}
-                {current.roles?.length ? ` · ${current.roles.join(", ")}` : ""}
+                {current.roles?.length ? ` · ${roleLabels(current.roles)}` : ""}
               </div>
             </div>
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => void load()}>
@@ -108,12 +114,12 @@ export function Dashboard() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {action("Add Match", <PlusCircle className="h-4 w-4" aria-hidden />, "/matches")}
-            {action("Import Data", <DatabaseBackup className="h-4 w-4" aria-hidden />, "/manage/import")}
-            {action("Research Centre", <ScrollText className="h-4 w-4" aria-hidden />, "/manage/research")}
-            {action("Upload Media", <ImageIcon className="h-4 w-4" aria-hidden />, "/manage/media")}
-            {action("Review Approvals", <FileCheck2 className="h-4 w-4" aria-hidden />, "/matches")}
-            {action("Sync Now", <RefreshCw className="h-4 w-4" aria-hidden />, "/manage/autosync")}
+            {action("Add Match", <PlusCircle className="h-4 w-4" aria-hidden />, "/matches", "match.manage")}
+            {action("Import Data", <DatabaseBackup className="h-4 w-4" aria-hidden />, "/manage/import", "import.manage")}
+            {action("Research Centre", <ScrollText className="h-4 w-4" aria-hidden />, "/manage/research", "research.manage")}
+            {action("Upload Media", <ImageIcon className="h-4 w-4" aria-hidden />, "/manage/media", "media.manage")}
+            {action("Review Approvals", <FileCheck2 className="h-4 w-4" aria-hidden />, "/matches", "scorecard.approve")}
+            {action("Sync Now", <RefreshCw className="h-4 w-4" aria-hidden />, "/manage/autosync", "import.manage")}
           </div>
         </CardContent></Card>
 
@@ -126,9 +132,9 @@ export function Dashboard() {
               Research Centre.
             </p>
             <div className="flex flex-wrap gap-2">
-              {action("Organisations", <Building2 className="h-4 w-4" aria-hidden />, "/manage/organisations")}
-              {action("Competitions", <Trophy className="h-4 w-4" aria-hidden />, "/manage/competitions")}
-              {action("Import Data", <DatabaseBackup className="h-4 w-4" aria-hidden />, "/manage/import")}
+              {action("Organisations", <Building2 className="h-4 w-4" aria-hidden />, "/manage/organisations", "organisation.manage")}
+              {action("Competitions", <Trophy className="h-4 w-4" aria-hidden />, "/manage/competitions", "competition.manage")}
+              {action("Import Data", <DatabaseBackup className="h-4 w-4" aria-hidden />, "/manage/import", "import.manage")}
             </div>
           </CardContent></Card>
         )}

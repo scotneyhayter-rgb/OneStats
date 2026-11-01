@@ -72,6 +72,27 @@ class RequestContext:
     user: dict[str, Any]
     workspace_id: UUID
     permissions: set[str]
+    #: the permission that authorised this request (Part 6: effective permission used)
+    permission: str | None = None
+    #: the actor's role(s) in this workspace, comma-joined; "super_admin" when acting as platform admin
+    actor_role: str | None = None
+    #: True when a platform Super Admin is operating in a workspace they are not an ordinary member of
+    acting_as_super_admin: bool = False
+    #: per-request id stamped by the request_id middleware
+    request_id: str | None = None
+
+    def audit_kwargs(self, reason: str | None = None) -> dict[str, Any]:
+        """Keyword arguments for ``audit.write_audit`` capturing WHO really acted and HOW.
+
+        The actor is always the real authenticated user id — a Super Admin is never recorded as
+        the local Organisation Admin. Pass a ``reason`` for sensitive changes."""
+        return {
+            "actor_role": self.actor_role,
+            "effective_permission": self.permission,
+            "reason": reason,
+            "request_id": self.request_id,
+            "acting_as_super_admin": self.acting_as_super_admin,
+        }
 
 
 def require_permission(permission: str) -> Callable[..., RequestContext]:
@@ -82,18 +103,31 @@ def require_permission(permission: str) -> Callable[..., RequestContext]:
     scopes membership/role rows to that workspace.
     """
 
-    def _dep(user: CurrentUser, workspace_id: WorkspaceId, settings: SettingsDep) -> RequestContext:
+    def _dep(
+        request: Request, user: CurrentUser, workspace_id: WorkspaceId, settings: SettingsDep
+    ) -> RequestContext:
         engine = get_engine(settings)
         if engine is None:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Database not configured")
+        is_super = bool(user["is_super_admin"])
         with workspace_transaction(engine, workspace_id) as conn:
-            perms = permissions.effective_permissions(
-                conn, user["id"], workspace_id, user["is_super_admin"]
-            )
+            perms = permissions.effective_permissions(conn, user["id"], workspace_id, is_super)
+            roles = permissions.user_roles(conn, user["id"], workspace_id)
         if permission not in perms:
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"Permission required: {permission}"
             )
-        return RequestContext(user=user, workspace_id=workspace_id, permissions=perms)
+        # A Super Admin with no ordinary membership is "acting as super admin" for this workspace.
+        acting_as_super_admin = is_super and not roles
+        actor_role = "super_admin" if acting_as_super_admin else (",".join(roles) or ("super_admin" if is_super else None))
+        return RequestContext(
+            user=user,
+            workspace_id=workspace_id,
+            permissions=perms,
+            permission=permission,
+            actor_role=actor_role,
+            acting_as_super_admin=acting_as_super_admin,
+            request_id=getattr(request.state, "request_id", None),
+        )
 
     return _dep

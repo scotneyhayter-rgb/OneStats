@@ -20,6 +20,7 @@ import { SystemUpdates } from "./features/admin/SystemUpdates";
 import { Integrations } from "./features/settings/Integrations";
 import { MemberPortal } from "./features/portal/MemberPortal";
 import { MyWorkspaces } from "./features/workspaces/MyWorkspaces";
+import { PlatformDashboard } from "./features/platform/PlatformDashboard";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { Organisations } from "./features/manage/Organisations";
 import { TeamsVenues } from "./features/manage/TeamsVenues";
@@ -52,6 +53,7 @@ function AuthedApp() {
         <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/platform" element={<PlatformDashboard />} />
         <Route path="/workspaces" element={<MyWorkspaces />} />
         <Route path="/onboarding" element={<OnboardingWizard />} />
         <Route path="/manage/organisations" element={<Organisations />} />

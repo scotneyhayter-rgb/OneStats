@@ -30,6 +30,7 @@ from onestats.api.v1 import (
     partnerships,
     people,
     people_import,
+    platform,
     playing_conditions,
     portal,
     premierships,
@@ -91,3 +92,4 @@ api_v1.include_router(portal.router)
 api_v1.include_router(public.router)
 api_v1.include_router(updates.router)
 api_v1.include_router(users.router)
+api_v1.include_router(platform.router)

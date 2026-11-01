@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useLayout } from "../../lib/layout";
 import { ThemeToggle } from "./ThemeToggle";
 import { Sidebar } from "./Sidebar";
+import { SuperAdminBanner } from "./SuperAdminBanner";
 
 export function AppShell({
   title,
@@ -41,6 +42,7 @@ export function AppShell({
             <ThemeToggle />
           </div>
         </header>
+        <SuperAdminBanner />
         <main className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>

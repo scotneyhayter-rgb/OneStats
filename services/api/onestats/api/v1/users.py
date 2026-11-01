@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from onestats.api.deps import SettingsDep, require_super_admin
@@ -111,8 +111,15 @@ def user_audit(user_id: UUID, admin: SuperAdmin, settings: SettingsDep) -> dict[
         return users.user_audit(conn, user_id)
 
 
+def _sa_audit(request: Request, reason: str | None = None) -> dict[str, Any]:
+    """Audit context for a Super-Admin platform action (recorded as the real super admin)."""
+    return {"actor_role": "super_admin", "acting_as_super_admin": True,
+            "request_id": getattr(request.state, "request_id", None), "reason": reason}
+
+
 @router.post("/users/{user_id}/workspace-roles", status_code=status.HTTP_201_CREATED)
-def assign_workspace_role(user_id: UUID, body: WorkspaceRole, admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
+def assign_workspace_role(user_id: UUID, body: WorkspaceRole, admin: SuperAdmin, settings: SettingsDep,
+                          request: Request) -> dict[str, Any]:
     """Assign a user to a workspace with a role (cross-workspace, Super-Admin). 'super_admin' is rejected."""
     with workspace_transaction(_engine(settings), body.workspace_id) as conn:
         try:
@@ -120,16 +127,19 @@ def assign_workspace_role(user_id: UUID, body: WorkspaceRole, admin: SuperAdmin,
         except ValueError as exc:
             raise _err(exc) from exc
         audit.write_audit(conn, body.workspace_id, str(admin["id"]), "membership.grant",
-                          entity="app_user", entity_id=str(user_id), after={"role": body.role})
+                          entity="app_user", entity_id=str(user_id), after={"role": body.role},
+                          effective_permission="user.admin", **_sa_audit(request, f"grant {body.role}"))
     return {"granted": True}
 
 
 @router.delete("/users/{user_id}/workspace-roles")
-def revoke_workspace_role(user_id: UUID, body: WorkspaceRole, admin: SuperAdmin, settings: SettingsDep) -> dict[str, Any]:
+def revoke_workspace_role(user_id: UUID, body: WorkspaceRole, admin: SuperAdmin, settings: SettingsDep,
+                          request: Request) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), body.workspace_id) as conn:
         permissions.revoke_role(conn, user_id, body.workspace_id, body.role)
         audit.write_audit(conn, body.workspace_id, str(admin["id"]), "membership.revoke",
-                          entity="app_user", entity_id=str(user_id), after={"role": body.role})
+                          entity="app_user", entity_id=str(user_id), after={"role": body.role},
+                          effective_permission="user.admin", **_sa_audit(request, f"revoke {body.role}"))
     return {"revoked": True}
 
 

@@ -340,6 +340,26 @@ export interface WorkspaceDashboard {
   recent_activity: { action: string; category: string; entity: string | null; at: string | null; actor: string | null }[];
   is_empty: boolean;
 }
+export interface PlatformOrgRow {
+  workspace_id: string; name: string; short_name: string | null; type: string; status: string;
+  matches: number; players: number; approved_scorecards: number; awaiting_approval: number;
+  seasons: number; members: number;
+}
+export interface PlatformDashboard {
+  summary: {
+    workspaces: number; active_workspaces: number; users_total: number; users_active: number;
+    super_admins: number; workspace_match_records: number; workspace_player_records: number;
+    workspace_approved_scorecards: number; workspace_awaiting_approval: number;
+  };
+  totals_are_workspace_records: boolean;
+  organisations: PlatformOrgRow[];
+  system_health: {
+    database_connected: boolean; active_sessions: number; super_admins: number;
+    version?: string; env?: string; maintenance_mode?: boolean;
+  };
+  platform_activity: { action: string; actor: string | null; target_user_id: string | null; at: string | null }[];
+  is_empty: boolean;
+}
 export interface Workspace {
   id: string;
   name: string;
@@ -348,6 +368,9 @@ export interface Workspace {
   status: string;
   score_format?: string;   // Phase 7.7: 'au' (wickets/runs) | 'en' (runs/wickets)
   roles?: string[];
+  /** The user's effective permission keys in THIS workspace (server-resolved; Super Admin gets
+   * the full catalogue). The UI gates on these; the backend remains the real authority. */
+  permissions?: string[];
 }
 export interface Draft {
   id: string;
@@ -1248,6 +1271,9 @@ export const api = {
     request<{ invitation_id: string; user_id: string; username: string; token: string; expires_at: string }>("/api/v1/invitations", { method: "POST", body }),
   invitationRevoke: (id: string) =>
     request<{ revoked: boolean }>(`/api/v1/invitations/${id}/revoke`, { method: "POST" }),
+
+  // platform ("All Workspaces") — Super Admin only
+  platformDashboard: () => request<PlatformDashboard>("/api/v1/platform/dashboard"),
 
   // workspaces
   myWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),

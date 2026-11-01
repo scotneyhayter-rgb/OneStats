@@ -72,6 +72,24 @@ def effective_permissions(
     return set(rows)
 
 
+def user_roles(conn: Connection, user_id: UUID, workspace_id: UUID) -> list[str]:
+    """The role keys the user holds in this workspace (membership-based, RLS-scoped).
+
+    Does NOT include the platform super_admin flag — that is global and not a membership, so a
+    Super Admin with no ordinary role in the workspace returns an empty list here (callers use
+    that to detect that they are acting purely as a platform administrator)."""
+    return list(
+        conn.execute(
+            text(
+                "SELECT r.key FROM app_user_workspace_role m "
+                "JOIN role r ON r.id = m.role_id "
+                "WHERE m.app_user_id = :u AND m.workspace_id = :w ORDER BY r.key"
+            ),
+            {"u": user_id, "w": workspace_id},
+        ).scalars().all()
+    )
+
+
 def has_permission(
     conn: Connection,
     user_id: UUID,
