@@ -156,8 +156,8 @@ export interface PlayerFullProfile {
   };
   career: {
     matches: number;
-    batting: Record<string, number | null>;
-    bowling: Record<string, number | null>;
+    batting: Record<string, number | null> & { highest_not_out?: boolean };
+    bowling: Record<string, number | null> & { best_bowling?: { wickets: number; runs: number | null } | null };
     fielding: Record<string, number>;
     captaincy: Record<string, number>;
     derived_role: string | null;

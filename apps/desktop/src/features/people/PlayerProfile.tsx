@@ -206,6 +206,9 @@ export function PlayerProfile() {
   const bat = c?.batting ?? {};
   const bowl = c?.bowling ?? {};
   const field = c?.fielding ?? {};
+  // highest score marked not-out (e.g. "120*"), and best bowling figures (e.g. "4-3")
+  const highest = bat.highest_score == null ? null : `${bat.highest_score}${bat.highest_not_out ? "*" : ""}`;
+  const bestBowling = bowl.best_bowling ? `${bowl.best_bowling.wickets}-${bowl.best_bowling.runs ?? "?"}` : null;
   const capt = c?.captaincy ?? {};
 
   const honourBadges = (full?.honours ?? []).filter((h) => ["life_member", "honorary_member"].includes(String(h.honour_type)));
@@ -349,13 +352,14 @@ export function PlayerProfile() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
               {statCard("Bat average", bat.average, 2)}
-              {statCard("Highest", bat.highest_score)}
+              {statCard("Highest", highest)}
             </div>
           )}
           {c?.has_bowling && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
               {statCard("Bowl average", bowl.average, 2)}
+              {statCard("Best bowling", bestBowling)}
             </div>
           )}
           {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_outs ?? 0) > 0 && (
@@ -462,7 +466,7 @@ export function PlayerProfile() {
               <h3 className="text-sm font-semibold">Batting</h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {statCard("Innings", bat.innings)}{statCard("Not outs", bat.not_outs)}{statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
-                {statCard("Highest", bat.highest_score)}{statCard("Average", bat.average, 2)}{statCard("Strike rate", bat.strike_rate, 2)}
+                {statCard("Highest", highest)}{statCard("Average", bat.average, 2)}{statCard("Strike rate", bat.strike_rate, 2)}
                 {statCard("50s", bat.fifties)}{statCard("100s", bat.hundreds)}{statCard("Ducks", bat.ducks)}
                 {statCard("Fours", bat.fours)}{statCard("Sixes", bat.sixes)}
               </div>
@@ -483,6 +487,7 @@ export function PlayerProfile() {
                 {statCard("Innings", bowl.innings)}{statCard("Overs", bowl.overs, 1)}{statCard("Maidens", bowl.maidens)}
                 {statCard("Runs", bowl.runs)}{statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
                 {statCard("Average", bowl.average, 2)}{statCard("Economy", bowl.economy, 2)}{statCard("Strike rate", bowl.strike_rate, 2)}
+                {statCard("Best bowling", bestBowling)}
                 {statCard("5wi", bowl.five_wkt_innings)}{statCard("Best (match)", bowl.best_match_wickets)}
               </div>
               {matchCharts.count > 0 && (

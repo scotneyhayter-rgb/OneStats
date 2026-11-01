@@ -35,6 +35,11 @@ def career_summary(conn: Connection, workspace_id: UUID, person_id: UUID, *, com
     f = _scope_filters(workspace_id, competition_id, season_id, grade_id, team_id, organisation_id)
     bat = engine.person_batting(conn, f, person_id)
     bowl = engine.person_bowling(conn, f, person_id)
+    # The summed ledger keeps neither the not-out status of the highest score nor the runs for the best
+    # bowling figures, so derive those two from the raw entries (same scope, merge-aware, unknown excluded).
+    highest_not_out, best_bowling = _highest_and_bbi(conn, workspace_id, person_id, f)
+    bat["highest_not_out"] = highest_not_out
+    bowl["best_bowling"] = best_bowling
     field = engine.person_fielding(conn, f, person_id)
     capt = engine.person_captaincy(conn, f, person_id)
     part = engine.person_participation(conn, f, person_id)
@@ -65,6 +70,45 @@ def _merge_ids(conn: Connection, person_id: UUID) -> list[str]:
         text("SELECT id FROM person WHERE id = :p OR merged_into_id = :p"), {"p": person_id}
     ).scalars().all()
     return [str(r) for r in rows]
+
+
+def _highest_and_bbi(conn: Connection, workspace_id: UUID, person_id: UUID,
+                     f: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
+    """Highest score's not-out status, and best bowling in an innings (wickets then fewest runs), from the
+    raw entries — the summed ledger keeps neither. Scoped exactly like the summary (merge-aware, official
+    matches only); unknown runs/wickets are excluded, never guessed."""
+    ids = _merge_ids(conn, person_id)
+    params: dict[str, Any] = {"ids": ids, "w": workspace_id}
+    mscope = ""
+    if f.get("competition_id"):
+        mscope += " AND m.competition_id = :comp"; params["comp"] = f["competition_id"]
+    if f.get("season_id"):
+        mscope += " AND m.season_id = :season"; params["season"] = f["season_id"]
+    if f.get("grade_id"):
+        mscope += " AND m.grade_id = :grade"; params["grade"] = f["grade_id"]
+    bat_scope, bowl_scope = mscope, mscope
+    if f.get("team_id"):
+        bat_scope += " AND i.batting_team_id = :team"; bowl_scope += " AND i.bowling_team_id = :team"
+        params["team"] = f["team_id"]
+    if f.get("organisation_id"):
+        bat_scope += " AND i.batting_team_id IN (SELECT id FROM team WHERE organisation_id = :org)"
+        bowl_scope += " AND i.bowling_team_id IN (SELECT id FROM team WHERE organisation_id = :org)"
+        params["org"] = f["organisation_id"]
+    official = "m.workspace_id = :w AND m.include_in_statistics = true AND m.approval_status IN ('approved','verified_partial')"
+    hs = conn.execute(text(
+        "SELECT be.runs AS hs, bool_or(be.dismissal_type IN ('not_out','retired_not_out')) AS no_ "
+        "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+        f"WHERE be.person_id = ANY(CAST(:ids AS uuid[])) AND {official} AND be.runs IS NOT NULL{bat_scope} "
+        "GROUP BY be.runs ORDER BY be.runs DESC LIMIT 1"), params).mappings().first()
+    bb = conn.execute(text(
+        "SELECT bo.wickets AS w, bo.runs_conceded AS r "
+        "FROM bowling_entry bo JOIN innings i ON i.id = bo.innings_id JOIN match m ON m.id = i.match_id "
+        f"WHERE bo.person_id = ANY(CAST(:ids AS uuid[])) AND {official} AND bo.wickets IS NOT NULL{bowl_scope} "
+        "ORDER BY bo.wickets DESC, bo.runs_conceded ASC NULLS LAST LIMIT 1"), params).mappings().first()
+    highest_not_out = bool(hs["no_"]) if hs else False
+    best_bowling = ({"wickets": int(bb["w"]), "runs": int(bb["r"]) if bb["r"] is not None else None}
+                    if bb else None)
+    return highest_not_out, best_bowling
 
 
 def season_breakdown(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[dict[str, Any]]:
