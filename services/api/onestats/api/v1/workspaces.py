@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import CurrentUser, SettingsDep, require_permission, require_super_admin
 from onestats.db.session import get_engine
 from onestats.db.workspace import user_transaction, workspace_transaction
-from onestats.domain import audit, permissions, workspaces
+from onestats.domain import audit, my_tasks, permissions, workspaces
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -129,3 +129,15 @@ def list_members(
 ) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return workspaces.list_members(conn, workspace_id)
+
+
+@router.get("/{workspace_id}/tasks")
+def my_tasks_endpoint(workspace_id: UUID, user: CurrentUser, settings: SettingsDep) -> dict[str, Any]:
+    """Unified "My Tasks" for the signed-in user in this workspace (Part 16): the verification queue
+    and the Research Centre tasks they can act on, filtered by their effective permissions. Member-
+    gated server-side (not merely hidden in the UI)."""
+    with workspace_transaction(_engine(settings), workspace_id, user["id"]) as conn:
+        if not user["is_super_admin"] and not workspaces.user_is_member(conn, user["id"], workspace_id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this workspace")
+        perms = permissions.effective_permissions(conn, user["id"], workspace_id, user["is_super_admin"])
+        return my_tasks.my_tasks(conn, workspace_id, perms, str(user["id"]))

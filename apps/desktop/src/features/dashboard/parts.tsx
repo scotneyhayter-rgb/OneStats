@@ -10,7 +10,8 @@ import { CheckCircle2 } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import type { DashboardTask } from "./tasks";
+import type { MyTask } from "../../lib/api";
+import { kindLabel, kindTone } from "./tasks";
 
 export function SectionCard({ title, icon, children }: { title: string; icon?: ReactNode; children: ReactNode }) {
   return (
@@ -41,13 +42,13 @@ export function StatGrid({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{children}</div>;
 }
 
-/** The unified "My Tasks" list — role-filtered actionable items, or a clear done/empty state. */
-export function MyTasks({ tasks, onOpen }: { tasks: DashboardTask[]; onOpen: (to: string) => void }) {
-  const actionable = tasks.filter((t) => t.count > 0);
+/** The unified "My Tasks" list — real per-item work from the verification queue and the Research
+ * Centre (role-filtered server-side), or a clear caught-up state. */
+export function MyTasks({ tasks, loading, onOpen }: {
+  tasks: MyTask[]; loading?: boolean; onOpen: (to: string) => void;
+}) {
+  if (loading) return <p className="text-xs text-muted-foreground">Loading your tasks…</p>;
   if (tasks.length === 0) {
-    return <p className="text-xs text-muted-foreground">No tasks are assigned to your role in this workspace.</p>;
-  }
-  if (actionable.length === 0) {
     return (
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <CheckCircle2 className="h-4 w-4 text-success" aria-hidden /> You're all caught up — nothing needs your attention.
@@ -56,15 +57,23 @@ export function MyTasks({ tasks, onOpen }: { tasks: DashboardTask[]; onOpen: (to
   }
   return (
     <>
-      {actionable.map((t) => (
+      {tasks.map((t) => (
         <button
-          key={t.key}
+          key={`${t.kind}:${t.id}`}
           type="button"
-          onClick={() => onOpen(t.to)}
+          onClick={() => onOpen(t.link)}
           className="flex items-center gap-2 rounded-[var(--radius-app)] border border-border px-2 py-1.5 text-left text-sm hover:border-brand"
         >
-          <Badge variant={t.tone}>{t.count}</Badge>
-          <span>{t.label}</span>
+          <Badge variant={kindTone(t.kind)}>{kindLabel(t.kind)}</Badge>
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium">{t.title}</span>
+            {t.subtitle && <span className="text-muted-foreground"> — {t.subtitle}</span>}
+          </span>
+          {t.self_submitted && (
+            <Badge variant="outline" className="shrink-0" title="You submitted this — a different verifier should approve it where possible">
+              you submitted
+            </Badge>
+          )}
         </button>
       ))}
     </>

@@ -12,28 +12,31 @@ import {
   Building2, DatabaseBackup, FileCheck2, Image as ImageIcon, ListChecks, PlusCircle,
   RefreshCw, ScrollText, Server, Trophy, Users,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { api, ApiError, type WorkspaceDashboard } from "../lib/api";
+import { api, ApiError, type MyTask, type WorkspaceDashboard } from "../lib/api";
 import { useWorkspace } from "../lib/workspace-context";
 import { useAuth } from "../lib/auth";
 import { can, roleLabels } from "../lib/permissions";
 import { ActivityList, MyTasks, QuickActionBar, SectionCard, StatGrid, StatTile, type QuickAction } from "./dashboard/parts";
-import { deriveMyTasks } from "./dashboard/tasks";
+import { canSeeTasks } from "./dashboard/tasks";
 
 export function Dashboard() {
   const { current } = useWorkspace();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<WorkspaceDashboard | null>(null);
+  const [tasks, setTasks] = useState<MyTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [logo, setLogo] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const has = useCallback((perm: string) => can(user, current, perm), [user, current]);
+  const showTasks = canSeeTasks(has);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -42,7 +45,16 @@ export function Dashboard() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load the dashboard.");
     }
-  }, [current]);
+    if (canSeeTasks((p) => can(user, current, p))) {
+      setTasksLoading(true);
+      try {
+        setTasks((await api.workspaceTasks(current.id)).tasks);
+      } catch { /* non-fatal: the dashboard still renders without the task list */ }
+      finally { setTasksLoading(false); }
+    } else {
+      setTasks([]);
+    }
+  }, [current, user]);
 
   useEffect(() => {
     void load();
@@ -57,8 +69,6 @@ export function Dashboard() {
     }
     return () => { revoked = true; };
   }, [current]);
-
-  const tasks = useMemo(() => deriveMyTasks(data, has), [data, has]);
 
   if (!current) {
     return (
@@ -130,10 +140,11 @@ export function Dashboard() {
           </CardContent></Card>
         )}
 
-        {/* My Tasks — role-filtered, only shown when the user has an actionable role */}
-        {tasks.length > 0 && (
+        {/* My Tasks — real items from the verification queue + Research Centre, role-filtered on
+            the server. Shown only to roles that can act on tasks. */}
+        {showTasks && (
           <SectionCard title="My Tasks" icon={<ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden />}>
-            <MyTasks tasks={tasks} onOpen={open} />
+            <MyTasks tasks={tasks} loading={tasksLoading} onOpen={open} />
           </SectionCard>
         )}
 

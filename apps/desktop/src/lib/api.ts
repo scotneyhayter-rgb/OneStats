@@ -360,6 +360,22 @@ export interface PlatformDashboard {
   platform_activity: { action: string; actor: string | null; target_user_id: string | null; at: string | null }[];
   is_empty: boolean;
 }
+export interface MyTask {
+  id: string;
+  kind: "approval" | "draft" | "research";
+  title: string;
+  subtitle: string;
+  priority: number;
+  permission: string;
+  link: string;
+  at: string | null;
+  self_submitted: boolean;
+}
+export interface WorkspaceTasks {
+  tasks: MyTask[];
+  counts: { approval: number; draft: number; research: number };
+  total: number;
+}
 export interface Workspace {
   id: string;
   name: string;
@@ -1274,6 +1290,9 @@ export const api = {
 
   // platform ("All Workspaces") — Super Admin only
   platformDashboard: () => request<PlatformDashboard>("/api/v1/platform/dashboard"),
+
+  // unified My Tasks (verification queue + Research Centre tasks), role-filtered server-side
+  workspaceTasks: (w: string) => request<WorkspaceTasks>(`/api/v1/workspaces/${w}/tasks`),
 
   // workspaces
   myWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),
