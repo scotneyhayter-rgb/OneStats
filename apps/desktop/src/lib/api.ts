@@ -1291,6 +1291,10 @@ export const api = {
   userRevokeWorkspaceRole: (id: string, workspace_id: string, role: string) =>
     request<{ revoked: boolean }>(`/api/v1/users/${id}/workspace-roles`, { method: "DELETE", body: { workspace_id, role } }),
   workspaceMembers: (w: string) => request<WorkspaceMember[]>(`/api/v1/workspaces/${w}/members`),
+  workspaceAddMember: (w: string, body: { user_id?: string; username?: string; role: string }) =>
+    request<{ granted: boolean; user_id: string; role: string }>(`/api/v1/workspaces/${w}/members`, { method: "POST", body }),
+  workspaceRevokeMember: (w: string, user_id: string, role: string) =>
+    request<{ revoked: boolean }>(`/api/v1/workspaces/${w}/members`, { method: "DELETE", body: { user_id, role } }),
   invitationsList: () => request<UserInvitation[]>("/api/v1/invitations"),
   invitationCreate: (body: { username: string; display_name?: string; is_super_admin?: boolean }) =>
     request<{ invitation_id: string; user_id: string; username: string; token: string; expires_at: string }>("/api/v1/invitations", { method: "POST", body }),

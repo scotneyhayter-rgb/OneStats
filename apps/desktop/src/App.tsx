@@ -16,6 +16,7 @@ import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { ChangePassword } from "./features/auth/ChangePassword";
 import { UserManagement } from "./features/admin/UserManagement";
+import { WorkspaceMembers } from "./features/admin/WorkspaceMembers";
 import { SystemUpdates } from "./features/admin/SystemUpdates";
 import { Integrations } from "./features/settings/Integrations";
 import { MemberPortal } from "./features/portal/MemberPortal";
@@ -68,6 +69,7 @@ function AuthedApp() {
         <Route path="/manage/records" element={<Records />} />
         <Route path="/manage/publishing" element={<Publishing />} />
         <Route path="/manage/portal" element={<MemberPortal />} />
+        <Route path="/manage/members" element={<WorkspaceMembers />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />

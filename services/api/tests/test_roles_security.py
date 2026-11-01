@@ -97,6 +97,16 @@ def test_org_admin_manages_everything_except_onboard(conn):
     assert "workspace.onboard" not in p   # onboarding a NEW workspace is a platform action
 
 
+def test_only_org_admin_manages_workspace_members(conn):
+    """Workspace member management (list/add/revoke roles) is gated by user.admin — held by the
+    Organisation Admin (and Super Admin), not by Editor/Verifier/Researcher/Viewer. This is what lets
+    an Org Admin manage their own workspace's members without being a platform Super Admin."""
+    ws = _ws(conn)
+    assert "user.admin" in _perms(conn, ws, _member(conn, ws, "workspace_admin"))
+    for role in ("scorecard_entry", "reviewer", "researcher", "viewer"):
+        assert "user.admin" not in _perms(conn, ws, _member(conn, ws, role))
+
+
 def test_scorecard_roles_can_read_reference_lists(conn):
     """The scorecard-entry/approval screens read reference lists (competitions, teams, venues, people).
     Those GET endpoints use require_any_permission(<*.manage>, match.manage, scorecard.approve), so a

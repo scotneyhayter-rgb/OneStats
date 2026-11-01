@@ -6,7 +6,8 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import text
 
 from onestats.api.deps import CurrentUser, SettingsDep, require_permission, require_super_admin
 from onestats.db.session import get_engine
@@ -48,6 +49,20 @@ class WorkspaceUpdate(BaseModel):
 
 
 class MemberAdd(BaseModel):
+    # Identify the user by id or by username. Username lets a workspace admin add an existing account
+    # without the platform-wide user list (which is Super-Admin only).
+    user_id: UUID | None = None
+    username: str | None = Field(default=None, max_length=150)
+    role: str
+
+    @model_validator(mode="after")
+    def _one_identifier(self) -> "MemberAdd":
+        if self.user_id is None and not (self.username and self.username.strip()):
+            raise ValueError("user_id_or_username_required")
+        return self
+
+
+class MemberRevoke(BaseModel):
     user_id: UUID
     role: str
 
@@ -130,16 +145,44 @@ def add_member(
     ctx: Annotated[Any, Depends(require_permission("user.admin"))],
 ) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
+        user_id = body.user_id
+        if user_id is None:
+            row = conn.execute(
+                text("SELECT id FROM app_user WHERE lower(username) = lower(:u) AND status = 'active'"),
+                {"u": body.username.strip()},  # type: ignore[union-attr]
+            ).first()
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+            user_id = row[0]
         try:
-            permissions.grant_role(conn, body.user_id, workspace_id, body.role)
+            permissions.grant_role(conn, user_id, workspace_id, body.role)
         except ValueError as exc:
             raise _value_error(exc) from exc
         audit.write_audit(
             conn, workspace_id, str(ctx.user["id"]), "membership.grant",
-            entity="app_user", entity_id=str(body.user_id), after={"role": body.role},
+            entity="app_user", entity_id=str(user_id), after={"role": body.role},
             **ctx.audit_kwargs(reason=f"grant {body.role}"),
         )
-    return {"granted": True, "user_id": str(body.user_id), "role": body.role}
+    return {"granted": True, "user_id": str(user_id), "role": body.role}
+
+
+@router.delete("/{workspace_id}/members")
+def revoke_member(
+    workspace_id: UUID,
+    body: MemberRevoke,
+    settings: SettingsDep,
+    ctx: Annotated[Any, Depends(require_permission("user.admin"))],
+) -> dict[str, Any]:
+    """Revoke one workspace role from a user (workspace-scoped; held by Organisation Admins and
+    Super Admins via user.admin). The platform super_admin flag is never a workspace role."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        permissions.revoke_role(conn, body.user_id, workspace_id, body.role)
+        audit.write_audit(
+            conn, workspace_id, str(ctx.user["id"]), "membership.revoke",
+            entity="app_user", entity_id=str(body.user_id), after={"role": body.role},
+            **ctx.audit_kwargs(reason=f"revoke {body.role}"),
+        )
+    return {"revoked": True, "user_id": str(body.user_id), "role": body.role}
 
 
 @router.get("/{workspace_id}/members")

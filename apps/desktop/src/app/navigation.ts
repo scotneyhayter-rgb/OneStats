@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   Smartphone,
   Trophy,
+  UserCog,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -180,5 +181,13 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: Smartphone,
     blurb: "The members' read-only view of published and members-only records, with Ask OneStats.",
     perm: "match.view",
+  },
+  {
+    key: "members",
+    label: "Members",
+    path: "/manage/members",
+    icon: UserCog,
+    blurb: "Add people to this workspace and manage their roles.",
+    perm: "user.admin",
   },
 ];
