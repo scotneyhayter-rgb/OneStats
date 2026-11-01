@@ -118,3 +118,28 @@ bowling (558/558). The only systematic difference is fielding credits that Crick
 an internal tally absent from its own data export — a source-data limitation, not an OneStats
 calculation error — plus one stale batting innings and a handful of ±1 match-count definition edges.
 No player is missing and no figure is fabricated on either side.
+
+## Actions applied (2026-11-01, authorised)
+
+1. **Merged 7 duplicate identities (8 merge operations).** Each set was the same real player held as
+   separate records; the full-name record was kept as canonical and the others pointed at it. Merges
+   are reversible (`person_merge` rows; `undo_merge` available), nothing was deleted.
+   - John Pola ← JD Pola, J Pola
+   - Alan Smith ← A Smith · David Turner ← D Turner · Wayne Gason ← W Gason
+   - George Miller ← G Miller · Doug Walton ← D Walton · Scott Hyatt ← S Hyatt
+
+   After merging, every remaining surname+initial collision is a genuinely different person — no
+   same-player duplicates remain.
+
+2. **Ran the safe run-out reconstruction** (fills only run-outs with no fielder recorded; never
+   overwrites an existing credit). Outcome: **0 filled** — 107 run-outs were already correctly
+   credited, and the residual gap is not safely closable: 14 credits fall in matches that can't be
+   located because the CricketStatz opponent name does not match an OneStats organisation
+   (Tatyoon, Wick/L Bolac, Hospital), and 13 are cases where the scorecard already credits a
+   *different* fielder. Closing these would require opponent-name reconciliation or overwriting
+   approved historical dismissals — not done.
+
+**Residual fielding gap (catches 52, run-outs 14) stands** as a CricketStatz source-export limitation,
+not an OneStats error. The only remaining *safe* lever is mapping the unmatched CricketStatz opponent
+names to OneStats organisations and re-running; the credit conflicts cannot be changed without
+explicit per-record authorisation.
