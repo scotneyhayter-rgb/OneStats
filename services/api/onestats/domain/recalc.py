@@ -216,14 +216,20 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
     for r in rows:
         a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "overs": 0.0,
                                       "balls_known": 0, "maidens": 0, "runs": 0, "wickets": 0, "wickets_known": 0,
-                                      "five_wkt_innings": 0, "bbi_w": -1, "bbi_r": None})
+                                      "five_wkt_innings": 0, "bbi_w": -1, "bbi_r": None, "overs_len_known": True})
         a["innings"] += 1
         # Balls/overs come from the recorded legal_balls when present, else from the recorded Overs
         # (``overs_text``) — the source stores overs, not balls, so without this economy/overs read as 0.
         if r["balls_raw"] is not None:
             a["balls"] += r["balls_raw"]
-            a["overs"] += (r["balls_raw"] / bpo) if bpo else (r["balls_raw"] / 6)
             a["balls_known"] += 1
+            # Overs are derived from balls, so they need the over length. When it is unrecorded we do NOT
+            # assume a six-ball over — the overs stay unknown so this match is excluded from career economy
+            # and the figure is flagged (never fabricate a 6-ball conversion).
+            if bpo:
+                a["overs"] += r["balls_raw"] / bpo
+            else:
+                a["overs_len_known"] = False
         else:
             e_balls, e_overs = _overs_to_balls_overs(r["overs_text"], bpo)
             if e_overs is not None:
@@ -247,7 +253,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
         overs = round(a["overs"], 4)
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),
                     "metrics": {"innings": a["innings"], "balls": a["balls"], "balls_known": a["balls_known"],
-                                "overs": overs, "overs_known": 1 if overs > 0 else 0,
+                                "overs": overs, "overs_known": 1 if (a["overs_len_known"] and overs > 0) else 0,
                                 "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
                                 "wickets_known": a["wickets_known"], "five_wkt_innings": a["five_wkt_innings"],
                                 "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],

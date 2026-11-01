@@ -100,6 +100,42 @@ Severity key: **CRITICAL** (data corruption / security / workspace leakage / maj
 
 ---
 
+## BUG-007 — Recalc assumed a six-ball over when the over length was unrecorded
+
+- **Severity:** MEDIUM (statistics accuracy — fielding/economy honesty)
+- **Module:** `onestats/domain/recalc.py` (`recompute_player_bowling` contribution build)
+- **Description:** When a match had **no recorded `balls_per_over`**, the per-match bowling
+  contribution still converted balls→overs by dividing by a hardcoded `6` and then set
+  `overs_known = 1`. This contradicts the stated rule (and the engine's design): an unrecorded over
+  length must leave that match's overs **unknown**, so it is excluded from career economy and the
+  figure is flagged — never silently computed as if the match were six-ball cricket.
+- **Steps to reproduce:** Recalc a bowler who has one match in a competition with
+  `balls_per_over = 6` set and one match with no over length recorded → the career economy folded the
+  unrecorded match in as six-ball overs and `economy_incomplete` was `False` (claimed complete).
+- **Expected:** Only matches with a recorded over length contribute to true-overs economy;
+  `economy_incomplete` is `True` when any contributing match's over length is unrecorded. Where a
+  bowler's matches are *all* unrecorded, the leaderboard/profile still shows a figure via the
+  requested `over_length` fallback (default 6) — now correctly flagged as assumed.
+- **Root cause:** The `legal_balls` conversion path fell back to `/6` and `overs_known` was derived
+  from `overs > 0` rather than from whether the over length was actually recorded. (The `overs_text`
+  path, where overs are recorded directly, is correctly over-length-independent and is unchanged.)
+- **Fix:** In the balls→overs path, only accumulate overs when `balls_per_over` is known; otherwise
+  mark the match's over length unknown (`overs_len_known = False`). `overs_known` is now
+  `1` only when the over length was recorded **and** overs were accrued. No number changes for the
+  common modern (six-ball) case computed via the `over_length=6` fallback; mixed-era and unrecorded
+  matches are now handled honestly.
+- **User-visibility:** Stored contributions are unchanged until a match is recalculated. For a
+  workspace whose competitions/seasons do **not** set `balls_per_over`, a recalc will flag economy as
+  assumed (figure unchanged) rather than claiming it complete; setting `balls_per_over` on the
+  competition/season (e.g. 6 for modern grades) records the true length and clears the flag.
+- **Tests:** `tests/test_integrity_economy_keepers.py::test_economy_flagged_when_over_length_unrecorded`
+  and `tests/test_audit_stats_reference.py::test_bowling_reference_with_eight_ball_overs` now pass;
+  `test_career_economy_across_mixed_over_lengths` and `test_stats_engine.py::test_bowling_engine`
+  continue to pass.
+- **Verification:** PASSED (both target files green; full suite re-run). **Status:** FIXED.
+
+---
+
 ## Observations (not defects — logged for a future phase)
 
 - **OBS-1 (PARTIAL feature):** "Best Bowling in a Match" ranks by wicket count only; it does not carry
