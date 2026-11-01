@@ -140,6 +140,29 @@ No player is missing and no figure is fabricated on either side.
    approved historical dismissals — not done.
 
 **Residual fielding gap (catches 52, run-outs 14) stands** as a CricketStatz source-export limitation,
-not an OneStats error. The only remaining *safe* lever is mapping the unmatched CricketStatz opponent
-names to OneStats organisations and re-running; the credit conflicts cannot be changed without
-explicit per-record authorisation.
+not an OneStats error.
+
+3. **Mapped all three unmatched CricketStatz opponent names and re-ran the run-out fill.** All proved
+   to be legitimate aliases for clubs OneStats already holds:
+   - `Wick/L Bolac` → **Wickliffe/Lake Bolac**
+   - `Hospital` → **Chalambar** (same club, since renamed)
+   - `Tatyoon` → **Buangor** (Tatyoon folded into Buangor; the CricketStatz extract carries a
+     combined "Buangor/Tatyoon" team, and OneStats stored those matches under the Buangor
+     organisation)
+
+   With every opponent resolved, the fill still added **0** credits: **all 120 located run-outs are
+   already correctly credited in OneStats.** The entire remaining shortfall versus CricketStatz is
+   **14 scorecards that credit a *different* fielder** — the safe fill never overwrites an existing
+   credit. No data was changed by this step.
+
+   **Net conclusion:** OneStats attributes every run-out it can from the scorecard evidence; the gap
+   to CricketStatz's displayed totals is attribution conflicts (and, for catches, CricketStatz's
+   internal tally), not missing or miscalculated data. Closing it would require overwriting approved
+   historical dismissals, which needs explicit per-record authorisation and evidence.
+
+### Open data-model note — Tatyoon
+
+Tatyoon was a long-standing Grampians Cricket Association club. In OneStats its matches currently sit
+under the **Buangor** organisation (via the extract's "Buangor/Tatyoon" combined team). If Tatyoon
+should stand as its own club, that is a separate historical-record correction (create the Tatyoon
+organisation and re-point the relevant opponent teams) — flagged here, not actioned.
