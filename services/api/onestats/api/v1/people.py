@@ -14,7 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.api.deps import RequestContext, SettingsDep, require_any_permission, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import people
@@ -22,6 +22,11 @@ from onestats.domain import people
 router = APIRouter(prefix="/workspaces/{workspace_id}/people", tags=["people"])
 
 PersonCtx = Annotated[RequestContext, Depends(require_permission("person.manage"))]
+# Reading the people list is needed by the scorecard-entry/approval screens (selecting batters,
+# bowlers, fielders); holders of match.manage / scorecard.approve may read it even without
+# person.manage. Writes (create/merge/edit) stay gated by person.manage above.
+PersonReadCtx = Annotated[RequestContext, Depends(
+    require_any_permission("person.manage", "match.manage", "scorecard.approve"))]
 
 _VALUE_ERR_STATUS = {
     "person_not_found": status.HTTP_404_NOT_FOUND,
@@ -104,7 +109,7 @@ def create_person(workspace_id: UUID, body: PersonCreate, settings: SettingsDep,
 
 @router.get("")
 def list_people(
-    workspace_id: UUID, settings: SettingsDep, ctx: PersonCtx,
+    workspace_id: UUID, settings: SettingsDep, ctx: PersonReadCtx,
     search: str | None = None, role: str | None = None,
     include_merged: bool = False, include_protected: bool = False,
     organisation_id: UUID | None = None, active_only: bool = False,

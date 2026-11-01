@@ -97,6 +97,25 @@ def test_org_admin_manages_everything_except_onboard(conn):
     assert "workspace.onboard" not in p   # onboarding a NEW workspace is a platform action
 
 
+def test_scorecard_roles_can_read_reference_lists(conn):
+    """The scorecard-entry/approval screens read reference lists (competitions, teams, venues, people).
+    Those GET endpoints use require_any_permission(<*.manage>, match.manage, scorecard.approve), so a
+    Scorecard Editor / Data Verifier may read them without holding the management permission, while a
+    Viewer (who holds none of these) stays blocked and writes remain gated by the management permission."""
+    ws = _ws(conn)
+    read_gate = {"match.manage", "scorecard.approve"}  # the non-manage perms the read endpoints also accept
+    editor = _member(conn, ws, "scorecard_entry")
+    verifier = _member(conn, ws, "reviewer")
+    viewer = _member(conn, ws, "viewer")
+    # editor and verifier satisfy the read gate without any *.manage reference permission
+    assert _perms(conn, ws, editor) & read_gate
+    assert _perms(conn, ws, verifier) & read_gate
+    for mgr in ("competition.manage", "organisation.manage", "venue.manage"):
+        assert mgr not in _perms(conn, ws, editor)   # proves the gate isn't relying on a manage perm
+    # a viewer satisfies neither the read gate nor the manage perms -> still blocked from these lists
+    assert not (_perms(conn, ws, viewer) & (read_gate | {"competition.manage", "organisation.manage", "venue.manage", "person.manage"}))
+
+
 def test_super_admin_has_all_in_any_workspace_without_membership(conn):
     ws = _ws(conn)
     sa = uuid.uuid4()  # not a member of anything

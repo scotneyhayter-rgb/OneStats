@@ -14,7 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.api.deps import RequestContext, SettingsDep, require_any_permission, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import venues
@@ -22,6 +22,10 @@ from onestats.domain import venues
 router = APIRouter(prefix="/workspaces/{workspace_id}/venues", tags=["venues"])
 
 VenueCtx = Annotated[RequestContext, Depends(require_permission("venue.manage"))]
+# Reading the venue list is needed by the scorecard-entry/approval screens; holders of
+# match.manage / scorecard.approve may read it even without venue.manage. Writes stay gated above.
+VenueReadCtx = Annotated[RequestContext, Depends(
+    require_any_permission("venue.manage", "match.manage", "scorecard.approve"))]
 
 _VALUE_ERR_STATUS = {
     "venue_not_found": status.HTTP_404_NOT_FOUND,
@@ -124,7 +128,7 @@ def create_venue(workspace_id: UUID, body: VenueCreate, settings: SettingsDep, c
 
 @router.get("")
 def list_venues(
-    workspace_id: UUID, settings: SettingsDep, ctx: VenueCtx,
+    workspace_id: UUID, settings: SettingsDep, ctx: VenueReadCtx,
     include_merged: bool = False, search: str | None = None,
 ) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

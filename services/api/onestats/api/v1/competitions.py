@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.api.deps import RequestContext, SettingsDep, require_any_permission, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import competitions, seasons
@@ -23,6 +23,10 @@ from onestats.domain import competitions, seasons
 router = APIRouter(prefix="/workspaces/{workspace_id}/competitions", tags=["competitions"])
 
 CompCtx = Annotated[RequestContext, Depends(require_permission("competition.manage"))]
+# Reading the competition list is needed by the scorecard-entry/approval screens, so holders of
+# match.manage / scorecard.approve may read it even without competition.manage. Writes stay gated above.
+CompReadCtx = Annotated[RequestContext, Depends(
+    require_any_permission("competition.manage", "match.manage", "scorecard.approve"))]
 
 _VALUE_ERR_STATUS = {
     "competition_not_found": status.HTTP_404_NOT_FOUND,
@@ -143,7 +147,7 @@ def create_competition(workspace_id: UUID, body: CompetitionCreate, settings: Se
 
 @router.get("")
 def list_competitions(
-    workspace_id: UUID, settings: SettingsDep, ctx: CompCtx,
+    workspace_id: UUID, settings: SettingsDep, ctx: CompReadCtx,
     association_id: UUID | None = None, search: str | None = None,
 ) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:

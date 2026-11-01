@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from onestats.api.deps import RequestContext, SettingsDep, require_permission
+from onestats.api.deps import RequestContext, SettingsDep, require_any_permission, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import teams
@@ -23,6 +23,10 @@ from onestats.domain import teams
 router = APIRouter(prefix="/workspaces/{workspace_id}/teams", tags=["teams"])
 
 TeamCtx = Annotated[RequestContext, Depends(require_permission("organisation.manage"))]
+# Reading the team list is needed by the scorecard-entry/approval screens; holders of
+# match.manage / scorecard.approve may read it even without organisation.manage. Writes stay gated above.
+TeamReadCtx = Annotated[RequestContext, Depends(
+    require_any_permission("organisation.manage", "match.manage", "scorecard.approve"))]
 
 _VALUE_ERR_STATUS = {
     "team_not_found": status.HTTP_404_NOT_FOUND,
@@ -116,7 +120,7 @@ def create_team(workspace_id: UUID, body: TeamCreate, settings: SettingsDep, ctx
 
 @router.get("")
 def list_teams(
-    workspace_id: UUID, settings: SettingsDep, ctx: TeamCtx,
+    workspace_id: UUID, settings: SettingsDep, ctx: TeamReadCtx,
     organisation_id: UUID | None = None, program: str | None = None,
     include_merged: bool = False, search: str | None = None,
 ) -> list[dict[str, Any]]:

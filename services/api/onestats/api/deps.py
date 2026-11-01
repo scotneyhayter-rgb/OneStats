@@ -131,3 +131,43 @@ def require_permission(permission: str) -> Callable[..., RequestContext]:
         )
 
     return _dep
+
+
+def require_any_permission(*required: str) -> Callable[..., RequestContext]:
+    """Dependency factory: require AT LEAST ONE of ``required`` in the target workspace.
+
+    For reads shared by several roles — e.g. reference lists (competitions, teams, venues) that the
+    scorecard-entry/approval screens need. A Scorecard Editor or Data Verifier holds ``match.manage`` /
+    ``scorecard.approve`` but not the management permission, so a single ``*.manage`` gate would wrongly
+    lock them out of their own workflow. Writes stay gated by the management permission. The Super
+    Administrator passes for any workspace.
+    """
+
+    def _dep(
+        request: Request, user: CurrentUser, workspace_id: WorkspaceId, settings: SettingsDep
+    ) -> RequestContext:
+        engine = get_engine(settings)
+        if engine is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Database not configured")
+        is_super = bool(user["is_super_admin"])
+        with workspace_transaction(engine, workspace_id) as conn:
+            perms = permissions.effective_permissions(conn, user["id"], workspace_id, is_super)
+            roles = permissions.user_roles(conn, user["id"], workspace_id)
+        held = next((p for p in required if p in perms), None)
+        if held is None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, f"Permission required: {' or '.join(required)}"
+            )
+        acting_as_super_admin = is_super and not roles
+        actor_role = "super_admin" if acting_as_super_admin else (",".join(roles) or ("super_admin" if is_super else None))
+        return RequestContext(
+            user=user,
+            workspace_id=workspace_id,
+            permissions=perms,
+            permission=held,
+            actor_role=actor_role,
+            acting_as_super_admin=acting_as_super_admin,
+            request_id=getattr(request.state, "request_id", None),
+        )
+
+    return _dep
