@@ -10,19 +10,21 @@
  */
 import {
   Building2, DatabaseBackup, FileCheck2, Image as ImageIcon, ListChecks, PlusCircle,
-  RefreshCw, ScrollText, Server, Trophy, Users,
+  RefreshCw, ScrollText, Server, SlidersHorizontal, Trophy, Users,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { Modal } from "../components/ui/dialog";
 import { api, ApiError, type MyTask, type WorkspaceDashboard } from "../lib/api";
 import { useWorkspace } from "../lib/workspace-context";
 import { useAuth } from "../lib/auth";
 import { can, roleLabels } from "../lib/permissions";
 import { ActivityList, MyTasks, QuickActionBar, SectionCard, StatGrid, StatTile, type QuickAction } from "./dashboard/parts";
 import { canSeeTasks } from "./dashboard/tasks";
+import { CUSTOMISABLE_SECTIONS, isHidden, toggleHidden } from "./dashboard/customise";
 
 export function Dashboard() {
   const { current } = useWorkspace();
@@ -34,9 +36,28 @@ export function Dashboard() {
   const [logo, setLogo] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<Record<string, unknown>>({});
+  const [customiseOpen, setCustomiseOpen] = useState(false);
 
   const has = useCallback((perm: string) => can(user, current, perm), [user, current]);
   const showTasks = canSeeTasks(has);
+
+  // Load this user's dashboard customisation for the selected workspace (per user + per workspace).
+  useEffect(() => {
+    if (!current) return;
+    let cancelled = false;
+    api.getPreferences("dashboard", current.id)
+      .then((r) => { if (!cancelled) setPrefs(r.prefs ?? {}); })
+      .catch(() => { if (!cancelled) setPrefs({}); });
+    return () => { cancelled = true; };
+  }, [current]);
+
+  const toggleSection = useCallback((key: string) => {
+    if (!current) return;
+    const next = toggleHidden(prefs, key);
+    setPrefs(next);                                   // optimistic
+    void api.putPreferences("dashboard", next, current.id).catch(() => { /* keep local choice */ });
+  }, [prefs, current]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -113,9 +134,14 @@ export function Dashboard() {
                 {current.roles?.length ? ` · ${roleLabels(current.roles)}` : ""}
               </div>
             </div>
-            <Button size="sm" variant="outline" className="ml-auto" onClick={() => void load()}>
-              <RefreshCw className="h-4 w-4" aria-hidden /> Refresh
-            </Button>
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setCustomiseOpen(true)} title="Customise dashboard">
+                <SlidersHorizontal className="h-4 w-4" aria-hidden /> Customise
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void load()}>
+                <RefreshCw className="h-4 w-4" aria-hidden /> Refresh
+              </Button>
+            </div>
           </div>
           <QuickActionBar actions={quickActions} has={has} onOpen={open} />
         </CardContent></Card>
@@ -149,6 +175,7 @@ export function Dashboard() {
         )}
 
         {/* live summary — figures from the authoritative backend */}
+        {!isHidden(prefs, "summary") && (
         <SectionCard title="Summary">
           <StatGrid>
             <StatTile label="Matches" value={t?.matches} icon={<Trophy className="h-4 w-4" aria-hidden />} onClick={() => open("/matches")} />
@@ -160,9 +187,10 @@ export function Dashboard() {
             <StatTile label="Media assets" value={t?.media_assets} icon={<ImageIcon className="h-4 w-4" aria-hidden />} onClick={has("media.manage") ? () => open("/manage/media") : undefined} />
           </StatGrid>
         </SectionCard>
+        )}
 
         {/* historical research progress — shown to roles that work with research */}
-        {has("research.manage") && (
+        {has("research.manage") && !isHidden(prefs, "research") && (
           <SectionCard title="Historical research" icon={<ScrollText className="h-4 w-4 text-muted-foreground" aria-hidden />}>
             <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <StatTile label="Active projects" value={rs?.projects_active} onClick={() => open("/manage/research")} />
@@ -174,14 +202,38 @@ export function Dashboard() {
         )}
 
         {/* recent activity */}
-        <SectionCard title="Recent activity">
-          <ActivityList items={data?.recent_activity ?? []} />
-        </SectionCard>
+        {!isHidden(prefs, "activity") && (
+          <SectionCard title="Recent activity">
+            <ActivityList items={data?.recent_activity ?? []} />
+          </SectionCard>
+        )}
 
         <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
           <Server className="h-3.5 w-3.5" aria-hidden /> OneStats API {version ? `v${version}` : "checking…"}
         </div>
       </div>
+
+      <Modal open={customiseOpen} title="Customise dashboard" onClose={() => setCustomiseOpen(false)}>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Choose which sections to show. Your tasks, quick actions and any security notices always
+            stay visible. Saved to your account for this workspace.
+          </p>
+          <div className="flex flex-col gap-2">
+            {CUSTOMISABLE_SECTIONS.map((s) => (
+              <label key={s.key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!isHidden(prefs, s.key)}
+                  onChange={() => toggleSection(s.key)}
+                  className="h-4 w-4 accent-[color:var(--brand)]"
+                />
+                {s.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </AppShell>
   );
 }

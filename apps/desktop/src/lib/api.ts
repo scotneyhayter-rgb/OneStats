@@ -1294,6 +1294,17 @@ export const api = {
   // unified My Tasks (verification queue + Research Centre tasks), role-filtered server-side
   workspaceTasks: (w: string) => request<WorkspaceTasks>(`/api/v1/workspaces/${w}/tasks`),
 
+  // per-user preferences (dashboard customisation, etc.) — scoped to the authenticated user
+  getPreferences: (namespace: string, workspaceId?: string) =>
+    request<{ namespace: string; workspace_id: string | null; prefs: Record<string, unknown> }>(
+      `/api/v1/me/preferences/${namespace}${workspaceId ? `?workspace_id=${workspaceId}` : ""}`,
+    ),
+  putPreferences: (namespace: string, prefs: Record<string, unknown>, workspaceId?: string) =>
+    request<{ namespace: string; workspace_id: string | null; prefs: Record<string, unknown> }>(
+      `/api/v1/me/preferences/${namespace}`,
+      { method: "PUT", body: { workspace_id: workspaceId ?? null, prefs } },
+    ),
+
   // workspaces
   myWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),
   createWorkspace: (name: string, short_name: string, type: string) =>
