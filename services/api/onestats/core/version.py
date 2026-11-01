@@ -25,8 +25,8 @@ SERVER_VERSION = "1.0.0-beta.1"
 API_VERSION = 1
 
 # --- Database schema the server code expects (keep in step with the Alembic head) ---
-DB_SCHEMA_HEAD = "0058_update_system"
-DB_SCHEMA_LEVEL = 58
+DB_SCHEMA_HEAD = "0063_user_preference"
+DB_SCHEMA_LEVEL = 63
 
 # --- Desktop client compatibility rules (explicit; never inferred) ---
 # A desktop older than MIN_DESKTOP_VERSION must update before it may operate.
