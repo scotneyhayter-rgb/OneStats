@@ -25,6 +25,9 @@ DEFAULT_THRESHOLDS: dict[str, list[int]] = {
     "captaincy_matches": [25, 50, 100],
     "captaincy_wins": [25, 50, 100],
 }
+# How close a player must be to a milestone to be flagged as "upcoming", per metric (RMCC-chosen): runs
+# accumulate faster than wickets, so a wider runs window is useful. A single scalar `window` still overrides.
+DEFAULT_WINDOWS: dict[str, int] = {"runs": 50, "wickets": 10, "matches": 10}
 
 _LABELS = {"runs": "Career runs", "wickets": "Career wickets", "matches": "Matches played",
            "catches": "Catches", "stumpings": "Stumpings", "captaincy_matches": "Matches captained",
@@ -76,12 +79,13 @@ def person_milestones(conn: Connection, workspace_id: UUID, person_id: UUID, *, 
     return out
 
 
-def upcoming_for_workspace(conn: Connection, workspace_id: UUID, *, window: int = 10,
+def upcoming_for_workspace(conn: Connection, workspace_id: UUID, *, window: int | None = None,
                            thresholds: dict[str, list[int]] | None = None, limit: int = 50,
                            organisation_id: UUID | None = None) -> list[dict[str, Any]]:
-    """Players within ``window`` of their next runs/wickets/matches milestone — from confirmed totals
-    only (a known-minimum total never drives a misleading prediction). Each row names the player so the
-    list is actionable; ``organisation_id`` restricts to one club's players."""
+    """Players approaching their next runs/wickets/matches milestone — from confirmed totals only (a
+    known-minimum total never drives a misleading prediction). Each metric has its own flagging window
+    (runs 50, wickets 10, matches 10 by default); a scalar ``window`` overrides all of them. Each row
+    names the player so the list is actionable; ``organisation_id`` restricts to one club's players."""
     th = thresholds or DEFAULT_THRESHOLDS
     f: dict[str, Any] = {"workspace_id": workspace_id}
     if organisation_id:
@@ -92,18 +96,21 @@ def upcoming_for_workspace(conn: Connection, workspace_id: UUID, *, window: int 
     bat = {r["subject_id"]: r for r in engine.batting_leaders(conn, f, limit=1000)}
     bowl = {r["subject_id"]: r for r in engine.bowling_leaders(conn, f, limit=1000)}
     part = {r["subject_id"]: r for r in engine.participation_leaders(conn, f, limit=1000)}
+    def _win(metric: str) -> int:
+        return window if window is not None else DEFAULT_WINDOWS.get(metric, 10)
     for metric, source, total_key, km_key in (("runs", bat, "runs", "runs_known_minimum"),
                                               ("wickets", bowl, "wickets", "wickets_known_minimum"),
                                               ("matches", part, "matches", None)):
         for pid, r in source.items():
             if km_key and r.get(km_key):
                 continue  # don't predict from incomplete totals
+            win = _win(metric)
             total = int(r.get(total_key, 0))
             for t in sorted(th.get(metric, [])):
                 if total < t:
-                    if t - total <= window:
+                    if t - total <= win:
                         out.append({"person_id": pid, "player": names.get(str(pid), "Unknown"),
                                     "metric": metric, "threshold": t, "current": total, "to_go": t - total})
                     break
-    out.sort(key=lambda x: x["to_go"])
+    out.sort(key=lambda x: x["to_go"])   # most imminent first (across all metrics)
     return out[:limit]

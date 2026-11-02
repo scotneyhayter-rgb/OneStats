@@ -20,6 +20,16 @@ type Upcoming = Awaited<ReturnType<typeof api.recordsUpcoming>>;
 type ByWicket = Awaited<ReturnType<typeof api.recordsPartnershipsByWicket>>;
 const WICKET_LABELS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
 const CLUB_LENS_KEY = "onestats.records.clubLens";
+// Record tiles are grouped by genre, in this order; within a genre, by this key order (others fall last).
+const GENRE_ORDER = ["Batting", "Partnerships", "Bowling", "Fielding & Wicketkeeping", "Captaincy & Appearances", "Other"];
+const RECORD_ORDER = [
+  "most_runs", "highest_score", "most_centuries", "most_fifties",
+  "highest_partnership", "partnership_aggregate_career", "partnership_aggregate_season",
+  "most_wickets", "best_bowling_innings", "best_match_bowling", "most_five_fors",
+  "most_catches", "most_stumpings", "most_run_outs",
+  "most_matches", "most_captained", "most_captain_wins",
+];
+const orderOf = (key: string) => { const i = RECORD_ORDER.indexOf(key); return i < 0 ? 999 : i; };
 
 export function Records() {
   const { current } = useWorkspace();
@@ -55,7 +65,7 @@ export function Records() {
     try {
       const [a, s, u, w, h] = await Promise.all([
         api.recordsAllTime(current.id, { club_mode: clubMode, organisation_id: org }),
-        api.recordsSeasonal(current.id), api.recordsUpcoming(current.id, 10, org),
+        api.recordsSeasonal(current.id), api.recordsUpcoming(current.id, undefined, org),
         api.recordsPartnershipsByWicket(current.id, org), api.recordsHonours(current.id),
       ]);
       setAll(a);
@@ -95,6 +105,15 @@ export function Records() {
   };
 
   const categories = all ? Object.entries(all).filter(([, c]) => c.holder) : [];
+  // Group the record tiles by genre, in GENRE_ORDER, and order within each genre by RECORD_ORDER.
+  const genreGroups = GENRE_ORDER
+    .map((genre) => ({
+      genre,
+      items: categories
+        .filter(([, c]) => (c.genre ?? "Other") === genre)
+        .sort(([ka], [kb]) => orderOf(ka) - orderOf(kb)),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <AppShell title="Records & Achievements" subtitle={current.name}>
@@ -140,34 +159,39 @@ export function Records() {
             </p>
           )}
           {categories.length === 0 && <p className="text-xs text-muted-foreground">No approved records yet.</p>}
-          <div className="grid gap-2 sm:grid-cols-2">
-            {categories.map(([key, c]) => (
-              <button key={key} type="button" onClick={() => setExpanded(expanded === key ? null : key)}
-                className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-border p-3 text-left hover:border-brand">
-                <div className="flex items-center gap-2">
-                  <Award className="h-4 w-4 text-brand" aria-hidden />
-                  <span className="text-xs text-muted-foreground">{c.title}</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-semibold">{c.holder?.player}</span>
-                  <span className="text-xl font-bold tabular-nums text-brand">{c.value}</span>
-                  {c.holder?.tied && <Badge variant="muted">tied</Badge>}
-                  {c.holder?.known_minimum && <Badge variant="warning">known min.</Badge>}
-                </div>
-                {c.holder?.club && <span className="text-xs text-muted-foreground">{c.holder.club}</span>}
-                {expanded === key && (
-                  <div className="mt-1 flex flex-col gap-0.5 border-t border-border pt-1 text-xs">
-                    {c.ranking.map((r) => (
-                      <div key={r.rank} className="flex justify-between gap-2">
-                        <span>{r.rank}. {r.player}{r.club ? <span className="text-muted-foreground"> · {r.club}</span> : null}</span>
-                        <span className="tabular-nums">{r.value}</span>
+          {genreGroups.map((group) => (
+            <div key={group.genre} className="flex flex-col gap-2">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group.genre}</h4>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.items.map(([key, c]) => (
+                  <button key={key} type="button" onClick={() => setExpanded(expanded === key ? null : key)}
+                    className="flex flex-col gap-1 rounded-[var(--radius-app)] border border-border p-3 text-left hover:border-brand">
+                    <div className="flex items-center gap-2">
+                      <Award className="h-4 w-4 text-brand" aria-hidden />
+                      <span className="text-xs text-muted-foreground">{c.title}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-lg font-semibold">{c.holder?.player}</span>
+                      <span className="text-xl font-bold tabular-nums text-brand">{c.value}</span>
+                      {c.holder?.tied && <Badge variant="muted">tied</Badge>}
+                      {c.holder?.known_minimum && <Badge variant="warning">known min.</Badge>}
+                    </div>
+                    {c.holder?.club && <span className="text-xs text-muted-foreground">{c.holder.club}</span>}
+                    {expanded === key && (
+                      <div className="mt-1 flex flex-col gap-0.5 border-t border-border pt-1 text-xs">
+                        {c.ranking.map((r) => (
+                          <div key={r.rank} className="flex justify-between gap-2">
+                            <span>{r.rank}. {r.player}{r.club ? <span className="text-muted-foreground"> · {r.club}</span> : null}</span>
+                            <span className="tabular-nums">{r.value}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </CardContent></Card>
 
         <Card><CardContent className="flex flex-col gap-2">

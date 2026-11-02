@@ -205,6 +205,7 @@ export interface RecordHolder {
 export interface RecordCategory {
   title: string;
   metric: string;
+  genre?: string;   // on-screen grouping: Batting, Partnerships, Bowling, Fielding & Wicketkeeping, …
   value: number | string | null;
   holder: RecordHolder | null;
   ties: { player: string; subject_id: string; club?: string | null }[];
@@ -1935,7 +1936,8 @@ export const api = {
   recordsSeasonal: (w: string) =>
     request<{ season_id: string; label: string; leading_run_scorer: { player: string; value: number } | null;
               leading_wicket_taker: { player: string; value: number } | null }[]>(`/api/v1/workspaces/${w}/records/seasonal`),
-  recordsUpcoming: (w: string, window = 10, organisationId?: string) =>
+  // window omitted → per-metric server defaults (runs 50, wickets 10, matches 10)
+  recordsUpcoming: (w: string, window?: number, organisationId?: string) =>
     request<{ person_id: string; player: string; metric: string; threshold: number; current: number; to_go: number }[]>(
       `/api/v1/workspaces/${w}/records/upcoming${qs({ window, organisation_id: organisationId })}`),
   recordsPartnershipsByWicket: (w: string, organisationId?: string) =>

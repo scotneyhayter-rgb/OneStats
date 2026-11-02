@@ -85,3 +85,25 @@ def test_upcoming_excludes_incomplete(conn):
     # within 5 of 125? no (120, next real threshold 500). Use a wide window to include the confirmed player.
     up = milestones.upcoming_for_workspace(conn, wid, window=400)
     assert any(u["person_id"] == str(confirmed) and u["metric"] == "runs" and u["to_go"] == 380 for u in up)
+
+
+def test_runs_milestone_window_is_fifty_by_default(conn):
+    """The runs flagging window is 50 by default (runs accumulate faster than wickets): a batter 40 from
+    their next 100 is flagged, one 60 away is not. The old single window of 10 flagged neither."""
+    wid = _ws(conn, "MS WIN")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    near = people.create_person(conn, wid, ACTOR, display_name="Near Hundred")    # 60 runs -> 40 to go
+    far = people.create_person(conn, wid, ACTOR, display_name="Far Off")          # 40 runs -> 60 to go
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=near, batting_position=1, runs=60, balls_faced=80, dismissal_type="not_out")
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=far, batting_position=2, runs=40, balls_faced=50, dismissal_type="not_out")
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    up = milestones.upcoming_for_workspace(conn, wid)   # per-metric default windows
+    flagged = {u["person_id"]: u for u in up}
+    assert str(near) in flagged and flagged[str(near)]["to_go"] == 40   # within the 50-run window
+    assert str(far) not in flagged                                       # 60 away — beyond the window

@@ -86,8 +86,13 @@ def clubs_for(conn: Connection, workspace_id: UUID, filters: dict[str, Any],
     return out
 
 
+# Record "genres" group the all-time tiles on screen. Order here is the on-screen order of the groups.
+_GENRE_BY_WHICH = {"batting": "Batting", "bowling": "Bowling", "fielding": "Fielding & Wicketkeeping",
+                   "captaincy": "Captaincy & Appearances", "participation": "Captaincy & Appearances"}
+
+
 def _bowling_figure_record(title: str, metric: str, rows: list[dict[str, Any]], names: dict[str, str],
-                           club: Any, top: int) -> dict[str, Any]:
+                           club: Any, top: int, genre: str = "Bowling") -> dict[str, Any]:
     """Build a bowling-FIGURE record (Best Bowling in a Match / in an Innings) from rows already ranked
     most wickets then fewest runs. Reduces the per-(player, match/innings) rows to each player's single
     best figure, then ranks players by it. A genuine tie (equal wickets AND equal runs) is preserved; the
@@ -97,7 +102,7 @@ def _bowling_figure_record(title: str, metric: str, rows: list[dict[str, Any]], 
         best.setdefault(r["subject_id"], r)
     ranked = list(best.values())         # insertion order follows the global wkts-desc / runs-asc sort
     if not ranked:
-        return {"title": title, "metric": metric, "holder": None, "ranking": []}
+        return {"title": title, "metric": metric, "genre": genre, "holder": None, "ranking": []}
 
     def _fig(r: dict[str, Any]) -> str:
         return f"{r['wickets']}-{r['runs']}" if r.get("runs") is not None else f"{r['wickets']}"
@@ -105,7 +110,7 @@ def _bowling_figure_record(title: str, metric: str, rows: list[dict[str, Any]], 
     key = (leader["wickets"], leader["runs"])
     ties = [r for r in ranked if (r["wickets"], r["runs"]) == key]
     return {
-        "title": title, "metric": metric, "value": _fig(leader),
+        "title": title, "metric": metric, "genre": genre, "value": _fig(leader),
         "holder": {"player": names.get(leader["subject_id"], "Unknown"), "subject_id": leader["subject_id"],
                    "value": _fig(leader), "club": club(leader["subject_id"]),
                    "tied": len(ties) > 1, "known_minimum": leader.get("runs") is None},
@@ -118,18 +123,18 @@ def _bowling_figure_record(title: str, metric: str, rows: list[dict[str, Any]], 
 
 
 def _pair_aggregate_record(title: str, metric: str, rows: list[dict[str, Any]], top: int,
-                           *, season: bool = False) -> dict[str, Any]:
+                           *, season: bool = False, genre: str = "Partnerships") -> dict[str, Any]:
     """Build a batting-pair partnership-aggregate record (career, or best within a single season). The
     holder names BOTH batsmen ('A & B'); the season variant appends the season. Value is the total runs."""
     if not rows:
-        return {"title": title, "metric": metric, "holder": None, "ranking": []}
+        return {"title": title, "metric": metric, "genre": genre, "holder": None, "ranking": []}
 
     def _label(r: dict[str, Any]) -> str:
         pair = f"{r['player1_name']} & {r['player2_name']}"
         return f"{pair} ({r['season']})" if season and r.get("season") else pair
     leader = rows[0]
     return {
-        "title": title, "metric": metric, "value": leader["total_runs"],
+        "title": title, "metric": metric, "genre": genre, "value": leader["total_runs"],
         "holder": {"player": _label(leader), "subject_id": None, "value": leader["total_runs"],
                    "tied": False, "known_minimum": False, "club": None},
         "ties": [],
@@ -162,14 +167,15 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
         rows = _LEADERS[which](conn, filters, order_by)
         rows = [r for r in rows if (r.get(metric) or 0) > 0]
         if not rows:
-            out[key] = {"title": title, "metric": metric, "holder": None, "ranking": []}
+            out[key] = {"title": title, "metric": metric, "genre": _GENRE_BY_WHICH.get(which, "Other"),
+                        "holder": None, "ranking": []}
             continue
         top_val = rows[0].get(metric)
         for r in rows:
             r["player"] = names.get(r["subject_id"], "Unknown")
         ties = [r for r in rows if r.get(metric) == top_val]
         out[key] = {
-            "title": title, "metric": metric, "value": top_val,
+            "title": title, "metric": metric, "genre": _GENRE_BY_WHICH.get(which, "Other"), "value": top_val,
             "holder": {"player": rows[0]["player"], "subject_id": rows[0]["subject_id"], "value": top_val,
                        "club": _club(rows[0]["subject_id"]),
                        "tied": len(ties) > 1, "known_minimum": bool(rows[0].get("runs_known_minimum")
@@ -193,7 +199,7 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
         return c1 or c2
 
     out["highest_partnership"] = {
-        "title": "Highest Partnership", "metric": "runs",
+        "title": "Highest Partnership", "metric": "runs", "genre": "Partnerships",
         "value": bp[0]["runs"] if bp else None,
         "holder": ({"player": _pair(bp[0]), "value": bp[0]["runs"], "tied": False, "known_minimum": False,
                     "club": _pair_club(bp[0]),

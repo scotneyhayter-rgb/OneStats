@@ -95,8 +95,9 @@ def person_milestones(workspace_id: UUID, person_id: UUID, settings: SettingsDep
 
 
 @router.get("/upcoming")
-def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int = 10,
+def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int | None = None,
              organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    # window omitted → per-metric defaults (runs 50, wickets 10, matches 10); a value overrides all.
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return milestones.upcoming_for_workspace(conn, workspace_id, window=window,
                                                  organisation_id=organisation_id)
