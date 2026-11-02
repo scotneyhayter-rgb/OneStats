@@ -29,6 +29,8 @@ export interface NavSection {
   /** Permission required to SEE this section (role-based nav gating). Undefined = visible to any
    * member of the workspace. The backend still enforces permissions on every action. */
   perm?: string;
+  /** Sub-group heading within Club Management (ordered as listed). Primary sections leave this unset. */
+  group?: string;
 }
 
 export const NAV_SECTIONS: NavSection[] = [
@@ -64,6 +66,14 @@ export const NAV_SECTIONS: NavSection[] = [
     perm: "match.view",
   },
   {
+    key: "records",
+    label: "Records & Achievements",
+    path: "/manage/records",
+    icon: Award,
+    blurb: "All-time record holders, seasonal leaders, milestones, Life Members and the Club Record Book.",
+    perm: "match.view",
+  },
+  {
     key: "ask",
     label: "Ask OneStats",
     path: "/ask",
@@ -86,6 +96,7 @@ export const NAV_SECTIONS: NavSection[] = [
  * the six approved primary sections above — surfaced under their own sidebar heading.
  */
 export const MANAGEMENT_SECTIONS: NavSection[] = [
+  // --- Club structure: define the club's organisations, teams, competitions and rules ---
   {
     key: "organisations",
     label: "Organisations",
@@ -93,30 +104,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: Building2,
     blurb: "Clubs, associations and historical organisations.",
     perm: "organisation.manage",
-  },
-  {
-    key: "teams-venues",
-    label: "Teams & Venues",
-    path: "/manage/teams-venues",
-    icon: Users,
-    blurb: "Teams, cricket programs and grounds.",
-    perm: "venue.manage",
-  },
-  {
-    key: "competitions",
-    label: "Competitions",
-    path: "/manage/competitions",
-    icon: Trophy,
-    blurb: "Competitions, divisions, grades and seasons.",
-    perm: "competition.manage",
-  },
-  {
-    key: "conditions",
-    label: "Playing Conditions",
-    path: "/manage/conditions",
-    icon: SlidersHorizontal,
-    blurb: "Historical rules by competition, season, grade and match.",
-    perm: "competition.manage",
+    group: "Club structure",
   },
   {
     key: "history",
@@ -125,7 +113,36 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: GitBranch,
     blurb: "Timeline, relationships and provenance.",
     perm: "organisation.manage",
+    group: "Club structure",
   },
+  {
+    key: "teams-venues",
+    label: "Teams & Venues",
+    path: "/manage/teams-venues",
+    icon: Users,
+    blurb: "Teams, cricket programs and grounds.",
+    perm: "venue.manage",
+    group: "Club structure",
+  },
+  {
+    key: "competitions",
+    label: "Competitions",
+    path: "/manage/competitions",
+    icon: Trophy,
+    blurb: "Competitions, divisions, grades and seasons.",
+    perm: "competition.manage",
+    group: "Club structure",
+  },
+  {
+    key: "conditions",
+    label: "Playing Conditions",
+    path: "/manage/conditions",
+    icon: SlidersHorizontal,
+    blurb: "Historical rules by competition, season, grade and match.",
+    perm: "competition.manage",
+    group: "Club structure",
+  },
+  // --- Data & sources: get matches and scorecards into the system ---
   {
     key: "import",
     label: "Import Data",
@@ -133,6 +150,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: DatabaseBackup,
     blurb: "Import matches and scorecards from CricketStatz and other sources.",
     perm: "import.manage",
+    group: "Data & sources",
   },
   {
     key: "autosync",
@@ -141,6 +159,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: RefreshCw,
     blurb: "Automatically discover new and historical matches and scorecard updates.",
     perm: "import.manage",
+    group: "Data & sources",
   },
   {
     key: "research",
@@ -149,6 +168,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: ScrollText,
     blurb: "Reconstruct historical matches from newspapers, scorebooks and other sources.",
     perm: "research.manage",
+    group: "Data & sources",
   },
   {
     key: "media",
@@ -157,15 +177,9 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: Image,
     blurb: "Preserve original scorecard images, photographs and documents, with heritage collections.",
     perm: "media.manage",
+    group: "Data & sources",
   },
-  {
-    key: "records",
-    label: "Records & Achievements",
-    path: "/manage/records",
-    icon: Award,
-    blurb: "All-time record holders, seasonal leaders, milestones, Life Members and the Club Record Book.",
-    perm: "match.view",
-  },
+  // --- Publishing & members: surface the data and manage who can see it ---
   {
     key: "publishing",
     label: "Website Publishing",
@@ -173,6 +187,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: Globe,
     blurb: "Publish reports and player profiles to permanent public URLs, or export them for your website.",
     perm: "publish.configure",
+    group: "Publishing & members",
   },
   {
     key: "portal",
@@ -181,6 +196,7 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: Smartphone,
     blurb: "The members' read-only view of published and members-only records, with Ask OneStats.",
     perm: "match.view",
+    group: "Publishing & members",
   },
   {
     key: "members",
@@ -189,5 +205,6 @@ export const MANAGEMENT_SECTIONS: NavSection[] = [
     icon: UserCog,
     blurb: "Add people to this workspace and manage their roles.",
     perm: "user.admin",
+    group: "Publishing & members",
   },
 ];

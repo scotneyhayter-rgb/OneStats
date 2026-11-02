@@ -1,5 +1,5 @@
 import { Building2, Info, LogOut } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { MANAGEMENT_SECTIONS, NAV_SECTIONS, type NavSection } from "../../app/navigation";
 import onestatsIcon from "../../assets/onestats-icon.png";
@@ -24,6 +24,14 @@ export function Sidebar() {
   // selected workspace (Super Admin holds all). Sections without a `perm` are always visible.
   // The backend independently enforces every action — hiding a link is convenience, not security.
   const visible = (s: NavSection) => !s.perm || can(user, current, s.perm);
+
+  // Group the visible Club Management sections by their sub-group heading, preserving list order.
+  const mgmtGroups: { name: string; items: NavSection[] }[] = [];
+  for (const s of MANAGEMENT_SECTIONS.filter(visible)) {
+    const name = s.group ?? "Club Management";
+    const bucket = mgmtGroups.find((g) => g.name === name) ?? (mgmtGroups.push({ name, items: [] }), mgmtGroups[mgmtGroups.length - 1]);
+    bucket.items.push(s);
+  }
 
   const navItem = (s: { path: string; label: string; icon: NavSection["icon"] }) => {
     const Icon = s.icon;
@@ -80,17 +88,17 @@ export function Sidebar() {
         {navItem({ path: "/workspaces", label: "My Workspaces", icon: Building2 })}
         {NAV_SECTIONS.filter(visible).map(navItem)}
 
-        {MANAGEMENT_SECTIONS.some(visible) && (
-          <>
+        {mgmtGroups.map((g) => (
+          <Fragment key={g.name}>
             {!collapsed && (
               <li className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-                Club Management
+                {g.name}
               </li>
             )}
             {collapsed && <li className="my-2 border-t border-[color:var(--sidebar-active)]" aria-hidden />}
-            {MANAGEMENT_SECTIONS.filter(visible).map(navItem)}
-          </>
-        )}
+            {g.items.map(navItem)}
+          </Fragment>
+        ))}
       </ul>
 
       {user && (
