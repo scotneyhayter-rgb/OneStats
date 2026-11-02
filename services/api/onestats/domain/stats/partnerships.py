@@ -37,6 +37,10 @@ def batting_partnerships(conn: Connection, filters: dict[str, Any], *, by_wicket
         if filters.get(key):
             base += f" AND {col} = :{key}"
             params[key] = filters[key]
+    # club lens: restrict to partnerships made for one of the selected club's teams
+    if filters.get("organisation_id"):
+        base += " AND i.batting_team_id IN (SELECT id FROM team WHERE organisation_id = :organisation_id)"
+        params["organisation_id"] = filters["organisation_id"]
     rows = conn.execute(text(base), params).mappings().all()
     out = [{"partnership_id": str(r["id"]), "wicket": r["wicket_number"], "runs": int(r["runs"]),
             "unbroken": r["unbroken"], "batter1": str(r["a"]) if r["a"] else None,

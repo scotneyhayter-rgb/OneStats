@@ -20,7 +20,11 @@ _CANON = "coalesce(p.merged_into_id, p.id)"
 _OFFICIAL = "m.approval_status IN ('approved','verified_partial') AND m.include_in_statistics = true"
 
 
-def _scope(f: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def _scope(f: dict[str, Any], team_col: str | None = None) -> tuple[str, dict[str, Any]]:
+    """Scope to approved, statistics-eligible matches, honouring season/grade/competition filters.
+    When ``team_col`` is given and a club (``organisation_id``) is selected, restrict to performances FOR
+    one of that club's teams — the column naming the relevant side (e.g. ``c.team_id`` for a contribution,
+    ``i.batting_team_id`` for a batting partnership, ``i.bowling_team_id`` for a bowling spell)."""
     clauses = [f"m.workspace_id = :w AND {_OFFICIAL}"]
     params: dict[str, Any] = {"w": f["workspace_id"]}
     for key, col in (("season_id", "m.season_id"), ("grade_id", "m.grade_id"),
@@ -28,6 +32,9 @@ def _scope(f: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         if f.get(key):
             clauses.append(f"{col} = :{key}")
             params[key] = f[key]
+    if team_col and f.get("organisation_id"):
+        clauses.append(f"{team_col} IN (SELECT id FROM team WHERE organisation_id = :organisation_id)")
+        params["organisation_id"] = f["organisation_id"]
     return " AND ".join(clauses), params
 
 
@@ -96,7 +103,7 @@ def best_bowling_in_match(conn: Connection, f: dict[str, Any], *, limit: int = 5
     """Best bowling in a match, ranked by most wickets then FEWEST runs conceded (runs tie-break). Uses
     verified match-level bowling aggregates; runs are never invented when incomplete. Genuine ties (equal
     wickets AND runs) are preserved by stable ordering."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="c.team_id")
     params["lim"] = limit
     # one row per (player, match): match wickets and match runs conceded (both summed across the match)
     sql = (f"SELECT {_CANON} AS sid, c.match_id AS mid, "
@@ -284,7 +291,7 @@ def most_matches_together(conn: Connection, f: dict[str, Any], *, limit: int = 5
 
 def top_partnership_aggregates(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Σ partnership runs for an unordered batting pair across matches (no double counting)."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.batting_team_id")
     sql = ("SELECT p1.id AS a, p2.id AS b, sum(pt.runs) AS total, count(*) AS n "
            "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p1 ON p1.id = pt.player1_person_id JOIN person p2 ON p2.id = pt.player2_person_id "
@@ -302,6 +309,68 @@ def top_partnership_aggregates(conn: Connection, f: dict[str, Any], *, limit: in
         out.append({"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
                     "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])})
     return out
+
+
+def top_partnership_aggregates_by_season(conn: Connection, f: dict[str, Any], *,
+                                         limit: int = 50) -> list[dict[str, Any]]:
+    """Highest partnership-run aggregate for an unordered batting pair WITHIN a single season (all-time
+    list; seasons are never combined). Mirrors the career aggregate but groups by season as well."""
+    where, params = _scope({k: v for k, v in f.items() if k != "season_id"}, team_col="i.batting_team_id")
+    sql = ("SELECT p1.id AS a, p2.id AS b, s.label AS season, sum(pt.runs) AS total, count(*) AS n "
+           "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
+           "JOIN season s ON s.id = m.season_id "
+           "JOIN person p1 ON p1.id = pt.player1_person_id JOIN person p2 ON p2.id = pt.player2_person_id "
+           "WHERE pt.runs IS NOT NULL AND pt.player1_person_id IS NOT NULL AND pt.player2_person_id IS NOT NULL "
+           f"AND {where} GROUP BY p1.id, p2.id, s.label ORDER BY total DESC LIMIT :lim")
+    params["lim"] = limit
+    names = _names(conn, f["workspace_id"])
+    out, seen = [], set()
+    for r in conn.execute(text(sql), params).mappings():
+        key = (tuple(sorted((str(r["a"]), str(r["b"])))), r["season"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
+                    "season": r["season"], "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])})
+    return out
+
+
+def best_bowling_in_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
+    """Best bowling in a single INNINGS, ranked most wickets then fewest runs. Uses the per-match ledger's
+    stored best-innings figure (bbi_wickets / bbi_runs); runs are never invented when incomplete."""
+    where, params = _scope(f, team_col="c.team_id")
+    params["lim"] = limit
+    sql = (f"SELECT {_CANON} AS sid, (c.metrics->>'bbi_wickets')::int AS wkts, "
+           "       (c.metrics->>'bbi_runs')::int AS runs, m.match_date AS d "
+           "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
+           f"WHERE c.calculator = 'player_bowling' AND (c.metrics->>'bbi_wickets') IS NOT NULL AND {where} "
+           "ORDER BY wkts DESC NULLS LAST, runs ASC NULLS LAST LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+             "wickets": int(r["wkts"] or 0), "runs": int(r["runs"]) if r["runs"] is not None else None,
+             "match_date": r["d"].isoformat() if r["d"] else None}
+            for r in conn.execute(text(sql), params).mappings()]
+
+
+def highest_partnership_by_wicket(conn: Connection, f: dict[str, Any]) -> list[dict[str, Any]]:
+    """The record (highest) batting partnership for each wicket 1–10: pair, runs, whether unbroken, and the
+    match date. One row per wicket number present; wicket order ascending."""
+    where, params = _scope(f, team_col="i.batting_team_id")
+    sql = ("SELECT pt.wicket_number AS w, pt.runs AS runs, pt.unbroken AS unbroken, "
+           "       pt.player1_person_id AS a, pt.player2_person_id AS b, m.match_date AS d "
+           "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
+           f"WHERE pt.runs IS NOT NULL AND pt.wicket_number BETWEEN 1 AND 10 AND {where} "
+           "ORDER BY pt.wicket_number ASC, pt.runs DESC")
+    names = _names(conn, f["workspace_id"])
+    best: dict[int, dict[str, Any]] = {}
+    for r in conn.execute(text(sql), params).mappings():
+        w = int(r["w"])
+        if w not in best:   # first per wicket wins — rows are ordered runs-desc within each wicket
+            best[w] = {"wicket": w, "runs": int(r["runs"]), "unbroken": bool(r["unbroken"]),
+                       "player1_name": names.get(str(r["a"]), "Unknown") if r["a"] else "Unknown",
+                       "player2_name": names.get(str(r["b"]), "Unknown") if r["b"] else "Unknown",
+                       "match_date": r["d"].isoformat() if r["d"] else None}
+    return [best[w] for w in sorted(best)]
 
 
 def longest_serving(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:

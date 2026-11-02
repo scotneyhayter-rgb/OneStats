@@ -57,12 +57,29 @@ def _filters(workspace_id: UUID, season_id: UUID | None, grade_id: UUID | None, 
 def all_time(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, season_id: UUID | None = None,
              grade_id: UUID | None = None, competition_id: UUID | None = None, team_id: UUID | None = None,
              split: str | None = None, venue: str | None = None, top: int = 10,
-             club_mode: str = "primary") -> dict[str, Any]:
-    # club_mode: 'primary' = each holder's main club; 'global' = every club they represented
+             club_mode: str = "primary", organisation_id: UUID | None = None) -> dict[str, Any]:
+    # club_mode: 'primary' = each holder's main club; 'global' = every club they represented.
+    # organisation_id: the "club lens" — restrict records to performances for that club's teams.
     mode = club_mode if club_mode in ("primary", "global") else "primary"
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, None, None, None)
+    if organisation_id:
+        f["organisation_id"] = organisation_id
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return records.all_time_records(conn, workspace_id, f, top=top, club_mode=mode)
+
+
+@router.get("/partnerships/by-wicket")
+def partnerships_by_wicket(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                           season_id: UUID | None = None, competition_id: UUID | None = None,
+                           organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    """Record (highest) batting partnership for each wicket 1–10, optionally scoped to one club."""
+    from onestats.domain.stats import records_detail
+    f: dict[str, Any] = {"workspace_id": workspace_id, "season_id": season_id,
+                         "competition_id": competition_id}
+    if organisation_id:
+        f["organisation_id"] = organisation_id
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return records_detail.highest_partnership_by_wicket(conn, f)
 
 
 @router.get("/seasonal")
@@ -78,9 +95,11 @@ def person_milestones(workspace_id: UUID, person_id: UUID, settings: SettingsDep
 
 
 @router.get("/upcoming")
-def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int = 10) -> list[dict[str, Any]]:
+def upcoming(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, window: int = 10,
+             organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return milestones.upcoming_for_workspace(conn, workspace_id, window=window)
+        return milestones.upcoming_for_workspace(conn, workspace_id, window=window,
+                                                 organisation_id=organisation_id)
 
 
 @router.get("/book/pdf")

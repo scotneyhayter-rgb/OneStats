@@ -1931,8 +1931,13 @@ export const api = {
   recordsSeasonal: (w: string) =>
     request<{ season_id: string; label: string; leading_run_scorer: { player: string; value: number } | null;
               leading_wicket_taker: { player: string; value: number } | null }[]>(`/api/v1/workspaces/${w}/records/seasonal`),
-  recordsUpcoming: (w: string, window = 10) =>
-    request<{ person_id: string; metric: string; threshold: number; current: number; to_go: number }[]>(`/api/v1/workspaces/${w}/records/upcoming?window=${window}`),
+  recordsUpcoming: (w: string, window = 10, organisationId?: string) =>
+    request<{ person_id: string; player: string; metric: string; threshold: number; current: number; to_go: number }[]>(
+      `/api/v1/workspaces/${w}/records/upcoming${qs({ window, organisation_id: organisationId })}`),
+  recordsPartnershipsByWicket: (w: string, organisationId?: string) =>
+    request<{ wicket: number; runs: number; unbroken: boolean; player1_name: string; player2_name: string;
+              match_date: string | null }[]>(
+      `/api/v1/workspaces/${w}/records/partnerships/by-wicket${qs({ organisation_id: organisationId })}`),
   recordsHonours: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honours`),
   recordsBadges: (w: string, personId: string) =>
     request<{ calculated: { label: string; source: string; state: string }[];

@@ -3,53 +3,80 @@
  * seasonal leaders, upcoming milestones and Life Members, plus one-click Club Record Book PDF. Reads
  * from the Records Engine (approved data only); ties and known-minimum flags are shown, nothing invented.
  */
-import { Award, BookOpen, RefreshCw } from "lucide-react";
+import { Award, BookOpen, RefreshCw, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type RecordCategory } from "../../lib/api";
+import { api, ApiError, type Organisation, type RecordCategory } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 type Seasonal = Awaited<ReturnType<typeof api.recordsSeasonal>>;
 type Upcoming = Awaited<ReturnType<typeof api.recordsUpcoming>>;
+type ByWicket = Awaited<ReturnType<typeof api.recordsPartnershipsByWicket>>;
+const WICKET_LABELS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
+const CLUB_LENS_KEY = "onestats.records.clubLens";
 
 export function Records() {
   const { current } = useWorkspace();
   const [all, setAll] = useState<Record<string, RecordCategory> | null>(null);
   const [seasonal, setSeasonal] = useState<Seasonal>([]);
   const [upcoming, setUpcoming] = useState<Upcoming>([]);
+  const [byWicket, setByWicket] = useState<ByWicket>([]);
   const [honours, setHonours] = useState<Record<string, unknown>[]>([]);
+  const [clubs, setClubs] = useState<Organisation[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [clubMode, setClubMode] = useState<"primary" | "global">("primary");
+  // the "club lens" — restrict every record to one club's performances. "" = all clubs. Remembered.
+  const [orgId, setOrgId] = useState<string>(() => {
+    try { return localStorage.getItem(CLUB_LENS_KEY) ?? ""; } catch { return ""; }
+  });
+
+  // load the workspace's clubs once, to populate the lens dropdown
+  useEffect(() => {
+    if (!current) return;
+    void api.listOrganisations(current.id, { kind: "club" })
+      .then((rows) => setClubs(rows.filter((o) => !o.merged_into_id)
+        .sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => setClubs([]));
+  }, [current]);
 
   const load = useCallback(async () => {
     if (!current) return;
     setBusy(true);
     setError(null);
+    const org = orgId || undefined;
     try {
-      const [a, s, u, h] = await Promise.all([
-        api.recordsAllTime(current.id, { club_mode: clubMode }), api.recordsSeasonal(current.id),
-        api.recordsUpcoming(current.id, 10), api.recordsHonours(current.id),
+      const [a, s, u, w, h] = await Promise.all([
+        api.recordsAllTime(current.id, { club_mode: clubMode, organisation_id: org }),
+        api.recordsSeasonal(current.id), api.recordsUpcoming(current.id, 10, org),
+        api.recordsPartnershipsByWicket(current.id, org), api.recordsHonours(current.id),
       ]);
       setAll(a);
       setSeasonal(s);
       setUpcoming(u);
+      setByWicket(w);
       setHonours(h);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load records.");
     } finally {
       setBusy(false);
     }
-  }, [current, clubMode]);
+  }, [current, clubMode, orgId]);
   useEffect(() => {
     void load();
   }, [load]);
+
+  const selectClubLens = (value: string) => {
+    setOrgId(value);
+    try { localStorage.setItem(CLUB_LENS_KEY, value); } catch { /* ignore */ }
+  };
 
   if (!current) {
     return (
@@ -86,15 +113,32 @@ export function Records() {
         <Card><CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">All-time record holders</h3>
-            <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              Club shown:
-              <Select value={clubMode} disabled={busy} className="h-7 w-32"
-                onChange={(e) => setClubMode(e.target.value as "primary" | "global")}>
-                <option value="primary">Primary club</option>
-                <option value="global">All clubs</option>
-              </Select>
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                Club:
+                <Select value={orgId} disabled={busy} className="h-7 w-44"
+                  onChange={(e) => selectClubLens(e.target.value)}>
+                  <option value="">All clubs</option>
+                  {clubs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </Select>
+              </label>
+              {orgId === "" && (
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  Club shown:
+                  <Select value={clubMode} disabled={busy} className="h-7 w-32"
+                    onChange={(e) => setClubMode(e.target.value as "primary" | "global")}>
+                    <option value="primary">Primary club</option>
+                    <option value="global">All clubs</option>
+                  </Select>
+                </label>
+              )}
+            </div>
           </div>
+          {orgId !== "" && (
+            <p className="text-xs text-muted-foreground">
+              Showing records for <span className="font-medium text-foreground">{clubs.find((o) => o.id === orgId)?.name ?? "selected club"}</span> only.
+            </p>
+          )}
           {categories.length === 0 && <p className="text-xs text-muted-foreground">No approved records yet.</p>}
           <div className="grid gap-2 sm:grid-cols-2">
             {categories.map(([key, c]) => (
@@ -126,6 +170,23 @@ export function Records() {
           </div>
         </CardContent></Card>
 
+        <Card><CardContent className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-brand" aria-hidden />
+            <h3 className="text-sm font-semibold">Highest partnership for each wicket</h3>
+          </div>
+          {byWicket.length === 0 && <p className="text-xs text-muted-foreground">No recorded partnerships yet.</p>}
+          <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+            {byWicket.map((p) => (
+              <div key={p.wicket} className="flex items-baseline gap-2 border-b border-border/40 py-1 text-sm last:border-0">
+                <span className="w-8 shrink-0 text-xs font-semibold text-muted-foreground">{WICKET_LABELS[p.wicket - 1] ?? `${p.wicket}th`}</span>
+                <span className="font-bold tabular-nums text-brand">{p.runs}{p.unbroken ? "*" : ""}</span>
+                <span className="truncate">{p.player1_name} &amp; {p.player2_name}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent></Card>
+
         <div className="grid gap-4 md:grid-cols-2">
           <Card><CardContent className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Seasonal leaders</h3>
@@ -147,7 +208,8 @@ export function Records() {
             {upcoming.slice(0, 12).map((u, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 <Badge variant="brand">{u.to_go}</Badge>
-                <span className="text-muted-foreground">from {u.threshold} {u.metric} (on {u.current})</span>
+                <Link to={`/people/${u.person_id}`} className="font-medium hover:text-brand hover:underline">{u.player}</Link>
+                <span className="text-muted-foreground">— {u.to_go} from {u.threshold} {u.metric} (on {u.current})</span>
               </div>
             ))}
           </CardContent></Card>

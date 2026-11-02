@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from onestats.domain.stats import engine
@@ -76,11 +77,17 @@ def person_milestones(conn: Connection, workspace_id: UUID, person_id: UUID, *, 
 
 
 def upcoming_for_workspace(conn: Connection, workspace_id: UUID, *, window: int = 10,
-                           thresholds: dict[str, list[int]] | None = None, limit: int = 50) -> list[dict[str, Any]]:
+                           thresholds: dict[str, list[int]] | None = None, limit: int = 50,
+                           organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     """Players within ``window`` of their next runs/wickets/matches milestone — from confirmed totals
-    only (a known-minimum total never drives a misleading prediction)."""
+    only (a known-minimum total never drives a misleading prediction). Each row names the player so the
+    list is actionable; ``organisation_id`` restricts to one club's players."""
     th = thresholds or DEFAULT_THRESHOLDS
-    f = {"workspace_id": workspace_id}
+    f: dict[str, Any] = {"workspace_id": workspace_id}
+    if organisation_id:
+        f["organisation_id"] = organisation_id
+    names = {str(r["id"]): r["display_name"] for r in conn.execute(
+        text("SELECT id, display_name FROM person WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
     out: list[dict[str, Any]] = []
     bat = {r["subject_id"]: r for r in engine.batting_leaders(conn, f, limit=1000)}
     bowl = {r["subject_id"]: r for r in engine.bowling_leaders(conn, f, limit=1000)}
@@ -95,8 +102,8 @@ def upcoming_for_workspace(conn: Connection, workspace_id: UUID, *, window: int 
             for t in sorted(th.get(metric, [])):
                 if total < t:
                     if t - total <= window:
-                        out.append({"person_id": pid, "metric": metric, "threshold": t,
-                                    "current": total, "to_go": t - total})
+                        out.append({"person_id": pid, "player": names.get(str(pid), "Unknown"),
+                                    "metric": metric, "threshold": t, "current": total, "to_go": t - total})
                     break
     out.sort(key=lambda x: x["to_go"])
     return out[:limit]
