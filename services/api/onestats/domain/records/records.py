@@ -27,7 +27,10 @@ _SPECS: list[tuple[str, str, str, str, str]] = [
     ("most_matches", "Most Matches Played", "participation", "matches", "matches"),
     ("most_catches", "Most Catches", "fielding", "catches", "catches"),
     ("most_stumpings", "Most Stumpings", "fielding", "stumpings", "stumpings"),
-    ("most_run_outs", "Most Run Outs", "fielding", "run_outs", "run_outs"),
+    # Run-out "involvements" = primary fielder + any assisting (second) fielder, matching CricketStatz'
+    # Top Run Outs. Ranking by bare run_outs (primary only) under-credited players (e.g. Scotney Hayter,
+    # 19 involvements) and mis-awarded the record. See docs/72-multi-fielder-run-outs.md.
+    ("most_run_outs", "Most Run Outs", "fielding", "run_out_involvements", "run_out_involvements"),
     ("most_captained", "Most Matches Captained", "captaincy", "captained", "captained"),
     ("most_captain_wins", "Most Wins as Captain", "captaincy", "wins", "wins"),
 ]

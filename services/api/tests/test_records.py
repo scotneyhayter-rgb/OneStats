@@ -95,6 +95,38 @@ def test_all_time_records_holder_and_ties(conn):
     assert s["leading_wicket_taker"]["player"] == "Spearhead"
 
 
+def test_most_run_outs_record_ranks_by_involvements(conn):
+    """The 'Most Run Outs' all-time record ranks by run-out involvements (primary + assisting second
+    fielder), matching CricketStatz. A player who only ever assists (recorded as the run-out's second
+    fielder, i.e. the imported bowler_person_id) must still be able to hold/tie the record; under the old
+    primary-only ranking they had run_outs=0 and were invisible."""
+    wid = _ws(conn, "REC RO")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    prim = people.create_person(conn, wid, ACTOR, display_name="Primary Fielder")
+    second = people.create_person(conn, wid, ACTOR, display_name="Second Fielder")
+    victim = people.create_person(conn, wid, ACTOR, display_name="Run-out Victim")
+    for _ in range(2):   # two run-outs, same two fielders: prim primary, second as the 'bowler' field
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+        i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1,
+                                batting_team_id=away, bowling_team_id=home)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=victim, batting_position=1,
+                             runs=10, balls_faced=20, dismissal_type="run_out",
+                             fielder_person_id=prim, bowler_person_id=second)
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    rec = records.all_time_records(conn, wid, {"workspace_id": wid})
+    ro = rec["most_run_outs"]
+    assert ro["value"] == 2                    # involvements, not the 0-vs-2 primary split
+    assert ro["holder"]["tied"] is True
+    holders = {ro["holder"]["subject_id"]} | {t["subject_id"] for t in ro["ties"]}
+    assert str(second) in holders              # the assisting fielder now holds the record (was invisible)
+    assert str(prim) in holders
+    assert str(victim) not in holders
+
+
 def test_reclassify_grand_final_refreshes_stats_split(conn):
     """Marking an already-approved match a grand final refreshes the stats ledger, so the player's
     grand-final figures appear immediately — no re-approval needed."""
