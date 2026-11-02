@@ -362,11 +362,12 @@ export function PlayerProfile() {
               {statCard("Best bowling", bestBowling)}
             </div>
           )}
-          {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_outs ?? 0) > 0 && (
+          {Number(field.catches ?? 0) + Number(field.stumpings ?? 0) + Number(field.run_out_involvements ?? field.run_outs ?? 0) > 0 && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {statCard("Catches", field.catches ?? 0)}
               {statCard("Stumpings", field.stumpings ?? 0)}
-              {statCard("Run outs", field.run_outs ?? 0)}
+              {/* Run-out involvements: primary fielder + any assisting (second) fielder, matching CricketStatz. */}
+              {statCard("Run outs", field.run_out_involvements ?? field.run_outs ?? 0)}
             </div>
           )}
         </div>
@@ -504,7 +505,7 @@ export function PlayerProfile() {
               <h3 className="text-sm font-semibold">Fielding & Wicketkeeping</h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {statCard("Catches", field.catches)}{statCard("Keeper catches", field.keeper_catches)}
-                {statCard("Stumpings", field.stumpings)}{statCard("Run outs", field.run_outs)}
+                {statCard("Stumpings", field.stumpings)}{statCard("Run outs", field.run_out_involvements ?? field.run_outs)}
                 {statCard("WK dismissals", field.keeper_dismissals)}
               </div>
             </>

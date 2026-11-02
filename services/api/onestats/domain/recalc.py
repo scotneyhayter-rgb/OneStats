@@ -304,17 +304,41 @@ def _calc_player_fielding(conn: Connection, match: dict[str, Any]) -> list[dict[
             a["field_catches"] += 1
         elif dt == "run_out":
             a["run_outs"] += 1
-    # additional run-out fielders (R-3): each is credited a run-out ASSIST — distinct from the primary
-    # fielder's run_out, so existing run_outs figures never change and the wicket is never double counted.
-    assists = conn.execute(
-        text("SELECT df.person_id AS pid, i.bowling_team_id AS team_id "
+    # Additional run-out fielders each get a run-out ASSIST — distinct from the primary fielder's
+    # run_out, so existing run_outs figures never change and the wicket is never double-counted. Two
+    # sources, unioned and de-duplicated per dismissal, and the primary fielder is never credited twice:
+    #   * CricketStatz records a run-out's SECOND fielder in the Bowler column; the importer carries it
+    #     to batting_entry.bowler_person_id (a run-out credits no bowler, so on a run-out this value is a
+    #     fielder, not a bowler, and the bowling engine — which reads bowling_entry — never sees it).
+    #   * dismissal_fielder rows added via the scorecard UI for multi-fielder run-outs (R-3).
+    ro_rows = conn.execute(
+        text("SELECT be.id AS eid, be.fielder_person_id AS primary_fid, "
+             "       be.bowler_person_id AS second_fid, i.bowling_team_id AS team_id "
+             "FROM batting_entry be JOIN innings i ON i.id = be.innings_id "
+             "WHERE i.match_id = :m AND be.dismissal_type = 'run_out'"),
+        {"m": match["id"]},
+    ).mappings().all()
+    extra_rows = conn.execute(
+        text("SELECT df.batting_entry_id AS eid, df.person_id AS pid "
              "FROM dismissal_fielder df JOIN batting_entry be ON be.id = df.batting_entry_id "
              "JOIN innings i ON i.id = be.innings_id "
              "WHERE i.match_id = :m AND be.dismissal_type = 'run_out'"),
         {"m": match["id"]},
     ).mappings().all()
-    for r in assists:
-        _a(r["pid"], r["team_id"])["run_out_assists"] += 1
+    assist_by_entry: dict[Any, dict[str, Any]] = {}
+    for r in ro_rows:
+        rec = assist_by_entry.setdefault(
+            r["eid"], {"team_id": r["team_id"], "primary": r["primary_fid"], "persons": set()})
+        if r["second_fid"] is not None:
+            rec["persons"].add(r["second_fid"])
+    for r in extra_rows:
+        rec = assist_by_entry.get(r["eid"])
+        if rec is not None and r["pid"] is not None:
+            rec["persons"].add(r["pid"])
+    for rec in assist_by_entry.values():
+        for pid in rec["persons"]:
+            if pid != rec["primary"]:
+                _a(pid, rec["team_id"])["run_out_assists"] += 1
     out = []
     for pid, a in agg.items():
         out.append({"subject_kind": "person", "subject_id": pid, "team_id": a["team_id"], **_match_scope(match),

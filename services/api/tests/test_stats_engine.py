@@ -239,6 +239,35 @@ def test_set_run_out_fielders_rejects_non_run_out_and_primary(conn):
     assert [f["person_id"] for f in out] == [str(x["fielder"])]
 
 
+def test_run_out_second_fielder_from_bowler_field_credited_as_assist(conn):
+    """CricketStatz records a run-out's SECOND fielder in the Bowler column; the importer carries it to
+    batting_entry.bowler_person_id (a run-out credits no bowler). The fielding engine must credit that
+    person a run-out ASSIST (involvement) — matching CricketStatz — without a bowling wicket, without
+    changing the primary fielder's run_out, and without double-counting the wicket."""
+    wid = _ws(conn, "ENG RO 2ND FIELDER")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bat = _p(conn, wid, "RO Victim")
+    primary, second = _p(conn, wid, "Stump Breaker"), _p(conn, wid, "Thrower")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bat, batting_position=1,
+                         runs=5, balls_faced=4, dismissal_type="run_out",
+                         fielder_person_id=primary, bowler_person_id=second)
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    rows = {r["subject_id"]: r for r in engine.fielding_leaders(conn, _f(wid))}
+    p, s = rows[str(primary)], rows[str(second)]
+    assert p["run_outs"] == 1 and p["run_out_assists"] == 0 and p["run_out_involvements"] == 1
+    assert s["run_outs"] == 0 and s["run_out_assists"] == 1 and s["run_out_involvements"] == 1
+    # the second fielder is NOT credited a bowling wicket (bowling comes from the bowling scorecard)
+    assert str(second) not in {r["subject_id"] for r in engine.bowling_leaders(conn, _f(wid))}
+    # still exactly one run-out for the innings — the wicket is never double-counted
+    assert reconciliation.reconcile_match(conn, wid, mid)["total_run_outs"] == 1
+
+
 def test_captaincy_and_team_engine(conn):
     wid = _ws(conn, "ENG CAPT")
     x = _build(conn, wid)
