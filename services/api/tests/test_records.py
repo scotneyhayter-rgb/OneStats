@@ -127,6 +127,33 @@ def test_most_run_outs_record_ranks_by_involvements(conn):
     assert str(victim) not in holders
 
 
+def test_best_bowling_in_a_match_record_uses_runs_tiebreak(conn):
+    """The 'Best Bowling in a Match' all-time record is a figure ranked by most wickets THEN fewest runs
+    conceded — not the bare wicket count. Two bowlers on equal wickets must be split by runs, and the
+    record value is shown as 'W-R', with the lower-runs bowler the sole holder (not a tie)."""
+    wid = _ws(conn, "REC BBM")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    frugal = people.create_person(conn, wid, ACTOR, display_name="Frugal Quick")
+    costly = people.create_person(conn, wid, ACTOR, display_name="Costly Quick")
+    for bowler, conceded in ((frugal, 20), (costly, 40)):   # same 5 wickets, different runs
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+        i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1,
+                                batting_team_id=home, bowling_team_id=away)
+        bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bowler,
+                             legal_balls=60, runs_conceded=conceded, wickets=5)
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    rec = records.all_time_records(conn, wid, {"workspace_id": wid})
+    bbm = rec["best_match_bowling"]
+    assert bbm["value"] == "5-20"                      # figure, not bare "5"
+    assert bbm["holder"]["player"] == "Frugal Quick"   # fewer runs wins
+    assert bbm["holder"]["tied"] is False              # runs break the wicket-only tie
+    assert [r["value"] for r in bbm["ranking"][:2]] == ["5-20", "5-40"]
+
+
 def test_reclassify_grand_final_refreshes_stats_split(conn):
     """Marking an already-approved match a grand final refreshes the stats ledger, so the player's
     grand-final figures appear immediately — no re-approval needed."""

@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain.stats import engine, partnerships
+from onestats.domain.stats import engine, partnerships, records_detail
 
 # (key, title, calculator-leaderboard, value metric, order_by)
 _SPECS: list[tuple[str, str, str, str, str]] = [
@@ -22,7 +22,9 @@ _SPECS: list[tuple[str, str, str, str, str]] = [
     ("most_centuries", "Most Centuries", "batting", "hundreds", "hundreds"),
     ("most_fifties", "Most Half-Centuries", "batting", "fifties", "fifties"),
     ("most_wickets", "Most Career Wickets", "bowling", "wickets", "wickets"),
-    ("best_match_bowling", "Best Bowling in a Match", "bowling", "best_match_wickets", "best_match_wickets"),
+    # "Best Bowling in a Match" is handled separately (see _best_match_bowling_record): it is a bowling
+    # FIGURE ranked by most wickets THEN fewest runs conceded, not a bare wicket count, so it cannot use
+    # the generic single-metric leaderboard path below.
     ("most_five_fors", "Most Five-Wicket Innings", "bowling", "five_wkt_innings", "five_wkt_innings"),
     ("most_matches", "Most Matches Played", "participation", "matches", "matches"),
     ("most_catches", "Most Catches", "fielding", "catches", "catches"),
@@ -84,6 +86,40 @@ def clubs_for(conn: Connection, workspace_id: UUID, filters: dict[str, Any],
     return out
 
 
+def _best_match_bowling_record(conn: Connection, filters: dict[str, Any], names: dict[str, str],
+                               club: Any, top: int) -> dict[str, Any]:
+    """The 'Best Bowling in a Match' all-time record as a bowling FIGURE (most wickets, then fewest runs
+    conceded), reusing the same runs-tie-broken logic as the Best-Bowling-in-a-Match report. Reduces the
+    per-(player, match) rows to each player's single best figure, then ranks players by that figure. A
+    genuine tie (equal wickets AND equal runs) is preserved; runs break what a wicket-only ranking left
+    tied. Runs may be unknown for old matches — the figure is then wickets-only and flagged known_minimum."""
+    title = "Best Bowling in a Match"
+    rows = records_detail.best_bowling_in_match(conn, filters, limit=500)  # already wkts desc, runs asc
+    best: dict[str, dict[str, Any]] = {}
+    for r in rows:                       # first occurrence per player = that player's best (global sort)
+        best.setdefault(r["subject_id"], r)
+    ranked = list(best.values())         # insertion order follows the global wkts-desc / runs-asc sort
+    if not ranked:
+        return {"title": title, "metric": "best_bowling_match", "holder": None, "ranking": []}
+
+    def _fig(r: dict[str, Any]) -> str:
+        return f"{r['wickets']}-{r['runs']}" if r.get("runs") is not None else f"{r['wickets']}"
+    leader = ranked[0]
+    key = (leader["wickets"], leader["runs"])
+    ties = [r for r in ranked if (r["wickets"], r["runs"]) == key]
+    return {
+        "title": title, "metric": "best_bowling_match", "value": _fig(leader),
+        "holder": {"player": names.get(leader["subject_id"], "Unknown"), "subject_id": leader["subject_id"],
+                   "value": _fig(leader), "club": club(leader["subject_id"]),
+                   "tied": len(ties) > 1, "known_minimum": leader.get("runs") is None},
+        "ties": [{"player": names.get(r["subject_id"], "Unknown"), "subject_id": r["subject_id"],
+                  "club": club(r["subject_id"])} for r in ties] if len(ties) > 1 else [],
+        "ranking": [{"rank": i + 1, "player": names.get(r["subject_id"], "Unknown"),
+                     "subject_id": r["subject_id"], "club": club(r["subject_id"]), "value": _fig(r)}
+                    for i, r in enumerate(ranked[:top])],
+    }
+
+
 def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, Any], *, top: int = 10,
                      club_mode: str = "primary") -> dict[str, Any]:
     names = _names(conn, workspace_id)
@@ -92,6 +128,7 @@ def all_time_records(conn: Connection, workspace_id: UUID, filters: dict[str, An
     def _club(pid: str) -> str | None:
         return clubs.get(str(pid))
     out: dict[str, Any] = {}
+    out["best_match_bowling"] = _best_match_bowling_record(conn, filters, names, _club, top)
     for key, title, which, metric, order_by in _SPECS:
         rows = _LEADERS[which](conn, filters, order_by)
         rows = [r for r in rows if (r.get(metric) or 0) > 0]

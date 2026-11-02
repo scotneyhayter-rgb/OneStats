@@ -442,7 +442,7 @@ export function PlayerProfile() {
                     {full!.records.map((r, i) => (
                       <li key={i} className="flex items-center gap-2 py-1.5 text-sm">
                         <Trophy className="h-4 w-4 shrink-0 text-brand" aria-hidden /><span>{r.title}</span>
-                        <span className="ml-auto font-semibold tabular-nums">{num(r.value)}</span>
+                        <span className="ml-auto font-semibold tabular-nums">{typeof r.value === "number" ? num(r.value) : r.value}</span>
                         {r.known_minimum && <Badge variant="warning">min.</Badge>}
                       </li>
                     ))}

@@ -174,7 +174,7 @@ export interface PlayerFullProfile {
   };
   seasons: Record<string, unknown>[];
   clubs: { team_id: string; team: string; org_id: string; club: string }[];
-  records: { title: string; value: number | null; tied: boolean; known_minimum: boolean }[];
+  records: { title: string; value: number | string | null; tied: boolean; known_minimum: boolean }[];
   season_leaderships: { title: string; season: string; value: number | null }[];
   grand_finals: {
     appearances: number;
@@ -197,7 +197,7 @@ export interface PlayerFullProfile {
 export interface RecordHolder {
   player: string;
   subject_id: string;
-  value: number;
+  value: number | string;   // usually a count; some records (e.g. Best Bowling in a Match) are a "W-R" figure
   tied: boolean;
   known_minimum: boolean;
   club?: string | null;
@@ -205,10 +205,10 @@ export interface RecordHolder {
 export interface RecordCategory {
   title: string;
   metric: string;
-  value: number | null;
+  value: number | string | null;
   holder: RecordHolder | null;
   ties: { player: string; subject_id: string; club?: string | null }[];
-  ranking: { rank: number; player: string; value: number; club?: string | null }[];
+  ranking: { rank: number; player: string; value: number | string; club?: string | null }[];
 }
 export interface StatColumn {
   key: string;
