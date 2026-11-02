@@ -39,6 +39,17 @@ _ORG_COLS = (
     "id, workspace_id, name, short_name, kind, is_historical, status, notes, "
     "merged_into_id, source_system, source_ref, logo_ref, created_at"
 )
+# First/last recorded match YEAR for an organisation — the span of its recorded match history, taken from
+# every match any of its teams appeared in (correlated on the outer `organisation` row; any recorded match
+# with a date, approved or not). NULL when the club has no dated match on record.
+_ORG_SPAN = (
+    ", (SELECT extract(year FROM min(m.match_date))::int FROM match m "
+    "   JOIN match_team mt ON mt.match_id = m.id JOIN team t ON t.id = mt.team_id "
+    "   WHERE t.organisation_id = organisation.id AND m.match_date IS NOT NULL) AS first_match_year"
+    ", (SELECT extract(year FROM max(m.match_date))::int FROM match m "
+    "   JOIN match_team mt ON mt.match_id = m.id JOIN team t ON t.id = mt.team_id "
+    "   WHERE t.organisation_id = organisation.id AND m.match_date IS NOT NULL) AS last_match_year"
+)
 _MAX_CHAIN = 16  # cycle guard when resolving a canonical organisation
 
 
@@ -57,7 +68,7 @@ def _ordered_pair(a: UUID, b: UUID) -> tuple[UUID, UUID]:
 
 def get_organisation(conn: Connection, org_id: UUID) -> dict[str, Any] | None:
     row = conn.execute(
-        text(f"SELECT {_ORG_COLS} FROM organisation WHERE id = :id"), {"id": org_id}
+        text(f"SELECT {_ORG_COLS}{_ORG_SPAN} FROM organisation WHERE id = :id"), {"id": org_id}
     ).mappings().first()
     return dict(row) if row else None
 
@@ -74,7 +85,7 @@ def set_logo(conn: Connection, org_id: UUID, logo_ref: str | None) -> None:
 def list_organisations(
     conn: Connection, *, include_merged: bool = False, kind: str | None = None
 ) -> list[dict[str, Any]]:
-    sql = f"SELECT {_ORG_COLS} FROM organisation"
+    sql = f"SELECT {_ORG_COLS}{_ORG_SPAN} FROM organisation"
     clauses: list[str] = []
     params: dict[str, Any] = {}
     if not include_merged:

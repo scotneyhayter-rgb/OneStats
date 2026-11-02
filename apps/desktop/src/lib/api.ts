@@ -511,6 +511,8 @@ export interface Organisation {
   name: string;
   short_name: string | null;
   kind: string;
+  first_match_year?: number | null;   // span of recorded match history (null = no dated match on record)
+  last_match_year?: number | null;
   is_historical: boolean;
   status: string;
   notes: string | null;
@@ -553,6 +555,8 @@ export interface Team {
   name: string;
   short_name: string | null;
   program: string;
+  first_match_year?: number | null;   // span of recorded match history (null = no dated match on record)
+  last_match_year?: number | null;
   is_historical: boolean;
   status: string;
   merged_into_id: string | null;

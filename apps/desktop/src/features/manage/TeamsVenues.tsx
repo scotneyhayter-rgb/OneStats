@@ -16,6 +16,7 @@ import {
   type Team,
   type Venue,
 } from "../../lib/api";
+import { yearSpan } from "../../lib/utils";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
 
 const PROGRAMS = ["seniors", "juniors", "womens", "girls", "all_abilities", "veterans", "custom"];
@@ -132,7 +133,10 @@ function TeamsTab({ workspaceId, canManage, onMsg }: { workspaceId: string; canM
                 <Users className="h-5 w-5 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{t.name}</div>
-                  <div className="truncate text-xs text-muted-foreground">{orgName(t.organisation_id)}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {orgName(t.organisation_id)}
+                    {yearSpan(t.first_match_year, t.last_match_year) && ` · ${yearSpan(t.first_match_year, t.last_match_year)}`}
+                  </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <Badge variant="brand">{humanise(t.program)}</Badge>

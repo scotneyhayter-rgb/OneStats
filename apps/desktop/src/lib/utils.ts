@@ -7,6 +7,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Format a recorded-match year span for display: "1919–2020", or just "1919" when first and last are the
+ * same year, or null when there is no recorded match (so callers can omit the segment entirely). Never
+ * invents a year — an unknown span (no dated match on record) yields null.
+ */
+export function yearSpan(first?: number | null, last?: number | null): string | null {
+  if (!first && !last) return null;
+  const a = first ?? last;
+  const b = last ?? first;
+  return a === b ? `${a}` : `${a}–${b}`;
+}
+
+/**
  * Open/save a blob: URL produced after an await. Calling window.open() after an await is outside the
  * click gesture, so popup blockers stop it ("does not open"). A programmatic anchor with `download` is not
  * popup-blocked and works in both the browser and the Tauri webview. The object URL is revoked afterwards.

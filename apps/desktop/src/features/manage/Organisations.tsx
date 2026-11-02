@@ -15,7 +15,7 @@ import {
   type Organisation,
   type OrganisationDetail,
 } from "../../lib/api";
-import { compressImage } from "../../lib/utils";
+import { compressImage, yearSpan } from "../../lib/utils";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
 
 /**
@@ -213,6 +213,7 @@ export function Organisations() {
                   <div className="truncate text-xs text-muted-foreground">
                     {o.short_name ? `${o.short_name} · ` : ""}
                     {kindLabel(o.kind)}
+                    {yearSpan(o.first_match_year, o.last_match_year) && ` · ${yearSpan(o.first_match_year, o.last_match_year)}`}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">

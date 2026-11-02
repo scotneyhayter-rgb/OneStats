@@ -28,6 +28,16 @@ _COLS = (
     "id, workspace_id, organisation_id, name, short_name, program, is_historical, status, "
     "notes, merged_into_id, source_system, source_ref, created_at"
 )
+# First/last recorded match YEAR for a team — the span of its recorded match history (every dated match
+# the team appeared in, approved or not; correlated on the outer `team` row). NULL when it has none.
+_TEAM_SPAN = (
+    ", (SELECT extract(year FROM min(m.match_date))::int FROM match m "
+    "   JOIN match_team mt ON mt.match_id = m.id "
+    "   WHERE mt.team_id = team.id AND m.match_date IS NOT NULL) AS first_match_year"
+    ", (SELECT extract(year FROM max(m.match_date))::int FROM match m "
+    "   JOIN match_team mt ON mt.match_id = m.id "
+    "   WHERE mt.team_id = team.id AND m.match_date IS NOT NULL) AS last_match_year"
+)
 _MAX_CHAIN = 16
 
 
@@ -53,7 +63,7 @@ def list_teams(
     conn: Connection, *, organisation_id: UUID | None = None, program: str | None = None,
     include_merged: bool = False, search: str | None = None,
 ) -> list[dict[str, Any]]:
-    sql = f"SELECT {_COLS} FROM team"
+    sql = f"SELECT {_COLS}{_TEAM_SPAN} FROM team"
     clauses: list[str] = []
     params: dict[str, Any] = {}
     if not include_merged:
