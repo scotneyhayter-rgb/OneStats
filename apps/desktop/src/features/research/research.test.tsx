@@ -15,6 +15,9 @@ const H = vi.hoisted(() => ({
   researchSources: vi.fn(),
   researchCreateProject: vi.fn(),
   researchCreateSource: vi.fn(),
+  researchJobs: vi.fn(),
+  researchFindings: vi.fn(),
+  researchGaps: vi.fn(),
 }));
 
 vi.mock("../manage/_shared", () => ({ useManage: () => ({ workspaceId: "w1" }), NoWorkspace: () => <div>no ws</div> }));
@@ -46,6 +49,9 @@ function setup() {
       ocr_status: "none", created_at: "2026-10-25" },
   ]);
   H.researchCreateProject.mockResolvedValue({ id: "p2", title: "x", status: "active" });
+  H.researchJobs.mockResolvedValue([]);
+  H.researchFindings.mockResolvedValue([]);
+  H.researchGaps.mockResolvedValue({});
 }
 
 afterEach(cleanup);
@@ -57,6 +63,9 @@ describe("Research Centre page", () => {
     await screen.findByText("Verified matches");
     expect(screen.getByText("Research priorities")).toBeTruthy();
     await screen.findByText("Ararat Advertiser 1931");   // recent source from real data
+    // redesigned shell: section nav + the primary "Search the Internet" action are present
+    expect(screen.getByRole("button", { name: /Discover Records/i })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /Search the Internet/i }).length).toBeGreaterThan(0);
   });
 
   it("creates a research project", async () => {

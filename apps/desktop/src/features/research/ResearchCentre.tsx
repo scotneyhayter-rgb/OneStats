@@ -27,6 +27,7 @@ import {
   type ResearchDashboard,
   type ResearchExtraction,
   type ResearchGaps,
+  type ResearchJob,
   type ResearchMatchRow,
   type ResearchProject,
   type ResearchSource,
@@ -75,6 +76,9 @@ export function ResearchCentre() {
   const [tasks, setTasks] = useState<ResearchTask[]>([]);
   const [matches, setMatches] = useState<ResearchMatchRow[]>([]);
   const [openMatch, setOpenMatch] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<ResearchJob[]>([]);
+  const [pendingFindings, setPendingFindings] = useState(0);
+  const [gapsTotal, setGapsTotal] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -84,7 +88,13 @@ export function ResearchCentre() {
     try {
       if (which === "overview") {
         setDash(await api.researchDashboard(workspaceId));
+        // Supplementary dashboard figures load independently so a single missing/slow endpoint never
+        // blanks the dashboard — each degrades to a safe default (0 / unknown) rather than fabricating.
         setScRows((await api.researchSeasonCompleteness(workspaceId).catch(() => null))?.seasons ?? []);
+        setJobs(await api.researchJobs(workspaceId).catch(() => []));
+        setPendingFindings((await api.researchFindings(workspaceId, "pending_review").catch(() => []))?.length ?? 0);
+        const g = await api.researchGaps(workspaceId).catch(() => null);
+        setGapsTotal(g ? Object.values(g).reduce((a, c) => a + ((c as GapCategory)?.count ?? 0), 0) : null);
       }
       else if (which === "sources") setSources(await api.researchSources(workspaceId));
       else if (which === "timeline") setTimeline(await api.researchTimeline(workspaceId));
@@ -135,33 +145,29 @@ export function ResearchCentre() {
     }
   };
 
-  // One prominent headline indicator: a larger number with a colour accent only when it warrants attention.
-  const bigStat = (label: string, n: number, accent: "success" | "warning" | "brand" | "muted") => (
-    <div className="rounded-[var(--radius-app)] border border-border p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-3xl font-semibold tabular-nums"
-        style={{ color: n > 0 && accent !== "muted" ? `var(--${accent === "brand" ? "brand" : accent})` : undefined }}>
-        {n}
-      </div>
-    </div>
-  );
-
-  const tabBtn = (key: Tab, label: string, icon: React.ReactNode) => (
+  const navItem = (key: Tab, label: string, icon: React.ReactNode, badge?: number) => (
     <button
       type="button"
-      onClick={() => setTab(key)}
-      className={`flex items-center gap-1.5 rounded-[var(--radius-app)] border px-3 py-1.5 text-sm ${
-        tab === key ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground"
+      onClick={() => { setTab(key); setError(null); setFlash(null); }}
+      aria-current={tab === key ? "page" : undefined}
+      className={`flex w-full items-center gap-2 rounded-[var(--radius-app)] border px-3 py-2 text-left text-sm transition-colors ${
+        tab === key
+          ? "border-brand bg-brand/10 font-medium text-brand"
+          : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
       }`}
     >
       {icon}
-      {label}
+      <span className="flex-1 truncate">{label}</span>
+      {badge ? <Badge variant={tab === key ? "brand" : "warning"}>{badge}</Badge> : null}
     </button>
   );
 
+  const activeJobs = jobs.filter((j) =>
+    ["pending", "running", "paused", "interrupted"].includes(j.status)).length;
+
   return (
-    <AppShell title="Research Centre" subtitle="Reconstruct historical matches from original sources">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <AppShell title="Research Centre" subtitle="Discover. Investigate. Verify. Preserve.">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
         {error && (
           <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>
         )}
@@ -169,22 +175,55 @@ export function ResearchCentre() {
           <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-sm text-success">{flash}</p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {tabBtn("internet", "Search the Internet", <Globe className="h-4 w-4" aria-hidden />)}
-          {tabBtn("overview", "Dashboard", <RefreshCw className="h-4 w-4" aria-hidden />)}
-          {tabBtn("seasons", "Seasons", <CalendarRange className="h-4 w-4" aria-hidden />)}
-          {tabBtn("sources", "Source Library", <Library className="h-4 w-4" aria-hidden />)}
-          {tabBtn("newspapers", "Newspaper Search", <Newspaper className="h-4 w-4" aria-hidden />)}
-          {tabBtn("timeline", "Timeline", <ScrollText className="h-4 w-4" aria-hidden />)}
-          {tabBtn("gaps", "Research Gaps", <FileText className="h-4 w-4" aria-hidden />)}
-          {tabBtn("review", "Review & Verify", <ShieldCheck className="h-4 w-4" aria-hidden />)}
-          {tabBtn("dataquality", "Data Quality", <ClipboardCheck className="h-4 w-4" aria-hidden />)}
-          {tabBtn("projects", "Research Projects", <FolderGit2 className="h-4 w-4" aria-hidden />)}
-          {tabBtn("tasks", "Tasks", <ListChecks className="h-4 w-4" aria-hidden />)}
-          <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={() => void loadFor(tab)}>
-            <RefreshCw className="h-4 w-4" aria-hidden /> Refresh
+        {/* Hero — workspace identity + the primary action, always one click away */}
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-border bg-gradient-to-br from-brand/10 to-transparent p-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold">Your historical cricket research workspace</h2>
+            <p className="text-xs text-muted-foreground">
+              Search the internet for missing records, work through research gaps, and verify findings —
+              every result is reviewed before it ever touches your statistics.
+            </p>
+          </div>
+          {activeJobs > 0 && (
+            <Badge variant="brand" className="gap-1">
+              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
+              {activeJobs} running
+            </Badge>
+          )}
+          <Button className="gap-1.5" onClick={() => { setTab("internet"); setError(null); setFlash(null); }}>
+            <Globe className="h-4 w-4" aria-hidden /> Search the Internet
           </Button>
         </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row">
+          {/* Section navigation */}
+          <nav className="flex flex-row flex-wrap gap-1 lg:w-56 lg:flex-col lg:flex-nowrap" aria-label="Research sections">
+            <NavGroup label="Start here">
+              {navItem("overview", "Dashboard", <RefreshCw className="h-4 w-4" aria-hidden />)}
+              {navItem("internet", "Discover Records", <Globe className="h-4 w-4" aria-hidden />, pendingFindings || undefined)}
+            </NavGroup>
+            <NavGroup label="Investigate">
+              {navItem("projects", "Research Projects", <FolderGit2 className="h-4 w-4" aria-hidden />)}
+              {navItem("gaps", "Research Gaps", <FileText className="h-4 w-4" aria-hidden />, gapsTotal ?? undefined)}
+              {navItem("seasons", "Season Completeness", <CalendarRange className="h-4 w-4" aria-hidden />)}
+              {navItem("timeline", "Timeline", <ScrollText className="h-4 w-4" aria-hidden />)}
+            </NavGroup>
+            <NavGroup label="Evidence">
+              {navItem("sources", "Source Library", <Library className="h-4 w-4" aria-hidden />)}
+              {navItem("newspapers", "Newspaper Search", <Newspaper className="h-4 w-4" aria-hidden />)}
+              {navItem("review", "Review & Verify", <ShieldCheck className="h-4 w-4" aria-hidden />, dash?.awaiting_verification || undefined)}
+              {navItem("dataquality", "Data Quality", <ClipboardCheck className="h-4 w-4" aria-hidden />)}
+            </NavGroup>
+            <NavGroup label="Work">
+              {navItem("tasks", "Research Tasks", <ListChecks className="h-4 w-4" aria-hidden />)}
+            </NavGroup>
+            <Button size="sm" variant="outline" className="mt-1 lg:w-full" disabled={busy} onClick={() => void loadFor(tab)}>
+              <RefreshCw className="h-4 w-4" aria-hidden /> Refresh
+            </Button>
+          </nav>
+
+          {/* Section content */}
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
 
         {tab === "internet" && <InternetSearch workspaceId={workspaceId} />}
 
@@ -213,14 +252,48 @@ export function ResearchCentre() {
           if (dash.awaiting_verification > 0) priorities.push({ label: `Verify ${dash.awaiting_verification} scorecard${n(dash.awaiting_verification)} awaiting approval`, go: () => setTab("review") });
           if (seasonsToResearch > 0) priorities.push({ label: `Research ${seasonsToResearch} season${n(seasonsToResearch)} needing attention`, go: () => setTab("seasons") });
           if (dash.open_tasks > 0) priorities.push({ label: `Continue ${dash.open_tasks} open research task${n(dash.open_tasks)}`, go: () => setTab("tasks") });
+
+          const metric = (label: string, value: number, accent: "success" | "warning" | "brand", go: () => void) => (
+            <button type="button" onClick={go}
+              className="rounded-[var(--radius-app)] border border-border p-3 text-left hover:border-brand">
+              <div className="text-[11px] text-muted-foreground">{label}</div>
+              <div className="text-2xl font-semibold tabular-nums"
+                style={{ color: value > 0 ? `var(--${accent})` : undefined }}>{value}</div>
+            </button>
+          );
+          const continueItems: { label: string; go: () => void }[] = [];
+          jobs.filter((j) => ["running", "paused", "interrupted"].includes(j.status)).slice(0, 4).forEach((j) =>
+            continueItems.push({ label: `${j.status === "paused" ? "Resume" : "View"} search: “${j.query}”`, go: () => setTab("internet") }));
+          if (dash.open_tasks > 0) continueItems.push({ label: `Continue ${dash.open_tasks} open research task${n(dash.open_tasks)}`, go: () => setTab("tasks") });
+          if (dash.draft_scorecards > 0) continueItems.push({ label: `Finish ${dash.draft_scorecards} draft scorecard${n(dash.draft_scorecards)}`, go: () => setTab("review") });
+
           return (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {bigStat("Verified matches", dash.verified, "success")}
-              {bigStat("Needs attention", needsAttention, "warning")}
-              {bigStat("Seasons to research", seasonsToResearch, "warning")}
-              {bigStat("Open tasks", dash.open_tasks, "brand")}
+            <DashboardLauncher workspaceId={workspaceId}
+              onStarted={() => { setTab("internet"); setFlash("Research started — follow it in Discover Records."); }}
+              onError={(m) => setError(m)} />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {metric("Verified matches", dash.verified, "success", () => setTab("review"))}
+              {metric("Needs attention", needsAttention, "warning", () => setTab("review"))}
+              {metric("Jobs running", activeJobs, "brand", () => setTab("internet"))}
+              {metric("New discoveries", pendingFindings, "brand", () => setTab("internet"))}
+              {metric("Research gaps", gapsTotal ?? 0, "warning", () => setTab("gaps"))}
+              {metric("Open tasks", dash.open_tasks, "brand", () => setTab("tasks"))}
             </div>
+            {continueItems.length > 0 && (
+              <Card>
+                <CardContent className="flex flex-col gap-2">
+                  <h3 className="text-sm font-semibold">Continue research</h3>
+                  <p className="text-xs text-muted-foreground">Pick up where you left off — your work is saved.</p>
+                  {continueItems.map((c, i) => (
+                    <button key={i} type="button" onClick={c.go}
+                      className="flex items-center justify-between rounded-[var(--radius-app)] border border-border px-3 py-2 text-left text-sm hover:border-brand">
+                      <span>{c.label}</span><span className="text-muted-foreground" aria-hidden>→</span>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardContent className="flex flex-col gap-2">
                 <h3 className="text-sm font-semibold">Research priorities</h3>
@@ -505,8 +578,76 @@ export function ResearchCentre() {
             </CardContent>
           </Card>
         )}
+          </div>
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+function DashboardLauncher({ workspaceId, onStarted, onError }: {
+  workspaceId: string;
+  onStarted: () => void;
+  onError: (m: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [depth, setDepth] = useState("standard");
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    if (!query.trim()) return;
+    setBusy(true);
+    try {
+      await api.researchStartInternetSearch(workspaceId, { query: query.trim(), depth });
+      setQuery("");
+      onStarted();
+    } catch (e) {
+      onError(e instanceof ApiError ? e.message : "Could not start the search.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Globe className="h-5 w-5 text-brand" aria-hidden />
+          <h3 className="text-sm font-semibold">Search the Internet</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Describe what you are looking for in plain English — OneStats researches online sources in the
+          background and brings back leads for you to review. Nothing is added automatically.
+        </p>
+        <textarea value={query} onChange={(e) => setQuery(e.target.value)} rows={2}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start(); }}
+          placeholder="e.g. Find missing Rhymney/Moyston scorecards for the 1924/25 season"
+          className="w-full rounded-[var(--radius-app)] border border-border bg-background p-2 text-sm" />
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="text-muted-foreground">Search depth</span>
+            <Select value={depth} onChange={(e) => setDepth(e.target.value)} className="w-36">
+              {["quick", "standard", "deep"].map((d) => (
+                <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+              ))}
+            </Select>
+          </label>
+          <Button disabled={busy || !query.trim()} onClick={() => void start()} className="gap-1.5">
+            {busy ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden /> : <Globe className="h-4 w-4" aria-hidden />}
+            Search the Internet
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="px-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </div>
   );
 }
 
