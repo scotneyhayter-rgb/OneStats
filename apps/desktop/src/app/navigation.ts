@@ -54,6 +54,15 @@ export const NAV_SECTIONS: NavSection[] = [
     workspaceType: "international",
   },
   {
+    key: "intl-stats",
+    label: "International Stats",
+    path: "/intl/stats",
+    icon: BarChart3,
+    blurb: "Per-format Test / ODI / T20I batting, bowling and fielding leaderboards.",
+    perm: "match.view",
+    workspaceType: "international",
+  },
+  {
     key: "matches",
     label: "Matches",
     path: "/matches",

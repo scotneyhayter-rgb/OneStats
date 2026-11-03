@@ -1355,6 +1355,36 @@ export interface SchedulerRunResult {
   was_catch_up: boolean;
   scheduled_for: string | null;
 }
+// Per-format international statistics (/intl-stats). Rows come from the shared stats engine, so the
+// honesty flags (unknown-vs-zero) ride along: e.g. runs_known_minimum / balls_incomplete / economy_incomplete.
+export interface IntlStatsMeta { formats: IntlFormat[]; disciplines: string[] }
+export interface IntlBattingStat {
+  subject_id: string; matches: number; innings: number; runs: number; not_outs: number;
+  dismissed: number; balls: number; fours: number; sixes: number; boundaries: number;
+  fifties: number; hundreds: number; ducks: number; highest_score: number; most_runs_in_match: number;
+  average: number | null; strike_rate: number | null;
+  balls_incomplete: boolean; runs_known_minimum: boolean; qualified?: boolean;
+}
+export interface IntlBowlingStat {
+  subject_id: string; matches: number; innings: number; balls: number; overs: number; maidens: number;
+  runs: number; wickets: number; five_wkt_innings: number; ten_wkt_match: number; best_match_wickets: number;
+  average: number | null; economy: number | null; strike_rate: number | null;
+  balls_incomplete: boolean; economy_incomplete: boolean; wickets_known_minimum: boolean; qualified?: boolean;
+}
+export interface IntlFieldingStat {
+  subject_id: string; matches: number; catches: number; field_catches: number; keeper_catches: number;
+  stumpings: number; run_outs: number; run_out_assists: number; run_out_involvements: number;
+  keeper_dismissals: number;
+}
+export interface IntlCareer {
+  person_id: string;
+  formats: Record<IntlFormat, { batting: IntlBattingStat; bowling: IntlBowlingStat; fielding: IntlFieldingStat;
+    participation: Record<string, number>; captaincy: Record<string, number> }>;
+  all: { batting: IntlBattingStat; bowling: IntlBowlingStat; fielding: IntlFieldingStat;
+    participation: Record<string, number>; captaincy: Record<string, number> };
+}
+/** A leaderboard row — shape depends on the discipline; the screen renders the columns it knows. */
+export type IntlLeaderRow = Record<string, number | string | boolean | null>;
 
 export const api = {
   baseUrl: getApiBase(),
@@ -2195,4 +2225,11 @@ export const api = {
     request<SchedulerTask>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/pause`, { method: "POST", body: { value } }),
   schedulerEnable: (w: string, taskId: string, value: boolean) =>
     request<SchedulerTask>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/enable`, { method: "POST", body: { value } }),
+  intlStatsMeta: (w: string) =>
+    request<IntlStatsMeta>(`/api/v1/workspaces/${w}/intl-stats/formats`),
+  intlCareer: (w: string, personId: string) =>
+    request<IntlCareer>(`/api/v1/workspaces/${w}/intl-stats/career/${personId}`),
+  intlLeaders: (w: string, fmt: string, discipline: string,
+                opts: { limit?: number; order_by?: string } = {}) =>
+    request<IntlLeaderRow[]>(`/api/v1/workspaces/${w}/intl-stats/leaders/${fmt}/${discipline}${qs(opts)}`),
 };

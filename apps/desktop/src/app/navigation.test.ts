@@ -3,10 +3,11 @@ import { MANAGEMENT_SECTIONS, NAV_SECTIONS } from "./navigation";
 
 describe("primary navigation", () => {
   it("defines the primary sections in order (Records promoted next to Statistics)", () => {
-    expect(NAV_SECTIONS).toHaveLength(8);
+    expect(NAV_SECTIONS).toHaveLength(9);
     expect(NAV_SECTIONS.map((s) => s.label)).toEqual([
       "Dashboard",
       "International Updates",
+      "International Stats",
       "Matches",
       "People",
       "Statistics",
@@ -16,13 +17,16 @@ describe("primary navigation", () => {
     ]);
   });
 
-  it("gates International Updates to international workspaces only", () => {
-    const intl = NAV_SECTIONS.find((s) => s.key === "intl-updates");
-    expect(intl?.workspaceType).toBe("international");
-    expect(intl?.perm).toBe("workspace.manage");
-    // every other primary section is available to any workspace type
+  it("gates the international sections to international workspaces only", () => {
+    const updates = NAV_SECTIONS.find((s) => s.key === "intl-updates");
+    const stats = NAV_SECTIONS.find((s) => s.key === "intl-stats");
+    expect(updates?.workspaceType).toBe("international");
+    expect(updates?.perm).toBe("workspace.manage");
+    expect(stats?.workspaceType).toBe("international");
+    expect(stats?.perm).toBe("match.view");
+    // every non-international section is available to any workspace type
     for (const s of NAV_SECTIONS) {
-      if (s.key !== "intl-updates") expect(s.workspaceType).toBeUndefined();
+      if (s.key !== "intl-updates" && s.key !== "intl-stats") expect(s.workspaceType).toBeUndefined();
     }
   });
 
