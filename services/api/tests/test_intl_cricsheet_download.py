@@ -89,6 +89,18 @@ def test_import_bundle_logs_each_match_then_skips_unchanged(conn):
     assert n == 2                                         # still exactly two matches
 
 
+def test_non_mens_match_is_excluded_not_failed(conn):
+    # the shared Cricsheet T20I bundle also carries women's matches; those are EXCLUDED (skipped),
+    # not counted as import failures (that keeps the error list for genuine problems).
+    wid = _ws(conn)
+    female = {"info": {"match_type": "IT20", "gender": "female", "teams": ["X", "Y"]}, "innings": []}
+    out = dl.import_one(conn, wid, ACTOR, "fem1", b"{}", female)
+    assert out == "skipped"
+    row = conn.execute(text("SELECT status, detail FROM cricsheet_import_log WHERE workspace_id=:w AND source_ref='fem1'"),
+                       {"w": wid}).mappings().one()
+    assert row["status"] == "skipped" and "not a men's international" in row["detail"]
+
+
 def test_bundle_urls_use_the_published_cricsheet_names():
     # men's international T20s are published as "it20s_json.zip" (NOT "t20is") — verified live
     assert dl.bundle_url("test").endswith("/tests_json.zip")

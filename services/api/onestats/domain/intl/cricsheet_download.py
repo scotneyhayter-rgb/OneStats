@@ -136,8 +136,16 @@ def import_one(conn: Connection, workspace_id: UUID, actor: str, source_ref: str
     try:
         parsed = cricsheet.parse_match(doc, source_ref=source_ref)
     except ValueError as exc:
+        msg = str(exc)
+        # A file that is simply not a men's international (the shared Cricsheet bundle also contains
+        # women's / non-international matches) is EXCLUDED, not a failure — keep the error list for real
+        # problems. The match stays discoverable for the correct workspace elsewhere.
+        if msg.startswith(("cricsheet_unsupported_gender", "cricsheet_unsupported_match_type")):
+            _log(conn, workspace_id, actor, source_ref, status="skipped", source_url=source_url,
+                 sha=sha, detail=f"excluded — not a men's international ({msg})")
+            return "skipped"
         _log(conn, workspace_id, actor, source_ref, status="failed", source_url=source_url,
-             sha=sha, detail=str(exc))
+             sha=sha, detail=msg)
         return "failed"
     try:
         result = importer.import_match(conn, workspace_id, actor, parsed)
