@@ -21,6 +21,7 @@ from onestats.api.v1 import (
     innings,
     integrations,
     match_formats,
+    match_index,
     matches,
     media,
     mobile_upload,
@@ -41,6 +42,7 @@ from onestats.api.v1 import (
     records,
     relationships,
     research,
+    scheduler,
     setup,
     stats,
     teams,
@@ -79,6 +81,8 @@ api_v1.include_router(profiles.router)
 api_v1.include_router(people_import.router)
 api_v1.include_router(matches.router)
 api_v1.include_router(match_formats.router)
+api_v1.include_router(match_index.router)
+api_v1.include_router(scheduler.router)
 api_v1.include_router(innings.router)
 api_v1.include_router(batting.router)
 api_v1.include_router(bowling.router)
