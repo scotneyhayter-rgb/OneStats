@@ -284,10 +284,11 @@ class Fetcher:
                                 return FetchResult(TOO_LARGE, url, final_url=current, http_status=resp.status_code,
                                                    content_type=ctype, bytes=len(body), content_sha256=sha,
                                                    detail=f"body exceeded {self.max_bytes} bytes")
-                            # Decode to text only for text-like bodies; binary bodies (PDF/image) keep
-                            # their raw bytes so a specialised extractor (pdfplumber/OCR) can read them.
+                            # Decode to text for everything EXCEPT known-binary bodies (PDF/image), which
+                            # keep their raw bytes for a specialised extractor (pdfplumber/OCR). This still
+                            # covers HTML, plain text, XML and JSON (discovery APIs), which need text.
                             text = None
-                            if ctype in TEXT_CONTENT_TYPES or not ctype:
+                            if ctype not in (PDF_CONTENT_TYPE, *IMAGE_CONTENT_TYPES):
                                 try:
                                     text = body.decode(resp.encoding or "utf-8", errors="replace")
                                 except (LookupError, TypeError):
