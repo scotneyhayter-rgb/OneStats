@@ -52,7 +52,7 @@ Windows Authenticode certificate is used, so first-run shows a one-time SmartScr
     distinguishes an **expired session** (401 → "please sign in again", server not marked unavailable)
     from a genuine server outage (5xx/network). Covered by `updates-version.test.tsx`.
   - **Release-manifest generator** (`scripts/build-release-manifest.py`) emits our rich manifest **and**
-    a Tauri `latest.json` with the real GitHub download URL (`--github-repo OWNER/REPO`) and the embedded
+    a Tauri `latest.json` with the real GitHub download URL (`--github-repo scotneyhayter-rgb/OneStats`) and the embedded
     updater signature (`--sig-file`/`--signature`); it enforces HTTPS and exits non-zero on an
     unsigned/unhosted manifest so nothing is published silently. Covered by `test_release_manifest.py`.
   - **Release workflow** (`.github/workflows/release.yml`): on a `v*` tag it builds, signs (private key
@@ -66,18 +66,19 @@ Windows Authenticode certificate is used, so first-run shows a one-time SmartScr
   `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for CI. Losing it means updates can
   no longer be signed. Windows **Authenticode** signing (distinct from the updater signature) stays a
   paid, approval-gated option — not used.
-- **HOSTING — GitHub Releases (free):** the updater `endpoints` (desktop) and
-  `ONESTATS_RELEASE_MANIFEST_URL` (server) point at
-  `https://github.com/OWNER/REPO/releases/latest/download/latest.json` for the chosen **public** repo
-  (private repos need a token the updater can't supply). Publish via the workflow, or manually with the
-  `gh` fallback in §11.
+- **HOSTING — GitHub Releases (free):** the updater `endpoints` (desktop) and the server
+  `release_manifest_url` default (env `ONESTATS_RELEASE_MANIFEST_URL`) are wired to the official public
+  repo **`scotneyhayter-rgb/OneStats`**:
+  `https://github.com/scotneyhayter-rgb/OneStats/releases/latest/download/latest.json`. The repo is
+  public (private repos need a token the updater can't supply). Publish via the workflow, or manually
+  with the `gh` fallback in §11.
 - **REQUIRES WINDOWS INSTALLATION TESTING:** download, signature verification, install and restart on a
   real installed build (UP-08..UP-13).
 
 Enabling the updater in a shipped build requires the **one deferred installer rebuild** (per the
 development rules — not done here). Everything else is wired so the updater goes live once the private
-key is stored, the repo is set in the two `OWNER/REPO` spots, the installer is rebuilt once, and the
-first signed GitHub Release is published. See the §11 go-live checklist.
+key is stored, the installer is rebuilt once, and the first signed GitHub Release is published to
+`scotneyhayter-rgb/OneStats`. See the §11 go-live checklist.
 
 ## 4. Server update system — **PARTIAL (control plane IMPLEMENTED; execution REQUIRES WINDOWS SERVICE)**
 
@@ -163,11 +164,11 @@ The updater is wired in code (§3). Four human steps remain to make it live:
    contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for this key). For a local signed build,
    set the same two as environment variables. **If the key is lost, updates can no longer be signed.**
 
-2. **Set the release repo (once).** Replace `OWNER/REPO` with the chosen **public** GitHub repo in the
-   two configured spots: the desktop updater `endpoints` in `apps/desktop/src-tauri/tauri.conf.json`,
-   and the server setting `ONESTATS_RELEASE_MANIFEST_URL` (env `ONESTATS_RELEASE_MANIFEST_URL`,
-   default in `core/config.py`). Both point at
-   `https://github.com/OWNER/REPO/releases/latest/download/latest.json`.
+2. **Release repo — already set.** Both spots are wired to the official public repo
+   `scotneyhayter-rgb/OneStats`: the desktop updater `endpoints` in
+   `apps/desktop/src-tauri/tauri.conf.json`, and the server `release_manifest_url` default in
+   `core/config.py` (override with env `ONESTATS_RELEASE_MANIFEST_URL`). Both point at
+   `https://github.com/scotneyhayter-rgb/OneStats/releases/latest/download/latest.json`.
 
 3. **Rebuild the installer once (deferred step).** Build the Windows app with the updater plugin and the
    signing env vars set, producing the NSIS `-setup.exe`, its `.sig`, and `latest.json`. This is the one
@@ -182,7 +183,7 @@ The updater is wired in code (§3). Four human steps remain to make it live:
    gh release create v1.0.0-beta.2 \
      "apps/desktop/src-tauri/target/release/bundle/nsis/OneStats_1.0.0-beta.2_x64-setup.exe" \
      "dist/release/latest.json" \
-     --repo OWNER/REPO --title "OneStats 1.0.0-beta.2" --notes-file docs/RELEASE_NOTES.md
+     --repo scotneyhayter-rgb/OneStats --title "OneStats 1.0.0-beta.2" --notes-file docs/RELEASE_NOTES.md
    ```
 
    Then run **UP-08..UP-13** on a real installed build (download → verify → install → relaunch).
