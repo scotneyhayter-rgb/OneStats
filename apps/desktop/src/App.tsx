@@ -33,6 +33,7 @@ import { AutoSync } from "./features/autosync/AutoSync";
 import { ResearchCentre } from "./features/research/ResearchCentre";
 import { InternationalUpdates } from "./features/intl/InternationalUpdates";
 import { InternationalStats } from "./features/intl/InternationalStats";
+import { ImportManagement } from "./features/intl/ImportManagement";
 import { MediaArchive } from "./features/media/MediaArchive";
 import { Records } from "./features/records/Records";
 import { ClubBrandingSync } from "./features/ClubBrandingSync";
@@ -58,6 +59,7 @@ function AuthedApp() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/intl/updates" element={<InternationalUpdates />} />
         <Route path="/intl/stats" element={<InternationalStats />} />
+        <Route path="/intl/imports" element={<ImportManagement />} />
         <Route path="/platform" element={<PlatformDashboard />} />
         <Route path="/workspaces" element={<MyWorkspaces />} />
         <Route path="/onboarding" element={<OnboardingWizard />} />
