@@ -54,7 +54,7 @@
       "endpoints": [
         "https://github.com/scotneyhayter-rgb/OneStats/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzMDRDNjY5NzFDMUUwMDAKUldRQTRNRnhhY1lFRXcxeGRGaFJJSW1WbkMvYU0zY05HanBBOXh6WWxUdFlDVm8xSFRRUkFUZksK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyRDQzQzYwRjdDQkNFMTYKUldRV3pzdjNZRHpVTXFpNDdQdDJzNmtKNkxPRWovbEVObHJWK3dUa2ZWRnJiTnlWRDBEbnFyd3MK",
       "windows": {
         "installMode": "passive"
       }
