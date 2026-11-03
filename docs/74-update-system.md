@@ -34,27 +34,50 @@ comparison (incl. prerelease ordering) lives in `core/version.py::compare_versio
   compatibility banner. Rules: too-old desktop → must update; too-new desktop → server must update;
   maintenance → wait; service unavailable → continue if known-compatible (never guess).
 
-## 3. Desktop updater — **PARTIAL (REQUIRES HOSTING/SIGNING + WINDOWS INSTALLATION TESTING)**
+## 3. Desktop updater — **IMPLEMENTED IN CODE · AUTOMATED TESTS PASSED (REQUIRES WINDOWS INSTALLATION TESTING + a signed GitHub Release to go live)**
 
 The secure download/verify/install flow uses the **official Tauri 2 updater** (no custom executable
-downloader). Prepared vs. outstanding:
+downloader). Hosting is **free GitHub Releases**; signing uses a **free Tauri updater keypair**. No paid
+Windows Authenticode certificate is used, so first-run shows a one-time SmartScreen warning (acceptable).
 
-- **IMPLEMENTED IN CODE:** Updates & Version UI (versions, channel, last check, status, manual check,
-  compatibility banner); the update-status state machine; honest “no update service configured” state;
-  release-manifest + checksum generator (`scripts/build-release-manifest.py`) producing our rich
-  manifest **and** a Tauri `latest.json` skeleton.
-- **REQUIRES SIGNING CONFIGURATION:** add `tauri-plugin-updater` to `src-tauri` with a `plugins.updater`
-  block (`endpoints`, trusted `pubkey`). Generate the updater keypair with `tauri signer generate`;
-  keep the **private key out of the repository** (CI secret / protected store); the public key is
-  embedded in the app. Optionally add Windows **Authenticode** signing (distinct from the updater
-  signature) — a paid certificate, **not purchased without approval**.
-- **REQUIRES HOSTING CONFIGURATION:** publish signed artifacts + `latest.json` to an approved HTTPS
-  endpoint; set `ONESTATS_RELEASE_MANIFEST_URL` (server) and the updater `endpoints` (desktop).
+- **IMPLEMENTED IN CODE · AUTOMATED TESTS PASSED:**
+  - `tauri-plugin-updater` + `tauri-plugin-process` added to `src-tauri` (`Cargo.toml`), registered in
+    `lib.rs` (desktop-only), and permitted in `capabilities/default.json` (`updater:default`,
+    `process:allow-restart`). `tauri.conf.json` carries the `plugins.updater` block (`endpoints`,
+    trusted `pubkey`, `windows.installMode: passive`) and `bundle.createUpdaterArtifacts: true`.
+  - **Updates & Version UI** now drives the real updater when a release service is configured and the
+    app runs inside Tauri: check → download (with %) → signature-verify → install → relaunch, with an
+    "Install & restart" action and progress/error states. The honest "no update service configured →
+    installer" state remains the fallback (browser/dev shell or unconfigured server). It also
+    distinguishes an **expired session** (401 → "please sign in again", server not marked unavailable)
+    from a genuine server outage (5xx/network). Covered by `updates-version.test.tsx`.
+  - **Release-manifest generator** (`scripts/build-release-manifest.py`) emits our rich manifest **and**
+    a Tauri `latest.json` with the real GitHub download URL (`--github-repo OWNER/REPO`) and the embedded
+    updater signature (`--sig-file`/`--signature`); it enforces HTTPS and exits non-zero on an
+    unsigned/unhosted manifest so nothing is published silently. Covered by `test_release_manifest.py`.
+  - **Release workflow** (`.github/workflows/release.yml`): on a `v*` tag it builds, signs (private key
+    from Actions secrets) and uploads the NSIS setup + `latest.json` to a **draft** GitHub Release via
+    `tauri-action`.
+- **SIGNING — keypair (generated; store the private key):** a free updater keypair has been generated
+  with `tauri signer generate`. The **public key is embedded** in `tauri.conf.json` (see §11 for the
+  value). The **private key must never be committed**: it lives only in an env var for local signed
+  builds (`TAURI_SIGNING_PRIVATE_KEY` = the key string or its file path, plus
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, empty for this key) and in the **GitHub Actions secrets**
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for CI. Losing it means updates can
+  no longer be signed. Windows **Authenticode** signing (distinct from the updater signature) stays a
+  paid, approval-gated option — not used.
+- **HOSTING — GitHub Releases (free):** the updater `endpoints` (desktop) and
+  `ONESTATS_RELEASE_MANIFEST_URL` (server) point at
+  `https://github.com/OWNER/REPO/releases/latest/download/latest.json` for the chosen **public** repo
+  (private repos need a token the updater can't supply). Publish via the workflow, or manually with the
+  `gh` fallback in §11.
 - **REQUIRES WINDOWS INSTALLATION TESTING:** download, signature verification, install and restart on a
   real installed build (UP-08..UP-13).
 
-Enabling the plugin requires an installer rebuild, which is **deferred** during functional acceptance
-(per the development rules). The config and scripts are prepared so the updater drops into the final build.
+Enabling the updater in a shipped build requires the **one deferred installer rebuild** (per the
+development rules — not done here). Everything else is wired so the updater goes live once the private
+key is stored, the repo is set in the two `OWNER/REPO` spots, the installer is rebuilt once, and the
+first signed GitHub Release is published. See the §11 go-live checklist.
 
 ## 4. Server update system — **PARTIAL (control plane IMPLEMENTED; execution REQUIRES WINDOWS SERVICE)**
 
@@ -124,7 +147,48 @@ NSIS installer is `installMode: both`; the detection/preserve/upgrade path and t
 
 ## 10. Decisions requiring approval
 
-- **Hosting** for signed releases (object storage / release host / dedicated update service) — cost.
-- **Code-signing certificate** (Windows Authenticode) — paid.
-- Final **installer rebuild** to embed the updater plugin (deferred during functional acceptance).
+- **Hosting** for signed releases — chosen: **free GitHub Releases** (no recurring cost).
+- **Code-signing certificate** (Windows Authenticode) — paid; **not used** (one-time SmartScreen warning accepted).
+- Final **installer rebuild** to embed the updater plugin (deferred during functional acceptance — §11 step 3).
 - Any **irreversible migration** or **destructive recovery** operation.
+
+## 11. Go-live checklist (desktop in-app updates)
+
+The updater is wired in code (§3). Four human steps remain to make it live:
+
+1. **Store the private signing key (once).** The free updater keypair is already generated; the public
+   key is embedded in `tauri.conf.json`. Keep the **private key** somewhere safe (password manager /
+   secrets store) — it is printed to you out-of-band and is **never** in the repo. Add two GitHub Actions
+   secrets on the release repo: `TAURI_SIGNING_PRIVATE_KEY` (the key string, or the `.key` file
+   contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for this key). For a local signed build,
+   set the same two as environment variables. **If the key is lost, updates can no longer be signed.**
+
+2. **Set the release repo (once).** Replace `OWNER/REPO` with the chosen **public** GitHub repo in the
+   two configured spots: the desktop updater `endpoints` in `apps/desktop/src-tauri/tauri.conf.json`,
+   and the server setting `ONESTATS_RELEASE_MANIFEST_URL` (env `ONESTATS_RELEASE_MANIFEST_URL`,
+   default in `core/config.py`). Both point at
+   `https://github.com/OWNER/REPO/releases/latest/download/latest.json`.
+
+3. **Rebuild the installer once (deferred step).** Build the Windows app with the updater plugin and the
+   signing env vars set, producing the NSIS `-setup.exe`, its `.sig`, and `latest.json`. This is the one
+   installer rebuild deferred during functional acceptance.
+
+4. **Publish the first signed GitHub Release.** Either push a `v*` tag and let
+   `.github/workflows/release.yml` build/sign/upload a **draft** release (review, then publish), or do it
+   manually:
+
+   ```sh
+   # after a signed `tauri build` (dist/release holds latest.json via build-release-manifest.py)
+   gh release create v1.0.0-beta.2 \
+     "apps/desktop/src-tauri/target/release/bundle/nsis/OneStats_1.0.0-beta.2_x64-setup.exe" \
+     "dist/release/latest.json" \
+     --repo OWNER/REPO --title "OneStats 1.0.0-beta.2" --notes-file docs/RELEASE_NOTES.md
+   ```
+
+   Then run **UP-08..UP-13** on a real installed build (download → verify → install → relaunch).
+
+**Embedded updater public key** (safe to commit — it only *verifies* signatures):
+
+```
+dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzMDRDNjY5NzFDMUUwMDAKUldRQTRNRnhhY1lFRXcxeGRGaFJJSW1WbkMvYU0zY05HanBBOXh6WWxUdFlDVm8xSFRRUkFUZksK
+```
