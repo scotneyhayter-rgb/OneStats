@@ -168,6 +168,27 @@ def test_pause_resume_cancel(conn):
     assert jobs.claim_next_job(conn, wid, ACTOR) is None
 
 
+def test_image_finding_via_injected_ocr(conn):
+    wid = _ws(conn, "ENG_OCR")
+    job = jobs.create_job(conn, wid, ACTOR, query="scanned clipping", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return httpx.Response(200, headers={"content-type": "image/png"}, content=b"\x89PNGfake")
+    fetcher = Fetcher(resolver=lambda h: [PUBLIC_IP], transport=httpx.MockTransport(handler),
+                      respect_robots=False, allowed_content_types=("image/png",))
+    fake_ocr = lambda raw: ("Rhymney 112 all out, Moyston 98. Rhymney won by 14 runs.", 0.7)  # noqa: E731
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=fetcher, discovery=_discovery(["https://example.com/clip.png"]), ocr_engine=fake_ocr)
+    findings = jobs.list_findings(conn, wid)
+    assert len(findings) == 1 and findings[0]["kind"] in ("scorecard", "result", "match_candidate")
+
+
+def test_ocr_image_graceful_fallback(monkeypatch):
+    from onestats.domain.research import extraction
+    monkeypatch.setattr(extraction, "default_engine", lambda: (None, None))
+    assert reng._ocr_image(b"x", None) == ""                    # no engine → no text (honest)
+    assert reng._ocr_image(b"x", lambda raw: ("hi", 0.5)) == "hi"  # injected engine is used
+
+
 def _seed_match(conn, wid, home, away, year):
     org = conn.execute(text("INSERT INTO organisation(workspace_id, name) VALUES (:w, :n) RETURNING id"),
                        {"w": wid, "n": f"{home} org"}).scalar_one()

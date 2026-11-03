@@ -54,6 +54,7 @@ ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "te
 # Content types we decode to text (vs. binary bodies like PDF kept as raw bytes).
 TEXT_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "text/xml", "application/xml")
 PDF_CONTENT_TYPE = "application/pdf"
+IMAGE_CONTENT_TYPES = ("image/jpeg", "image/png", "image/tiff", "image/gif", "image/webp", "image/bmp")
 DEFAULT_MAX_BYTES = 5_000_000           # 5 MB per page
 DEFAULT_CONNECT_TIMEOUT = 8.0
 DEFAULT_READ_TIMEOUT = 20.0

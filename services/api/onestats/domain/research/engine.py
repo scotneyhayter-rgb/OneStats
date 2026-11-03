@@ -27,7 +27,7 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain.research import classify, jobs, webextract, webfetch
+from onestats.domain.research import classify, extraction, jobs, webextract, webfetch
 from onestats.domain.research.webfetch import Fetcher
 
 # A discovery provider: (queries, context) -> list of {"url", "source"} candidates.
@@ -131,9 +131,27 @@ def default_discovery(settings: Settings, *, fetcher: Fetcher) -> Discovery:
 
 def _page_fetcher(settings: Settings) -> Fetcher:
     ua = getattr(settings, "research_user_agent", None) or webfetch.DEFAULT_USER_AGENT
-    # Accept HTML/text AND PDF (a common format for annual reports, handbooks and archived scorecards).
-    return Fetcher(user_agent=ua, respect_robots=True,
-                   allowed_content_types=(*webfetch.ALLOWED_CONTENT_TYPES, webfetch.PDF_CONTENT_TYPE))
+    # Accept HTML/text, PDF (annual reports, handbooks, archived scorecards) and images (scanned
+    # clippings/scorecards, read via OCR when a local engine is available).
+    return Fetcher(user_agent=ua, respect_robots=True, max_bytes=15_000_000,
+                   allowed_content_types=(*webfetch.ALLOWED_CONTENT_TYPES, webfetch.PDF_CONTENT_TYPE,
+                                          *webfetch.IMAGE_CONTENT_TYPES))
+
+
+def _ocr_image(raw: bytes, ocr_engine: "extraction.OcrEngine | None") -> str:
+    """OCR an image's bytes with the given engine, or the local default (Tesseract). Returns "" when no
+    engine is available or OCR fails — honest: an unreadable scan yields no finding, never a fabricated one."""
+    engine = ocr_engine
+    if engine is None:
+        from onestats.domain.research import extraction
+        engine, _ = extraction.default_engine()
+    if engine is None or not raw:
+        return ""
+    try:
+        text, _conf = engine(raw)
+        return text or ""
+    except Exception:  # noqa: BLE001 - OCR engines raise many error types; a failure yields no text
+        return ""
 
 
 def _discovery_fetcher(settings: Settings) -> Fetcher:
@@ -153,7 +171,8 @@ def _host(url: str) -> str | None:
 
 def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, Any], *,
              settings: Settings, page_fetcher: Fetcher | None = None,
-             discovery: Discovery | None = None) -> dict[str, Any]:
+             discovery: Discovery | None = None,
+             ocr_engine: "extraction.OcrEngine | None" = None) -> dict[str, Any]:
     """Process one bounded slice of the investigation and checkpoint. Returns
     ``{"done": bool, "processed": int, "new_findings": int, "examined": int, "findings": int}``.
 
@@ -211,9 +230,11 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
         if r.content_sha256:
             hashes.add(r.content_sha256)
 
-        # Choose the text source by content type: PDFs are read with pdfplumber, everything else is HTML/text.
+        # Choose the text source by content type: PDFs via pdfplumber, images via OCR, else HTML/text.
         if r.content_type == webfetch.PDF_CONTENT_TYPE:
             page_text, is_html = webextract.pdf_to_text(r.content or b""), False
+        elif r.content_type in webfetch.IMAGE_CONTENT_TYPES:
+            page_text, is_html = _ocr_image(r.content or b"", ocr_engine), False
         else:
             page_text, is_html = (r.text or ""), True
         if not page_text.strip():
