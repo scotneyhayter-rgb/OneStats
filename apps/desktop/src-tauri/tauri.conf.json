@@ -42,7 +42,7 @@
     "windows": {
       "webviewInstallMode": { "type": "offlineInstaller" },
       "nsis": {
-        "installMode": "both",
+        "installMode": "currentUser",
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico"
       }
