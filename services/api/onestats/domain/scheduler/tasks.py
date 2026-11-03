@@ -45,13 +45,38 @@ def upsert_weekly(
     day_of_week: int, hour: int, minute: int, payload: dict[str, Any] | None = None,
     catch_up: bool = True, now: dt.datetime | None = None,
 ) -> dict[str, Any]:
-    """Create or update the single weekly task of ``task_kind`` for a workspace (idempotent). The
-    recurrence fields are always updated; ``next_run_at`` is (re)computed from ``now`` whenever it is
-    unset or the schedule changed, and ``last_run_at``/history are preserved."""
+    """Create or update the single WEEKLY task of ``task_kind`` for a workspace (idempotent)."""
+    return _upsert(conn, workspace_id, actor, name=name, task_kind=task_kind, tz=tz,
+                   schedule_kind="weekly", day_of_week=day_of_week, hour=hour, minute=minute,
+                   payload=payload, catch_up=catch_up, now=now)
+
+
+def upsert_daily(
+    conn: Connection, workspace_id: UUID, actor: str, *, name: str, task_kind: str, tz: str,
+    hour: int, minute: int, payload: dict[str, Any] | None = None,
+    catch_up: bool = True, now: dt.datetime | None = None,
+) -> dict[str, Any]:
+    """Create or update the single DAILY task of ``task_kind`` for a workspace (idempotent). Switching
+    an existing weekly task to daily (or vice versa) is detected as a schedule change and recomputes
+    ``next_run_at`` while preserving ``last_run_at``/run history."""
+    return _upsert(conn, workspace_id, actor, name=name, task_kind=task_kind, tz=tz,
+                   schedule_kind="daily", day_of_week=None, hour=hour, minute=minute,
+                   payload=payload, catch_up=catch_up, now=now)
+
+
+def _upsert(
+    conn: Connection, workspace_id: UUID, actor: str, *, name: str, task_kind: str, tz: str,
+    schedule_kind: str, day_of_week: int | None, hour: int, minute: int,
+    payload: dict[str, Any] | None, catch_up: bool, now: dt.datetime | None,
+) -> dict[str, Any]:
+    """Create or update the single task of ``task_kind`` for a workspace (idempotent). The recurrence
+    fields are always updated; ``next_run_at`` is (re)computed from ``now`` whenever it is unset or the
+    schedule changed, and ``last_run_at``/history are preserved."""
     now = now or _utcnow()
-    nxt = recurrence.next_weekly_occurrence(now, day_of_week=day_of_week, hour=hour, minute=minute, tz=tz)
+    nxt = recurrence.next_occurrence(now, schedule_kind=schedule_kind, day_of_week=day_of_week,
+                                     hour=hour, minute=minute, tz=tz)
     existing = conn.execute(
-        text("SELECT id, day_of_week, hour, minute, timezone FROM scheduled_task "
+        text("SELECT id, schedule_kind, day_of_week, hour, minute, timezone FROM scheduled_task "
              "WHERE workspace_id = :w AND task_kind = :k"),
         {"w": workspace_id, "k": task_kind},
     ).mappings().first()
@@ -59,24 +84,28 @@ def upsert_weekly(
     if existing is None:
         tid = conn.execute(
             text("INSERT INTO scheduled_task(workspace_id, name, task_kind, payload, timezone, "
-                 "day_of_week, hour, minute, catch_up, next_run_at, created_by) "
-                 "VALUES (:w, :n, :k, CAST(:p AS jsonb), :tz, :dow, :h, :m, :cu, :nxt, :by) RETURNING id"),
-            {"w": workspace_id, "n": name, "k": task_kind, "p": pj, "tz": tz, "dow": day_of_week,
-             "h": hour, "m": minute, "cu": catch_up, "nxt": nxt, "by": actor},
+                 "schedule_kind, day_of_week, hour, minute, catch_up, next_run_at, created_by) "
+                 "VALUES (:w, :n, :k, CAST(:p AS jsonb), :tz, :sk, :dow, :h, :m, :cu, :nxt, :by) "
+                 "RETURNING id"),
+            {"w": workspace_id, "n": name, "k": task_kind, "p": pj, "tz": tz, "sk": schedule_kind,
+             "dow": day_of_week, "h": hour, "m": minute, "cu": catch_up, "nxt": nxt, "by": actor},
         ).scalar_one()
         audit.write_audit(conn, workspace_id, actor, "scheduler.task_created", entity="scheduled_task",
                           entity_id=str(tid), after={"task_kind": task_kind, "timezone": tz,
-                                                     "day_of_week": day_of_week, "hour": hour, "minute": minute})
+                                                     "schedule_kind": schedule_kind,
+                                                     "day_of_week": day_of_week, "hour": hour,
+                                                     "minute": minute})
         return _row(conn, tid)  # type: ignore[return-value]
-    schedule_changed = (existing["day_of_week"] != day_of_week or existing["hour"] != hour
+    schedule_changed = (existing["schedule_kind"] != schedule_kind
+                        or existing["day_of_week"] != day_of_week or existing["hour"] != hour
                         or existing["minute"] != minute or existing["timezone"] != tz)
     conn.execute(
         text("UPDATE scheduled_task SET name = :n, payload = CAST(:p AS jsonb), timezone = :tz, "
-             "day_of_week = :dow, hour = :h, minute = :m, catch_up = :cu, "
+             "schedule_kind = :sk, day_of_week = :dow, hour = :h, minute = :m, catch_up = :cu, "
              "next_run_at = CASE WHEN next_run_at IS NULL OR :changed THEN :nxt ELSE next_run_at END, "
              "updated_at = now() WHERE id = :id"),
-        {"n": name, "p": pj, "tz": tz, "dow": day_of_week, "h": hour, "m": minute, "cu": catch_up,
-         "changed": schedule_changed, "nxt": nxt, "id": existing["id"]},
+        {"n": name, "p": pj, "tz": tz, "sk": schedule_kind, "dow": day_of_week, "h": hour, "m": minute,
+         "cu": catch_up, "changed": schedule_changed, "nxt": nxt, "id": existing["id"]},
     )
     return _row(conn, existing["id"])  # type: ignore[return-value]
 
@@ -161,8 +190,9 @@ def _dispatch_one(conn: Connection, workspace_id: UUID, actor: str, task: dict[s
                 was_catch_up=was_catch_up, status=result["status"], detail=result.get("detail"),
                 error=result.get("error"), enqueued_job_id=result.get("enqueued_job_id"))
 
-    nxt = recurrence.next_weekly_occurrence(now, day_of_week=task["day_of_week"], hour=task["hour"],
-                                            minute=task["minute"], tz=task["timezone"])
+    nxt = recurrence.next_occurrence(now, schedule_kind=task["schedule_kind"],
+                                     day_of_week=task["day_of_week"], hour=task["hour"],
+                                     minute=task["minute"], tz=task["timezone"])
     conn.execute(
         text("UPDATE scheduled_task SET next_run_at = :nxt, last_run_at = :now, last_status = :st, "
              "last_error = :err, updated_at = now() WHERE id = :id"),

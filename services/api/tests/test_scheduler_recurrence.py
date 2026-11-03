@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from onestats.domain.scheduler import recurrence
 
 MEL = "Australia/Melbourne"
@@ -74,6 +76,61 @@ def test_same_weekday_after_time_returns_next_week():
     result = _occ(sat_0500_local)
     local = result.astimezone(ZoneInfo(MEL))
     assert local.date() == dt.date(2026, 7, 18) and local.hour == 4
+
+
+def _daily(after: dt.datetime) -> dt.datetime:
+    return recurrence.next_daily_occurrence(after, hour=4, minute=0, tz=MEL)
+
+
+def test_daily_0400_is_tomorrow_when_today_passed_and_utc_aware():
+    # Asked mid-afternoon local: the next 04:00 is the NEXT calendar day, local 04:00.
+    result = _daily(dt.datetime(2026, 7, 6, 6, 0, tzinfo=UTC))  # 2026-07-06 16:00 AEST
+    local = result.astimezone(ZoneInfo(MEL))
+    assert (local.hour, local.minute) == (4, 0)
+    assert local.date() == dt.date(2026, 7, 7)
+    assert result == dt.datetime(2026, 7, 6, 18, 0, tzinfo=UTC)  # 2026-07-07 04:00 AEST (+10)
+
+
+def test_daily_0400_is_today_when_before_the_time():
+    # Just after midnight local, 04:00 is later TODAY.
+    before_0400 = dt.datetime(2026, 7, 11, 1, 0, tzinfo=ZoneInfo(MEL)).astimezone(UTC)
+    result = _daily(before_0400)
+    local = result.astimezone(ZoneInfo(MEL))
+    assert local.date() == dt.date(2026, 7, 11) and (local.hour, local.minute) == (4, 0)
+
+
+def test_daily_summer_vs_standard_offset():
+    # AEDT (+11): 04:00 local == 17:00Z previous day. AEST (+10): 04:00 local == 18:00Z previous day.
+    summer = _daily(dt.datetime(2026, 1, 10, 0, 0, tzinfo=UTC))
+    assert summer.astimezone(ZoneInfo(MEL)).hour == 4 and summer.utcoffset() == dt.timedelta(0)
+    assert summer.astimezone(ZoneInfo(MEL)).utcoffset() == dt.timedelta(hours=11)
+    winter = _daily(dt.datetime(2026, 7, 10, 0, 0, tzinfo=UTC))
+    assert winter.astimezone(ZoneInfo(MEL)).utcoffset() == dt.timedelta(hours=10)
+
+
+def test_daily_steps_across_fall_back_keep_0400_local():
+    # Step day-by-day across the 2026-04-05 fall-back; every occurrence stays 04:00 LOCAL even as the
+    # UTC instant shifts from 17:00 (AEDT) to 18:00 (AEST). Naive +24h arithmetic would drift it.
+    cursor = dt.datetime(2026, 4, 3, 0, 0, tzinfo=UTC)
+    seen_offsets = set()
+    for _ in range(5):  # covers both sides of the Sun 2026-04-05 transition
+        cursor = _daily(cursor)
+        local = cursor.astimezone(ZoneInfo(MEL))
+        assert (local.hour, local.minute) == (4, 0)
+        seen_offsets.add(local.utcoffset())
+    assert {dt.timedelta(hours=11), dt.timedelta(hours=10)} <= seen_offsets  # both DST offsets occurred
+
+
+def test_next_occurrence_dispatches_by_kind():
+    after = dt.datetime(2026, 7, 6, 0, 0, tzinfo=UTC)
+    assert (recurrence.next_occurrence(after, schedule_kind="daily", hour=4, minute=0, tz=MEL)
+            == _daily(after))
+    assert (recurrence.next_occurrence(after, schedule_kind="weekly", day_of_week=5, hour=4, minute=0,
+                                       tz=MEL) == _occ(after))
+    with pytest.raises(ValueError):
+        recurrence.next_occurrence(after, schedule_kind="weekly", hour=4, minute=0, tz=MEL)  # no dow
+    with pytest.raises(ValueError):
+        recurrence.next_occurrence(after, schedule_kind="monthly", hour=4, minute=0, tz=MEL)
 
 
 def test_is_catch_up_and_is_due():

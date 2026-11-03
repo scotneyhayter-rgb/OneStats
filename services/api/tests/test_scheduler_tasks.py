@@ -61,6 +61,38 @@ def _mk(conn, wid, *, catch_up=True, now):
                                catch_up=catch_up, now=now)
 
 
+def _mk_daily(conn, wid, *, now):
+    return tasks.upsert_daily(conn, wid, ACTOR, name="Daily update", task_kind="test_weekly",
+                              tz="Australia/Melbourne", hour=4, minute=0, now=now)
+
+
+def test_daily_task_fires_and_advances_one_day(conn, counting_dispatcher):
+    wid = _ws(conn, "SCHED DAILY")
+    created = dt.datetime(2026, 7, 6, 0, 0, tzinfo=UTC)
+    t = _mk_daily(conn, wid, now=created)
+    # created on Mon 06:00 local -> first run is 2026-07-07 04:00 AEST == 2026-07-06 18:00Z
+    assert t["schedule_kind"] == "daily" and t["day_of_week"] is None
+    assert t["next_run_at"] == dt.datetime(2026, 7, 6, 18, 0, tzinfo=UTC)
+    res = tasks.run_due(conn, wid, ACTOR, now=dt.datetime(2026, 7, 6, 18, 0, tzinfo=UTC))
+    assert res["ran"] == 1 and len(counting_dispatcher) == 1
+    # advances exactly ONE day, still 04:00 local
+    nxt = tasks.list_tasks(conn, wid)[0]["next_run_at"]
+    assert nxt == dt.datetime(2026, 7, 7, 18, 0, tzinfo=UTC)
+
+
+def test_switch_weekly_to_daily_recomputes_next_run(conn):
+    wid = _ws(conn, "SCHED SWITCH")
+    now = dt.datetime(2026, 7, 6, 0, 0, tzinfo=UTC)  # Monday
+    wk = _mk(conn, wid, now=now)
+    assert wk["schedule_kind"] == "weekly"
+    assert wk["next_run_at"] == dt.datetime(2026, 7, 10, 18, 0, tzinfo=UTC)  # Saturday
+    dy = _mk_daily(conn, wid, now=now)  # same task_kind -> updates in place
+    assert dy["id"] == wk["id"] and len(tasks.list_tasks(conn, wid)) == 1
+    assert dy["schedule_kind"] == "daily" and dy["day_of_week"] is None
+    # schedule changed -> next_run_at recomputed to the next daily 04:00 (that same evening UTC)
+    assert dy["next_run_at"] == dt.datetime(2026, 7, 6, 18, 0, tzinfo=UTC)
+
+
 def test_upsert_is_idempotent_and_sets_next_run(conn):
     wid = _ws(conn, "SCHED UPSERT")
     now = dt.datetime(2026, 7, 6, 0, 0, tzinfo=UTC)

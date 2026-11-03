@@ -1,10 +1,10 @@
-"""Timezone-aware weekly recurrence (DST-safe). Pure functions — no database, no clock reads except
-those passed in — so the daylight-saving and catch-up behaviour is directly unit-testable.
+"""Timezone-aware recurrence (DST-safe). Pure functions — no database, no clock reads except those
+passed in — so the daylight-saving and catch-up behaviour is directly unit-testable.
 
 All instants crossing in and out are timezone-aware ``datetime``s. Internally the next occurrence is
-computed in the task's IANA zone (via :class:`zoneinfo.ZoneInfo`) and converted back to UTC, so a
-weekly task does NOT drift by an hour across a daylight-saving boundary the way naive 7-day arithmetic
-would.
+computed in the task's IANA zone (via :class:`zoneinfo.ZoneInfo`) and converted back to UTC, so a daily
+or weekly task does NOT drift by an hour across a daylight-saving boundary the way naive day-count
+arithmetic would.
 """
 from __future__ import annotations
 
@@ -52,6 +52,43 @@ def next_weekly_occurrence(
         local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
 
     return local_dt.astimezone(dt.timezone.utc)
+
+
+def next_daily_occurrence(after: dt.datetime, *, hour: int, minute: int, tz: str) -> dt.datetime:
+    """The first occurrence of (``hour``:``minute`` local to ``tz``, every day) that is STRICTLY after
+    ``after``, returned as a UTC-aware datetime.
+
+    DST handling matches :func:`next_weekly_occurrence`: the local wall-clock target is attached to the
+    zone and converted to UTC, so 04:00 local stays 04:00 local on every date and the UTC instant tracks
+    the zone's offset. (For Melbourne, 04:00 is outside the ~02:00–03:00 DST transition window, so it is
+    never skipped or repeated; a target that did fall in a gap would be resolved deterministically by
+    ``zoneinfo`` rather than raising.)
+    """
+    _require_aware(after, "after")
+    zone = ZoneInfo(tz)
+    local_after = after.astimezone(zone)
+
+    target_date = local_after.date()
+    local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
+    # Not strictly in the future (time already passed today, or exactly equal) -> tomorrow.
+    if local_dt.astimezone(dt.timezone.utc) <= after.astimezone(dt.timezone.utc):
+        target_date = target_date + dt.timedelta(days=1)
+        local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
+
+    return local_dt.astimezone(dt.timezone.utc)
+
+
+def next_occurrence(after: dt.datetime, *, schedule_kind: str, hour: int, minute: int, tz: str,
+                    day_of_week: int | None = None) -> dt.datetime:
+    """Dispatch to the recurrence family for ``schedule_kind`` (``daily`` or ``weekly``). Weekly
+    requires ``day_of_week`` (Monday=0 .. Sunday=6); daily ignores it."""
+    if schedule_kind == "daily":
+        return next_daily_occurrence(after, hour=hour, minute=minute, tz=tz)
+    if schedule_kind == "weekly":
+        if day_of_week is None:
+            raise ValueError("weekly schedule requires day_of_week")
+        return next_weekly_occurrence(after, day_of_week=day_of_week, hour=hour, minute=minute, tz=tz)
+    raise ValueError(f"unknown schedule_kind {schedule_kind!r}")
 
 
 def is_catch_up(scheduled_for: dt.datetime | None, ran_at: dt.datetime,

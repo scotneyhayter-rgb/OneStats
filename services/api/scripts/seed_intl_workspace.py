@@ -3,12 +3,12 @@
 This is the Part B / identity foundation: it creates ONE clearly-named workspace of type
 ``international`` covering the three officially recognised men's international formats, enables exactly
 those formats, seeds the full-member national sides as stable team identities, and registers the
-recurring Saturday 04:00 Australia/Melbourne update task. It is fully idempotent — re-running it never
+recurring daily 04:00 Australia/Melbourne update task. It is fully idempotent — re-running it never
 duplicates the workspace, an organisation, a team or the scheduled task — and it touches ONLY this one
 workspace, never any other workspace's data.
 
 It does NOT import any match or scorecard and makes NO claim about historical completeness: the match
-index starts empty, and the weekly task truthfully records that the import pipeline is not yet wired
+index starts empty, and the daily task truthfully records that the import pipeline is not yet wired
 (see onestats.domain.intl.dispatch).
 
 Usage (from services/api, with the venv python):
@@ -163,10 +163,11 @@ def _sync(app) -> dict:
                 _ensure_name_history(c, wid, tid, hist_name, vf, vt)
                 _ensure_alias(c, wid, tid, hist_name)
 
-        # recurring Saturday 04:00 Australia/Melbourne update (DST-safe, catch-up on). Monday=0..Sun=6.
-        task = tasks.upsert_weekly(
-            c, wid, actor, name="Weekly international update", task_kind=intl_dispatch.TASK_KIND,
-            tz="Australia/Melbourne", day_of_week=5, hour=4, minute=0, catch_up=True,
+        # recurring DAILY 04:00 Australia/Melbourne update (DST-safe, catch-up on). If the existing
+        # task was weekly, this switches it to daily and recomputes next_run_at (history preserved).
+        task = tasks.upsert_daily(
+            c, wid, actor, name="Daily international update", task_kind=intl_dispatch.TASK_KIND,
+            tz="Australia/Melbourne", hour=4, minute=0, catch_up=True,
         )
         t.commit()
         return {"workspace_id": str(wid), "created": created, "teams": len(team_ids),
@@ -190,7 +191,7 @@ def main() -> int:
         for k, v in info.items():
             print(f"  {k}: {v}")
         print("\nNo matches imported; the match index is empty and no completeness is claimed.")
-        print("The weekly task is registered; it will truthfully record 'no_pipeline' until the "
+        print("The daily task is registered; it will truthfully record 'no_pipeline' until the "
               "research-engine import is wired.")
         return 0
     finally:
