@@ -13,6 +13,7 @@ from onestats.api.v1 import (
     bowling,
     branding,
     competitions,
+    cricsheet,
     dashboard,
     finals_series,
     health,
@@ -84,6 +85,7 @@ api_v1.include_router(matches.router)
 api_v1.include_router(match_formats.router)
 api_v1.include_router(match_index.router)
 api_v1.include_router(intl_stats.router)
+api_v1.include_router(cricsheet.router)
 api_v1.include_router(scheduler.router)
 api_v1.include_router(innings.router)
 api_v1.include_router(batting.router)

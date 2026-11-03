@@ -64,6 +64,11 @@ def _weekly_update_dispatcher(conn: Connection, workspace_id: UUID, actor: str,
         "allowed_sources": [s.host for s in sources.fetchable_sources()],
         "min_sources_for_completeness": sources.MIN_SOURCES_FOR_COMPLETENESS,
     }
+    # Continue/refresh the Cricsheet historical backfill so the weekly run also re-scans for newly
+    # available or revised scorecards (the worker performs the downloads; unchanged files are skipped).
+    from onestats.domain.intl import cricsheet_backfill
+    refreshed = cricsheet_backfill.ensure_and_refresh(conn, workspace_id, actor)
+
     try:
         job = research_jobs.create_job(conn, workspace_id, actor, query=_UPDATE_QUERY,
                                        depth="standard", context=context)
@@ -71,13 +76,13 @@ def _weekly_update_dispatcher(conn: Connection, workspace_id: UUID, actor: str,
         if str(exc) == "duplicate_active_job":
             # A previous update is still running — do not stack a second one. Honest, not a failure.
             return {"status": "skipped",
-                    "detail": "an international update job is already in progress; not starting another."}
+                    "detail": f"update already in progress; refreshed Cricsheet backfill for {refreshed}."}
         raise  # any other error is recorded as a genuine failure by the scheduler
 
     return {
         "status": "succeeded",
-        "detail": "enqueued an incremental international-update research job. Findings are leads that "
-                  "require review before anything is imported; completeness needs >= 2 sources.",
+        "detail": f"enqueued an incremental update research job and refreshed the Cricsheet backfill "
+                  f"for {refreshed}. Findings/imports are reviewed before anything is approved.",
         "enqueued_job_id": job["id"],
     }
 

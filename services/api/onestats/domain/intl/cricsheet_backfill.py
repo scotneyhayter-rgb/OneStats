@@ -126,6 +126,31 @@ def run_batch(conn: Connection, workspace_id: UUID, actor: str, fmt: str, bundle
             "skipped": result["skipped"], "failed": result["failed"]}
 
 
+def ensure_and_refresh(conn: Connection, workspace_id: UUID, actor: str) -> list[str]:
+    """Weekly hook: make sure a backfill exists for each format, and re-open a COMPLETED one so the
+    worker re-scans the bundle for newly added / revised matches (unchanged files are skipped, so this
+    is cheap and never duplicates). A paused or cancelled backfill is left alone — the user's choice is
+    respected. Returns the formats now pending/active."""
+    refreshed: list[str] = []
+    for fmt in dl.BUNDLES:
+        row = _row(conn, workspace_id, fmt)
+        if row is None:
+            start(conn, workspace_id, actor, fmt)
+            refreshed.append(fmt)
+        elif row["status"] == "completed":
+            conn.execute(
+                text("UPDATE cricsheet_backfill SET status = 'pending', finished_at = NULL, "
+                     "updated_at = now() WHERE id = :id"),
+                {"id": row["id"]},
+            )
+            audit.write_audit(conn, workspace_id, actor, "cricsheet.backfill.refresh",
+                              entity="cricsheet_backfill", entity_id=fmt)
+            refreshed.append(fmt)
+        elif row["status"] in ("pending", "running"):
+            refreshed.append(fmt)
+    return refreshed
+
+
 def get(conn: Connection, workspace_id: UUID, fmt: str) -> dict[str, Any] | None:
     return _row(conn, workspace_id, fmt)
 

@@ -175,6 +175,20 @@ def import_matches(conn: Connection, workspace_id: UUID, actor: str,
             "failed": counts["failed"], "refs": processed}
 
 
+def list_imports(conn: Connection, workspace_id: UUID, *, status: str | None = None,
+                 limit: int = 200) -> list[dict[str, Any]]:
+    """The import log (newest first), optionally filtered by status — backs View Imported / Resolve
+    Import Errors / Review Imported Scorecards."""
+    sql = ("SELECT source_ref, format, status, detail, match_id, content_sha256, source_url, "
+           "updated_at FROM cricsheet_import_log WHERE workspace_id = :w")
+    params: dict[str, Any] = {"w": workspace_id, "lim": min(limit, 1000)}
+    if status:
+        sql += " AND status = :st"
+        params["st"] = status
+    sql += " ORDER BY updated_at DESC LIMIT :lim"
+    return [dict(r) for r in conn.execute(text(sql), params).mappings().all()]
+
+
 def summary(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
     """Counts by status for the Import Management dashboard — genuine, from the log."""
     rows = conn.execute(

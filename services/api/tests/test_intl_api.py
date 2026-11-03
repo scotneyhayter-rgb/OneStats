@@ -26,9 +26,16 @@ def test_intl_stats_requires_auth(client):
     assert client.get(f"/api/v1/workspaces/{WS}/intl-stats/leaders/test/batting").status_code == 401
 
 
+def test_cricsheet_requires_auth(client):
+    assert client.get(f"/api/v1/workspaces/{WS}/cricsheet/summary").status_code == 401
+    assert client.post(f"/api/v1/workspaces/{WS}/cricsheet/backfills/test/start").status_code == 401
+
+
 def test_routes_are_registered(client):
     paths = client.app.openapi()["paths"]
     assert f"/api/v1/workspaces/{{workspace_id}}/match-index/summary" in paths
     assert f"/api/v1/workspaces/{{workspace_id}}/scheduler/tasks/{{task_id}}/run-now" in paths
     assert f"/api/v1/workspaces/{{workspace_id}}/intl-stats/career/{{person_id}}" in paths
     assert f"/api/v1/workspaces/{{workspace_id}}/intl-stats/leaders/{{fmt}}/{{discipline}}" in paths
+    assert f"/api/v1/workspaces/{{workspace_id}}/cricsheet/summary" in paths
+    assert f"/api/v1/workspaces/{{workspace_id}}/cricsheet/backfills/{{fmt}}/{{action}}" in paths
