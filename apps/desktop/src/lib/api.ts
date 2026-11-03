@@ -807,6 +807,46 @@ export interface ResearchExtraction {
   confidence: number | null;
   status: string;
 }
+// --- Internet Research Engine ("Search the Internet") ---
+export type ResearchJobStatus =
+  | "pending" | "running" | "paused" | "succeeded" | "failed" | "cancelled" | "interrupted";
+export interface ResearchJobProgress {
+  phase?: string;
+  sources_examined?: number;
+  findings?: number;
+  candidates_remaining?: number;
+  queries?: number;
+}
+export interface ResearchJob {
+  id: string;
+  query: string;
+  depth: "quick" | "standard" | "deep";
+  status: ResearchJobStatus;
+  context: Record<string, unknown> | null;
+  progress: ResearchJobProgress | null;
+  last_error: string | null;
+  created_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  finding_counts: Record<string, number>;
+}
+export interface ResearchFinding {
+  id: string;
+  job_id: string;
+  url: string;
+  source_host: string | null;
+  title: string | null;
+  kind: string;
+  classification: string;
+  status: "pending_review" | "accepted" | "rejected" | "linked" | "superseded";
+  confidence: number | null; // null = unknown (never zero)
+  summary: string | null;
+  extracted: Record<string, unknown> | null;
+  raw_excerpt: string | null;
+  retrieved_at: string | null;
+  created_at: string;
+}
 export interface TimelineSeason {
   season_id: string;
   label: string;
@@ -1799,6 +1839,26 @@ export const api = {
     if (!resp.ok) throw new ApiError(`Could not load document (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+
+  // --- Internet Research Engine ("Search the Internet") ---
+  researchStartInternetSearch: (w: string, body: { query: string; depth?: string; context?: Record<string, unknown> | null }) =>
+    request<ResearchJob>(`/api/v1/workspaces/${w}/research/internet-search`, { method: "POST", body }),
+  researchJobs: (w: string, statusFilter?: string) =>
+    request<ResearchJob[]>(`/api/v1/workspaces/${w}/research/jobs${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
+  researchJob: (w: string, jobId: string) =>
+    request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}`),
+  researchPauseJob: (w: string, jobId: string) =>
+    request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/pause`, { method: "POST" }),
+  researchResumeJob: (w: string, jobId: string) =>
+    request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/resume`, { method: "POST" }),
+  researchCancelJob: (w: string, jobId: string) =>
+    request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/cancel`, { method: "POST" }),
+  researchJobFindings: (w: string, jobId: string, statusFilter?: string) =>
+    request<ResearchFinding[]>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/findings${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
+  researchFindings: (w: string, statusFilter?: string) =>
+    request<ResearchFinding[]>(`/api/v1/workspaces/${w}/research/findings${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
+  researchReviewFinding: (w: string, findingId: string, body: { status: string; notes?: string | null }) =>
+    request<ResearchFinding>(`/api/v1/workspaces/${w}/research/findings/${findingId}/review`, { method: "POST", body }),
 
   // --- Phase 11: Media Archive ---
   mediaProviders: (w: string) => request<MediaProviderInfo[]>(`/api/v1/workspaces/${w}/media/providers`),
