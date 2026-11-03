@@ -218,6 +218,20 @@ def test_finding_classified_possible_duplicate_against_existing_match(conn):
     assert (f["extracted"] or {}).get("candidate_match_ids")  # points the reviewer at the existing match
 
 
+def test_finding_suggests_existing_person_for_named_player(conn):
+    wid = _ws(conn, "ENG_IDENT")
+    conn.execute(text("INSERT INTO person(workspace_id, display_name) VALUES (:w, 'John Smith')"), {"w": wid})
+    job = jobs.create_job(conn, wid, ACTOR, query="players", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)  # scorecard names "J Smith ..."
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    f = jobs.list_findings(conn, wid)[0]
+    sugg = (f["extracted"] or {}).get("player_suggestions") or {}
+    assert any(k.lower().endswith("smith") for k in sugg)  # J Smith → John Smith suggested, not merged
+    assert f["status"] == "pending_review"
+
+
 def test_workspace_isolation_of_findings(conn):
     a = _ws(conn, "ENG_WS_A")
     job = jobs.create_job(conn, a, ACTOR, query="iso", depth="quick")

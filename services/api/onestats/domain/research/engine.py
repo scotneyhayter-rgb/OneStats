@@ -27,7 +27,7 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain.research import classify, extraction, jobs, webextract, webfetch
+from onestats.domain.research import classify, extraction, identity, jobs, webextract, webfetch
 from onestats.domain.research.webfetch import Fetcher
 
 # A discovery provider: (queries, context) -> list of {"url", "source"} candidates.
@@ -209,6 +209,7 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
     # Load the workspace's match index once per step so each match-like finding can be classified
     # (possible_duplicate / additional_evidence / new) against existing records — review-only, never merged.
     match_index = classify.load_match_index(conn, workspace_id)
+    person_index = identity.load_person_index(conn, workspace_id)
     while frontier and processed < jobs.STEP_BATCH and examined < budget:
         url = frontier.pop(0)
         if url in visited:
@@ -252,6 +253,12 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
             candidate["classification_reason"] = verdict["reason"]
             if verdict["candidate_match_ids"]:
                 candidate["candidate_match_ids"] = verdict["candidate_match_ids"]
+        # Suggest existing persons for any named players (suggest-not-auto; never links or merges).
+        observed_players = [p for p in (ex.candidate.get("observed_players") or []) if isinstance(p, str)]
+        if observed_players and person_index:
+            suggestions = identity.suggest(observed_players, person_index)
+            if suggestions:
+                candidate["player_suggestions"] = suggestions
         fid = jobs.record_finding(
             conn, workspace_id, job["id"], url=r.final_url or url, kind=ex.kind,
             classification=classification, confidence=ex.confidence, title=ex.title, summary=ex.summary,

@@ -48,6 +48,26 @@ _DATE_RE = re.compile(
 _VERSUS_RE = re.compile(r"([A-Z][\w&'. ]{1,40}?)\s+(?:v\.?|vs\.?|versus)\s+([A-Z][\w&'. ]{1,40})")
 
 
+_DISMISSAL_SPLIT = re.compile(
+    r"\s+(?:c\b|b\b|lbw\b|st\b|run out\b|not out\b|did not bat\b|dnb\b|retired\b|&)", re.IGNORECASE)
+
+
+def player_names_from_lines(lines: list[str]) -> list[str]:
+    """Pull the leading player name from scorecard-style lines (the part before the dismissal/score).
+    A hint for identity resolution only — never asserted as the player, and never auto-linked."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        head = _DISMISSAL_SPLIT.split(line, maxsplit=1)[0]
+        head = re.sub(r"\d.*$", "", head)                 # drop a trailing score and anything after
+        name = re.sub(r"[^A-Za-z.'\- ]", " ", head).strip()
+        name = re.sub(r"\s+", " ", name)
+        if len(name) >= 3 and any(c.isalpha() for c in name) and name.lower() not in seen:
+            seen.add(name.lower())
+            out.append(name)
+    return out[:22]
+
+
 @dataclass(slots=True)
 class Extraction:
     kind: str
@@ -187,6 +207,7 @@ def extract(url: str, content: str, *, title_hint: str | None = None,
         "observed_teams": teams or None,
         "observed_scores": scores[:12] or None,
         "scorecard_lines": scorecard_lines[:20] or None,
+        "observed_players": player_names_from_lines(scorecard_lines) or None,
         "context_names_present": mentioned or None,
         "source_url": url,
         "note": "Observed from a single web source; unverified. A researcher must confirm before use.",
