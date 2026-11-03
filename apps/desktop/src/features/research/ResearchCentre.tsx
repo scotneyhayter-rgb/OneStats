@@ -339,21 +339,10 @@ export function ResearchCentre() {
         })()}
 
         {tab === "sources" && (
-          <Card>
-            <CardContent className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold">Source Library ({sources.length})</h3>
-              <p className="text-xs text-muted-foreground">
-                A historical source — newspaper report, scorebook, photograph or other document. Publication
-                date is recorded separately from the match date, and copyright/usage is preserved.
-              </p>
-              {sources.map((s) => (
-                <SourceRow key={s.id} workspaceId={workspaceId} source={s} busy={busy}
-                  onUpload={uploadFile}
-                  onExtract={() => act(() => api.researchExtract(workspaceId, s.id), "OCR run (review the text).")} />
-              ))}
-              <AddSource busy={busy} onAdd={(body) => act(() => api.researchCreateSource(workspaceId, body), "Source added.")} />
-            </CardContent>
-          </Card>
+          <SourceLibrary workspaceId={workspaceId} sources={sources} busy={busy}
+            onUpload={uploadFile}
+            onExtract={(id) => act(() => api.researchExtract(workspaceId, id), "OCR run (review the text).")}
+            onAdd={(body) => act(() => api.researchCreateSource(workspaceId, body), "Source added.")} />
         )}
 
         {tab === "sources" && <AliasPanel workspaceId={workspaceId} />}
@@ -940,6 +929,75 @@ function ReconstructionDetail({ workspaceId, matchId, onChanged }: {
         </div>
       )}
     </div>
+  );
+}
+
+function SourceLibrary({ workspaceId, sources, busy, onUpload, onExtract, onAdd }: {
+  workspaceId: string;
+  sources: ResearchSource[];
+  busy: boolean;
+  onUpload: (sourceId: string, file: File) => void;
+  onExtract: (sourceId: string) => void;
+  onAdd: (body: Record<string, unknown>) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [type, setType] = useState("");
+  const [pub, setPub] = useState("");
+  const pubs = Array.from(new Set(sources.map((s) => s.publication).filter(Boolean))).sort() as string[];
+  const types = Array.from(new Set(sources.map((s) => s.source_type))).sort();
+  const filtered = sources.filter((s) => {
+    if (type && s.source_type !== type) return false;
+    if (pub && s.publication !== pub) return false;
+    if (q.trim()) {
+      const hay = `${s.title} ${s.publication ?? ""} ${s.author ?? ""} ${s.source_type}`.toLowerCase();
+      if (!hay.includes(q.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
+  const filtering = Boolean(q || type || pub);
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold">Source Library</h3>
+          <Badge variant="muted">{filtered.length}{filtering ? ` of ${sources.length}` : ""}</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          A historical source — newspaper report, scorebook, photograph or other document. Publication
+          date is recorded separately from the match date, and copyright/usage is preserved.
+        </p>
+        {sources.length > 0 && (
+          <div className="flex flex-wrap items-end gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, publication, author…"
+              className="w-56 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1.5 text-sm" />
+            <Select value={type} onChange={(e) => setType(e.target.value)} className="w-44">
+              <option value="">All types</option>
+              {types.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+            </Select>
+            {pubs.length > 0 && (
+              <Select value={pub} onChange={(e) => setPub(e.target.value)} className="w-48">
+                <option value="">All publications</option>
+                {pubs.map((p) => <option key={p} value={p}>{p}</option>)}
+              </Select>
+            )}
+            {filtering && (
+              <Button size="sm" variant="ghost" onClick={() => { setQ(""); setType(""); setPub(""); }}>Clear</Button>
+            )}
+          </div>
+        )}
+        {filtered.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            {sources.length === 0 ? "No sources yet. Add one below, or let a Search the Internet job bring some in."
+              : "No sources match these filters."}
+          </p>
+        )}
+        {filtered.map((s) => (
+          <SourceRow key={s.id} workspaceId={workspaceId} source={s} busy={busy}
+            onUpload={onUpload} onExtract={() => onExtract(s.id)} />
+        ))}
+        <AddSource busy={busy} onAdd={onAdd} />
+      </CardContent>
+    </Card>
   );
 }
 
