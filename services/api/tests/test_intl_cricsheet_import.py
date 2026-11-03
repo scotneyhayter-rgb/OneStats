@@ -120,6 +120,36 @@ def test_reimport_updates_in_place_with_stable_identities(conn):
     assert out2["players_created"] == 0                      # nobody re-created on the second pass
 
 
+def test_fall_of_wickets_and_home_away_unknown_are_recorded(conn):
+    wid = _ws(conn)
+    first = imp.import_match(conn, wid, ACTOR, _parsed())
+    # home/away is unknown for internationals (Cricsheet gives none) -> flagged, not assumed
+    assert conn.execute(text("SELECT home_away_known FROM match WHERE id=:m"), {"m": first["match_id"]}).scalar_one() is False
+    # one fall of wicket: Warner out at team score 10, on the 3rd legal ball
+    fow = conn.execute(text(
+        "SELECT f.wicket_number, f.team_score, f.legal_balls, p.display_name "
+        "FROM fall_of_wicket f JOIN person p ON p.id=f.dismissed_person_id WHERE f.workspace_id=:w"),
+        {"w": wid}).mappings().all()
+    assert len(fow) == 1
+    assert (fow[0]["wicket_number"], fow[0]["team_score"], fow[0]["legal_balls"], fow[0]["display_name"]) == (1, 10, 3, "D Warner")
+
+
+def test_registry_less_name_clash_queues_a_review_and_does_not_merge(conn):
+    wid = _ws(conn)
+    # a pre-existing "S Smith" (Smith has NO registry id in the fixture)
+    existing = conn.execute(text(
+        "INSERT INTO person(workspace_id, display_name) VALUES (:w,'S Smith') RETURNING id"), {"w": wid}).scalar_one()
+    out = imp.import_match(conn, wid, ACTOR, _parsed())
+    assert out["identity_reviews_queued"] >= 1
+    # the import created a SECOND Smith rather than silently reusing the existing one
+    assert _persons_named(conn, wid, "S Smith") == 2
+    # a duplicate review now pairs them for a human to resolve
+    rev = conn.execute(text(
+        "SELECT count(*) FROM person_duplicate_review WHERE workspace_id=:w AND (person_a_id=:e OR person_b_id=:e)"),
+        {"w": wid, "e": existing}).scalar_one()
+    assert rev == 1
+
+
 def test_reimport_never_overwrites_a_verified_scorecard(conn):
     wid = _ws(conn)
     first = imp.import_match(conn, wid, ACTOR, _parsed())

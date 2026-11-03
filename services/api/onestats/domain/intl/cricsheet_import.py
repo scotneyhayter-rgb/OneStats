@@ -26,12 +26,16 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from onestats.domain import batting, bowling, matches, people
+from onestats.domain import batting, bowling, matches, people, person_resolution
 from onestats.domain import innings as inn
 from onestats.domain.intl import match_index
 from onestats.domain.intl.cricsheet import ParsedBatting, ParsedMatch
 
 SOURCE_SYSTEM = "cricsheet"
+# Registry-less players are keyed per (match, name) so a RE-IMPORT of the same match resolves the same
+# person (idempotent), while the same name in a DIFFERENT match stays a distinct person pending review
+# — we never merge two same-named people without a stable cross-source id.
+NAME_SOURCE_SYSTEM = "cricsheet-name"
 
 # Cricsheet dismissal kind -> OneStats dismissal_type. Anything out but unmapped becomes ``unknown_out``
 # (the batter WAS out) with the raw kind kept in dismissal_source_code, so we never assert a wrong type.
@@ -79,11 +83,16 @@ def _resolve_team(conn: Connection, workspace_id: UUID, actor: str, name: str,
     return tid
 
 
-def _resolve_person(conn: Connection, workspace_id: UUID, actor: str, name: str,
-                    registry: dict[str, str], created: list[str], name_matched: list[str]) -> UUID:
-    """Resolve a player to a stable person id. Preference order: the Cricsheet registry id (a
-    cross-source stable key stored as a source identity), then a UNIQUE exact-name match, else a new
-    person. Ambiguous names create a new person (flagged) rather than risk merging two people."""
+def _resolve_person(conn: Connection, workspace_id: UUID, actor: str, name: str, *, match_ref: str,
+                    registry: dict[str, str], created: list[str], queued: list[str]) -> UUID:
+    """Resolve a player to a stable person id — safely, never merging two people who merely share a name.
+
+    1. If the Cricsheet registry supplies a cross-source id, resolve/create by that (confident, no queue).
+    2. Otherwise key by ``match_ref:name`` so re-importing THIS match is idempotent, but the same name in
+       another match is a distinct person. When a registry-less player's name already exists, a new person
+       is created and a duplicate-review is QUEUED for each existing same-name person — a human decides if
+       they are the same; the import never auto-merges them.
+    """
     cid = registry.get(name)
     if cid:
         hit = conn.execute(
@@ -92,20 +101,36 @@ def _resolve_person(conn: Connection, workspace_id: UUID, actor: str, name: str,
         ).scalar_one_or_none()
         if hit is not None:
             return hit
-    # name fallback: only when exactly one person carries that display name
-    rows = conn.execute(
+        pid = people.create_person(conn, workspace_id, actor, display_name=name)
+        created.append(name)
+        people.add_source_identity(conn, workspace_id, actor, pid, source_system=SOURCE_SYSTEM,
+                                   source_ref=cid, source_display_name=name)
+        return pid
+
+    # registry-less: idempotent per (match, name)
+    name_key = f"{match_ref}:{name.strip().lower()}"
+    hit = conn.execute(
+        text("SELECT person_id FROM person_source_identity WHERE source_system = :ss AND source_ref = :sr"),
+        {"ss": NAME_SOURCE_SYSTEM, "sr": name_key},
+    ).scalar_one_or_none()
+    if hit is not None:
+        return hit
+    # existing people with this display name (other matches/sources) -> ambiguity, must be reviewed
+    same_name = conn.execute(
         text("SELECT id FROM person WHERE workspace_id = :w AND lower(display_name) = lower(:n) "
              "AND merged_into_id IS NULL"),
         {"w": workspace_id, "n": name},
     ).scalars().all()
-    if len(rows) == 1 and not cid:
-        name_matched.append(name)
-        return rows[0]
     pid = people.create_person(conn, workspace_id, actor, display_name=name)
     created.append(name)
-    if cid:
-        people.add_source_identity(conn, workspace_id, actor, pid, source_system=SOURCE_SYSTEM,
-                                   source_ref=cid, source_display_name=name)
+    people.add_source_identity(conn, workspace_id, actor, pid, source_system=NAME_SOURCE_SYSTEM,
+                               source_ref=name_key, source_display_name=name)
+    for other in same_name:
+        person_resolution.create_review(
+            conn, workspace_id, actor, pid, other, confidence="weak",
+            evidence="shares a display name but the Cricsheet record carries no registry id",
+            notes="Cricsheet import: possible same player — resolve before merging")
+        queued.append(name)
     return pid
 
 
@@ -152,7 +177,7 @@ def import_match(conn: Connection, workspace_id: UUID, actor: str, parsed: Parse
 
     teams_created: list[str] = []
     players_created: list[str] = []
-    name_matched: list[str] = []
+    queued_reviews: list[str] = []
     team_ids = {name: _resolve_team(conn, workspace_id, actor, name, teams_created)
                 for name in parsed.teams}
 
@@ -160,15 +185,19 @@ def import_match(conn: Connection, workspace_id: UUID, actor: str, parsed: Parse
         conn, workspace_id, actor, match_date=parsed.start_date, format=parsed.format,
         round=(str(parsed.match_number) if parsed.match_number is not None else None),
         source_system=SOURCE_SYSTEM, source_ref=parsed.source_ref)
-    # Cricsheet does not record home/away; use positional order and flag it, so the home/away SPLIT is
-    # never silently trusted for internationals (the batting/bowling figures are unaffected).
+    # Cricsheet does not record which side was at home. We must still satisfy the one-home/one-away
+    # constraint, so we store a positional placeholder BUT mark the match home_away_known = false, which
+    # makes the stats engine treat home/away as unknown and exclude it from home/away splits. The
+    # batting/bowling figures are unaffected.
     for i, name in enumerate(parsed.teams):
         matches.set_team(conn, workspace_id, actor, mid, team_id=team_ids[name], is_home=(i == 0))
     if len(parsed.teams) == 2:
-        warnings.append("home/away is positional only (not provided by the source)")
+        conn.execute(text("UPDATE match SET home_away_known = false WHERE id = :m"), {"m": mid})
+        warnings.append("home/away not provided by the source — stored as unknown and excluded from splits")
 
     def person(name: str) -> UUID:
-        return _resolve_person(conn, workspace_id, actor, name, parsed.registry, players_created, name_matched)
+        return _resolve_person(conn, workspace_id, actor, name, match_ref=parsed.source_ref,
+                               registry=parsed.registry, created=players_created, queued=queued_reviews)
 
     for n, pi in enumerate(parsed.innings, start=1):
         status = "declared" if pi.declared else "forfeited" if pi.forfeited else "completed"
@@ -178,21 +207,33 @@ def import_match(conn: Connection, workspace_id: UUID, actor: str, parsed: Parse
             status=status, byes=pi.extras.get("byes"), legbyes=pi.extras.get("legbyes"),
             wides=pi.extras.get("wides"), noballs=pi.extras.get("noballs"),
             penalty=pi.extras.get("penalty"), source_system=SOURCE_SYSTEM, source_ref=parsed.source_ref)
+        entry_ids: dict[str, UUID] = {}      # player name -> batting_entry id, for fall-of-wicket links
         for b in pi.batting:
             dtype, draw_code = _dismissal(b)
-            batting.create_entry(
+            eid = batting.create_entry(
                 conn, workspace_id, actor, innings_id=iid, person_id=person(b.name),
                 batting_position=b.position, runs=b.runs, balls_faced=b.balls_faced,
                 fours=b.fours, sixes=b.sixes, dismissal_type=dtype, dismissal_source_code=draw_code,
                 bowler_person_id=(person(b.bowler) if b.bowler else None),
                 fielder_person_id=(person(b.fielders[0]) if b.fielders else None),
                 source_system=SOURCE_SYSTEM, source_ref=parsed.source_ref)
+            entry_ids[b.name] = eid
         for bw in pi.bowling:
             bowling.create_entry(
                 conn, workspace_id, actor, innings_id=iid, person_id=person(bw.name),
                 bowling_order=bw.order, legal_balls=bw.legal_balls, maidens=bw.maidens,
                 runs_conceded=bw.runs_conceded, wickets=bw.wickets, wides=bw.wides, noballs=bw.noballs,
                 source_system=SOURCE_SYSTEM, source_ref=parsed.source_ref)
+        # persistent fall-of-wicket records (wicket number, team score, the dismissed batter + their
+        # scorecard row, and the legal-ball count at the fall)
+        for f in pi.fall_of_wickets:
+            conn.execute(
+                text("INSERT INTO fall_of_wicket(workspace_id, innings_id, wicket_number, team_score, "
+                     "dismissed_person_id, batting_entry_id, legal_balls, source_system, source_ref) "
+                     "VALUES (:w, :i, :n, :ts, :dp, :be, :lb, :ss, :sr)"),
+                {"w": workspace_id, "i": iid, "n": f.wicket_number, "ts": f.team_runs,
+                 "dp": person(f.player_out), "be": entry_ids.get(f.player_out),
+                 "lb": f.legal_balls, "ss": SOURCE_SYSTEM, "sr": parsed.source_ref})
 
     outcome = _outcome(parsed, team_ids)
     if outcome is not None:
@@ -217,5 +258,5 @@ def import_match(conn: Connection, workspace_id: UUID, actor: str, parsed: Parse
         "match_id": str(mid), "index_entry_id": str(entry["id"]), "indexed": indexed,
         "innings": len(parsed.innings),
         "teams_created": teams_created, "players_created": len(players_created),
-        "players_name_matched": name_matched, "approved": False, "warnings": warnings,
+        "identity_reviews_queued": len(queued_reviews), "approved": False, "warnings": warnings,
     }

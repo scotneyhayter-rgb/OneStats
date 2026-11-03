@@ -69,6 +69,7 @@ class ParsedFall:
     wicket_number: int
     player_out: str
     team_runs: int                        # team total when the wicket fell
+    legal_balls: int = 0                   # legal balls bowled in the innings at the fall
 
 
 @dataclass
@@ -241,7 +242,7 @@ def _parse_innings(raw: dict[str, Any], balls_per_over: int, teams: list[str]) -
                 inns.total_wickets += 1
                 inns.fall_of_wickets.append(
                     ParsedFall(wicket_number=inns.total_wickets, player_out=out_name,
-                               team_runs=inns.total_runs))
+                               team_runs=inns.total_runs, legal_balls=inns.legal_balls))
         # maiden: the bowler conceded no bat-runs, wides or no-balls this over (byes alone are fine)
         if over_bowler is not None and over_bowler_runs == 0 and deliveries:
             bowler(over_bowler).maidens += 1

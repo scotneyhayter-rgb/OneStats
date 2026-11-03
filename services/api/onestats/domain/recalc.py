@@ -42,7 +42,15 @@ def _match_scope(match: dict[str, Any]) -> dict[str, Any]:
 # --- match context shared by all calculators (home/away, classification, per-team result, keepers) ---
 
 def _home_away(conn: Connection, match_id: UUID) -> tuple[Any, Any]:
-    """(home_team_id, away_team_id) for the match, or (None, None) when not recorded."""
+    """(home_team_id, away_team_id) for the match, or (None, None) when not recorded OR when the match
+    is flagged ``home_away_known = false`` (the source did not say which side was at home). Returning
+    (None, None) makes every calculator record ``is_home = None`` for the match, so it is excluded from
+    home/away splits rather than attributed to an assumed side."""
+    known = conn.execute(
+        text("SELECT home_away_known FROM match WHERE id = :m"), {"m": match_id}
+    ).scalar_one_or_none()
+    if known is False:
+        return None, None
     rows = conn.execute(
         text("SELECT team_id, is_home FROM match_team WHERE match_id = :m"), {"m": match_id}
     ).mappings().all()
