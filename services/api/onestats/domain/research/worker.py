@@ -88,8 +88,23 @@ class ResearchWorker:
                         did_work = True
                 except Exception as exc:
                     log.exception("Research worker error in workspace %s: %s", wsid, type(exc).__name__)
+
+            # Scheduler tick (shared single thread, coordinated with the International workspace session):
+            # fire any due scheduled tasks across workspaces. Cheap, idempotent and due-gated — a past-due
+            # task fires once on the next tick (incl. the first tick after the PC powers back on). It must
+            # never stop the research loop, so its failure is logged and swallowed.
+            self._scheduler_tick()
+
             if not did_work:
                 self._stop.wait(self._poll)
+
+    def _scheduler_tick(self) -> None:
+        try:
+            from onestats.domain.scheduler import worker as scheduler_worker
+
+            scheduler_worker.tick_all_workspaces(self._engine)
+        except Exception as exc:  # noqa: BLE001 - scheduler tick must never stop the research loop
+            log.warning("Scheduler tick failed: %s", type(exc).__name__)
 
     def _safe_reconcile(self, wsid: str) -> None:
         try:
