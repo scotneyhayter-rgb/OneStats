@@ -31,6 +31,11 @@ const STATUS_VARIANT: Record<ResearchJob["status"], "success" | "warning" | "mut
   pending: "muted", running: "brand", paused: "warning", succeeded: "success",
   failed: "danger", cancelled: "muted", interrupted: "warning",
 };
+// Review classification → badge tone (a finding may duplicate, extend, or be new vs existing records).
+const CLASS_VARIANT: Record<string, "success" | "warning" | "muted" | "brand" | "danger" | "outline"> = {
+  possible_duplicate: "warning", additional_evidence: "success", new: "brand",
+  conflicting: "danger", insufficient: "muted",
+};
 
 export function InternetSearch({ workspaceId }: { workspaceId: string }) {
   const [query, setQuery] = useState("");
@@ -237,6 +242,9 @@ function JobFindings({ workspaceId, jobId }: { workspaceId: string; jobId: strin
         <div key={f.id} className="flex flex-col gap-1 border-t border-border pt-2 first:border-0">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <Badge variant="muted">{f.kind.replace(/_/g, " ")}</Badge>
+            {f.classification !== "unknown" && (
+              <Badge variant={CLASS_VARIANT[f.classification] ?? "outline"}>{f.classification.replace(/_/g, " ")}</Badge>
+            )}
             <span className="font-medium">{f.title ?? f.summary ?? f.url}</span>
             <Badge variant={f.status === "accepted" ? "success" : f.status === "rejected" ? "muted" : "outline"}>
               {f.status.replace(/_/g, " ")}
@@ -245,6 +253,9 @@ function JobFindings({ workspaceId, jobId }: { workspaceId: string; jobId: strin
               confidence {f.confidence == null ? "unknown" : `${Math.round(f.confidence * 100)}%`}
             </span>
           </div>
+          {typeof f.extracted?.classification_reason === "string" && (
+            <p className="text-[11px] italic text-muted-foreground">{f.extracted.classification_reason as string}</p>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <a href={f.url} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1 text-brand hover:underline">

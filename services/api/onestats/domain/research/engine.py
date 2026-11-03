@@ -27,7 +27,7 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain.research import jobs, webextract, webfetch
+from onestats.domain.research import classify, jobs, webextract, webfetch
 from onestats.domain.research.webfetch import Fetcher
 
 # A discovery provider: (queries, context) -> list of {"url", "source"} candidates.
@@ -185,6 +185,9 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
 
     processed = 0
     new_findings = 0
+    # Load the workspace's match index once per step so each match-like finding can be classified
+    # (possible_duplicate / additional_evidence / new) against existing records — review-only, never merged.
+    match_index = classify.load_match_index(conn, workspace_id)
     while frontier and processed < jobs.STEP_BATCH and examined < budget:
         url = frontier.pop(0)
         if url in visited:
@@ -209,10 +212,19 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
         ex = webextract.extract(r.final_url or url, r.text, context=context)
         if not ex.cricket_relevant:
             continue
+        # Classify match-like findings against existing records (review-only; never merges).
+        classification = "unknown"
+        candidate = dict(ex.candidate)
+        if ex.kind in classify.MATCH_KINDS:
+            verdict = classify.classify(ex.candidate, match_index)
+            classification = verdict["classification"]
+            candidate["classification_reason"] = verdict["reason"]
+            if verdict["candidate_match_ids"]:
+                candidate["candidate_match_ids"] = verdict["candidate_match_ids"]
         fid = jobs.record_finding(
             conn, workspace_id, job["id"], url=r.final_url or url, kind=ex.kind,
-            classification="unknown", confidence=ex.confidence, title=ex.title, summary=ex.summary,
-            source_host=_host(r.final_url or url), extracted=ex.candidate, raw_excerpt=ex.raw_excerpt,
+            classification=classification, confidence=ex.confidence, title=ex.title, summary=ex.summary,
+            source_host=_host(r.final_url or url), extracted=candidate, raw_excerpt=ex.raw_excerpt,
             content_sha256=r.content_sha256,
         )
         if fid is not None:

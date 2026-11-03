@@ -60,7 +60,7 @@ def test_live_internet_research_end_to_end():
             # Findings (if any) must obey the honesty rules: never auto-approved, confidence capped.
             for f in findings:
                 assert f["status"] == "pending_review"
-                assert f["classification"] == "unknown"
+                assert f["classification"] in ("new", "possible_duplicate", "additional_evidence", "insufficient", "unknown")
                 assert f["confidence"] is None or 0.0 < f["confidence"] <= 0.9
         finally:
             trans.rollback()

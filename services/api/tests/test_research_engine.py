@@ -91,9 +91,9 @@ def test_run_step_produces_findings_and_completes(conn):
     assert done is True
     findings = jobs.list_findings(conn, wid)
     assert len(findings) == 3
-    # nothing auto-approved; classification not asserted
+    # nothing auto-approved; with no existing matches, team-naming findings classify as "new"
     assert all(f["status"] == "pending_review" for f in findings)
-    assert all(f["classification"] == "unknown" for f in findings)
+    assert all(f["classification"] in ("new", "unknown") for f in findings)
     # fetch provenance recorded
     n_fetched = conn.execute(text("SELECT count(*) FROM research_fetch WHERE job_id = :j AND outcome='fetched'"),
                              {"j": claimed["id"]}).scalar_one()
@@ -166,6 +166,35 @@ def test_pause_resume_cancel(conn):
     assert jobs.cancel_job(conn, wid, ACTOR, job["id"])["status"] == "cancelled"
     # a cancelled job is not claimable
     assert jobs.claim_next_job(conn, wid, ACTOR) is None
+
+
+def _seed_match(conn, wid, home, away, year):
+    org = conn.execute(text("INSERT INTO organisation(workspace_id, name) VALUES (:w, :n) RETURNING id"),
+                       {"w": wid, "n": f"{home} org"}).scalar_one()
+    def team(n):
+        return conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w, :o, :n) RETURNING id"),
+                            {"w": wid, "o": org, "n": n}).scalar_one()
+    hid, aid = team(home), team(away)
+    mid = conn.execute(text("INSERT INTO match(workspace_id, match_date) VALUES (:w, :d) RETURNING id"),
+                       {"w": wid, "d": f"{year}-01-14"}).scalar_one()
+    for tid, home_flag in ((hid, True), (aid, False)):
+        conn.execute(text("INSERT INTO match_team(workspace_id, match_id, team_id, is_home) "
+                          "VALUES (:w, :m, :t, :h)"), {"w": wid, "m": mid, "t": tid, "h": home_flag})
+    return str(mid)
+
+
+def test_finding_classified_possible_duplicate_against_existing_match(conn):
+    wid = _ws(conn, "ENG_CLASS")
+    _seed_match(conn, wid, "Rhymney", "Moyston", 1905)
+    job = jobs.create_job(conn, wid, ACTOR, query="Rhymney 1905", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    # SCORECARD text names "Rhymney v Moyston 1905" → should match the seeded 1905 match.
+    def handler(req): return _page(SCORECARD)
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    f = jobs.list_findings(conn, wid)[0]
+    assert f["classification"] == "possible_duplicate"
+    assert (f["extracted"] or {}).get("candidate_match_ids")  # points the reviewer at the existing match
 
 
 def test_workspace_isolation_of_findings(conn):
