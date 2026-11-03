@@ -59,6 +59,29 @@ class Extraction:
     cricket_relevant: bool = False
 
 
+def pdf_to_text(raw: bytes, *, max_pages: int = 20) -> str:
+    """Extract text from a PDF's bytes using pdfplumber (lazy import). Returns "" when the library is
+    unavailable or the PDF has no extractable text layer (e.g. a pure scan — that path is OCR's job),
+    so the pipeline degrades gracefully and never crashes on a binary body."""
+    try:
+        import pdfplumber  # lazy: packaged build may resolve it late / not at all
+    except Exception:  # noqa: BLE001 - no pdf library: degrade to no text
+        return ""
+    import io
+
+    out: list[str] = []
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as pdf:
+            for page in pdf.pages[:max_pages]:
+                try:
+                    out.append(page.extract_text() or "")
+                except Exception:  # noqa: BLE001 - a bad page must not abort the whole document
+                    continue
+    except Exception:  # noqa: BLE001 - corrupt/encrypted PDF: no text, not a crash
+        return ""
+    return _normalise_lines("\n".join(out))
+
+
 def _normalise_lines(text: str) -> str:
     """Collapse spaces/tabs within lines but preserve line breaks (line structure matters for the
     scorecard-line heuristic). Drops blank lines."""

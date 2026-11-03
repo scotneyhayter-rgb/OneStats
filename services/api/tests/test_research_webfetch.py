@@ -90,6 +90,17 @@ def test_wrong_content_type_rejected() -> None:
     assert _fetcher(handler).fetch("https://example.com/file.bin").outcome == WRONG_TYPE
 
 
+def test_pdf_fetch_keeps_raw_bytes_and_no_text() -> None:
+    # A PDF body is retrieved as raw bytes (for pdfplumber), not decoded to text.
+    body = b"%PDF-1.4 fake pdf bytes"
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "application/pdf"}, content=body)
+    f = Fetcher(resolver=public_resolver, transport=httpx.MockTransport(handler), respect_robots=False,
+                allowed_content_types=("text/html", "application/pdf"))
+    r = f.fetch("https://example.com/report.pdf")
+    assert r.outcome == FETCHED and r.content == body and r.text is None
+
+
 def test_oversize_body_aborted() -> None:
     big = "x" * 5000
     def handler(request: httpx.Request) -> httpx.Response:

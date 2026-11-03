@@ -51,6 +51,9 @@ DEFAULT_USER_AGENT = (
 )
 ALLOWED_SCHEMES = ("http", "https")
 ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "text/xml", "application/xml")
+# Content types we decode to text (vs. binary bodies like PDF kept as raw bytes).
+TEXT_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "text/xml", "application/xml")
+PDF_CONTENT_TYPE = "application/pdf"
 DEFAULT_MAX_BYTES = 5_000_000           # 5 MB per page
 DEFAULT_CONNECT_TIMEOUT = 8.0
 DEFAULT_READ_TIMEOUT = 20.0
@@ -152,7 +155,8 @@ class FetchResult:
     content_type: str | None = None
     bytes: int | None = None
     content_sha256: str | None = None
-    text: str | None = None
+    text: str | None = None            # decoded text (text/html/plain/xml only)
+    content: bytes | None = None       # raw body (always set on success; used for PDFs/images)
     detail: str | None = None
 
     @property
@@ -279,13 +283,17 @@ class Fetcher:
                                 return FetchResult(TOO_LARGE, url, final_url=current, http_status=resp.status_code,
                                                    content_type=ctype, bytes=len(body), content_sha256=sha,
                                                    detail=f"body exceeded {self.max_bytes} bytes")
-                            try:
-                                text = body.decode(resp.encoding or "utf-8", errors="replace")
-                            except (LookupError, TypeError):
-                                text = body.decode("utf-8", errors="replace")
+                            # Decode to text only for text-like bodies; binary bodies (PDF/image) keep
+                            # their raw bytes so a specialised extractor (pdfplumber/OCR) can read them.
+                            text = None
+                            if ctype in TEXT_CONTENT_TYPES or not ctype:
+                                try:
+                                    text = body.decode(resp.encoding or "utf-8", errors="replace")
+                                except (LookupError, TypeError):
+                                    text = body.decode("utf-8", errors="replace")
                             return FetchResult(FETCHED, url, final_url=current, http_status=resp.status_code,
                                                content_type=ctype or None, bytes=len(body),
-                                               content_sha256=sha, text=text)
+                                               content_sha256=sha, text=text, content=body)
                     except httpx.HTTPError as exc:
                         return FetchResult(FAILED, url, final_url=current, detail=f"{type(exc).__name__}")
                 return FetchResult(FAILED, url, final_url=current, detail="too many redirects")

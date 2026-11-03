@@ -131,7 +131,9 @@ def default_discovery(settings: Settings, *, fetcher: Fetcher) -> Discovery:
 
 def _page_fetcher(settings: Settings) -> Fetcher:
     ua = getattr(settings, "research_user_agent", None) or webfetch.DEFAULT_USER_AGENT
-    return Fetcher(user_agent=ua, respect_robots=True)
+    # Accept HTML/text AND PDF (a common format for annual reports, handbooks and archived scorecards).
+    return Fetcher(user_agent=ua, respect_robots=True,
+                   allowed_content_types=(*webfetch.ALLOWED_CONTENT_TYPES, webfetch.PDF_CONTENT_TYPE))
 
 
 def _discovery_fetcher(settings: Settings) -> Fetcher:
@@ -200,7 +202,7 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
                           http_status=r.http_status, content_type=r.content_type, nbytes=r.bytes,
                           content_sha256=r.content_sha256, detail=r.detail)
         examined += 1
-        if not r.ok or not r.text:
+        if not r.ok:
             continue
         if r.content_sha256 and r.content_sha256 in hashes:
             jobs.record_fetch(conn, workspace_id, job["id"], url=url, outcome=webfetch.DUPLICATE,
@@ -209,7 +211,15 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
         if r.content_sha256:
             hashes.add(r.content_sha256)
 
-        ex = webextract.extract(r.final_url or url, r.text, context=context)
+        # Choose the text source by content type: PDFs are read with pdfplumber, everything else is HTML/text.
+        if r.content_type == webfetch.PDF_CONTENT_TYPE:
+            page_text, is_html = webextract.pdf_to_text(r.content or b""), False
+        else:
+            page_text, is_html = (r.text or ""), True
+        if not page_text.strip():
+            continue
+
+        ex = webextract.extract(r.final_url or url, page_text, is_html=is_html, context=context)
         if not ex.cricket_relevant:
             continue
         # Classify match-like findings against existing records (review-only; never merges).
