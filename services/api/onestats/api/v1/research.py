@@ -34,6 +34,9 @@ from onestats.domain.research import (
     timeline,
     trove,
 )
+from onestats.domain.research import (
+    jobs as research_jobs,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["research"])
 Ctx = Annotated[RequestContext, Depends(require_permission("research.manage"))]
@@ -67,6 +70,11 @@ _ERRORS = {
     "invalid_evidence_class": status.HTTP_400_BAD_REQUEST,
     "invalid_entity_type": status.HTTP_400_BAD_REQUEST,
     "alias_required": status.HTTP_400_BAD_REQUEST,
+    "query_required": status.HTTP_400_BAD_REQUEST,
+    "invalid_depth": status.HTTP_400_BAD_REQUEST,
+    "duplicate_active_job": status.HTTP_409_CONFLICT,
+    "job_not_found": status.HTTP_404_NOT_FOUND,
+    "finding_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -131,6 +139,110 @@ class LinkMatch(BaseModel):
 def get_dashboard(workspace_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         return dashboard.dashboard_summary(conn, workspace_id)
+
+
+# ---- Internet Research Engine: "Search the Internet" jobs + findings ------------------------------
+# One-click autonomous research. A job runs in the packaged backend's background worker; findings appear
+# live and open for review. Nothing is auto-approved — acceptance still goes through the existing
+# reconstruction + Phase 7 approval workflow. Gated by research.manage; workspace-scoped; audited.
+
+class InternetSearchStart(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    depth: str = "standard"                              # quick | standard | deep
+    context: dict[str, Any] | None = None                # club/season/competition/match/player (optional)
+
+
+class FindingReview(BaseModel):
+    status: str                                          # accepted | rejected | linked | superseded | pending_review
+    notes: str | None = None
+
+
+def _job_view(conn, workspace_id: UUID, job: dict[str, Any]) -> dict[str, Any]:
+    out = _s(job)
+    out["finding_counts"] = research_jobs.job_findings_count(conn, workspace_id, job["id"])
+    return out
+
+
+@router.post("/internet-search", status_code=status.HTTP_201_CREATED)
+def start_internet_search(workspace_id: UUID, body: InternetSearchStart, settings: SettingsDep,
+                          ctx: Ctx) -> dict[str, Any]:
+    """Launch a genuine, persistent, resumable internet research job in the background worker."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            job = research_jobs.create_job(conn, workspace_id, str(ctx.user["id"]),
+                                           query=body.query, depth=body.depth, context=body.context)
+        except ValueError as exc:
+            raise _err(exc) from exc
+        return _job_view(conn, workspace_id, job)
+
+
+@router.get("/jobs")
+def list_research_jobs(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
+                       status_filter: str | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_job_view(conn, workspace_id, j)
+                for j in research_jobs.list_jobs(conn, workspace_id, status=status_filter)]
+
+
+@router.get("/jobs/{job_id}")
+def get_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        job = research_jobs.get_job(conn, job_id)
+        if job is None or job["workspace_id"] != workspace_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "job_not_found")
+        return _job_view(conn, workspace_id, job)
+
+
+def _job_action(action, workspace_id: UUID, job_id: UUID, settings, ctx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        job = research_jobs.get_job(conn, job_id)
+        if job is None or job["workspace_id"] != workspace_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "job_not_found")
+        updated = action(conn, workspace_id, str(ctx.user["id"]), job_id)
+        return _job_view(conn, workspace_id, updated)
+
+
+@router.post("/jobs/{job_id}/pause")
+def pause_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    return _job_action(research_jobs.pause_job, workspace_id, job_id, settings, ctx)
+
+
+@router.post("/jobs/{job_id}/resume")
+def resume_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    return _job_action(research_jobs.resume_job, workspace_id, job_id, settings, ctx)
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    return _job_action(research_jobs.cancel_job, workspace_id, job_id, settings, ctx)
+
+
+@router.get("/jobs/{job_id}/findings")
+def list_job_findings(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx,
+                      status_filter: str | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(f) for f in research_jobs.list_findings(conn, workspace_id, job_id=job_id,
+                                                           status=status_filter)]
+
+
+@router.get("/findings")
+def list_all_findings(workspace_id: UUID, settings: SettingsDep, ctx: Ctx,
+                      status_filter: str | None = None) -> list[dict[str, Any]]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(f) for f in research_jobs.list_findings(conn, workspace_id, status=status_filter)]
+
+
+@router.post("/findings/{finding_id}/review")
+def review_finding(workspace_id: UUID, finding_id: UUID, body: FindingReview, settings: SettingsDep,
+                   ctx: Ctx) -> dict[str, Any]:
+    """Triage a finding (accept/reject/link/supersede). This records the review state only; it never
+    imports or approves data into official statistics."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return _s(research_jobs.set_finding_status(conn, workspace_id, str(ctx.user["id"]), finding_id,
+                                                       status=body.status, notes=body.notes))
+        except ValueError as exc:
+            raise _err(exc) from exc
 
 
 @router.get("/projects")

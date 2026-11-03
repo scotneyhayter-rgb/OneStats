@@ -40,3 +40,22 @@ def test_research_requires_authentication(client):
     assert client.post(f"{base}/projects", json={"title": "x"}).status_code == 401
     assert client.get(f"{base}/sources").status_code == 401
     assert client.post(f"{base}/sources", json={"title": "x", "source_type": "pdf"}).status_code == 401
+
+
+def test_internet_search_routes_registered(client):
+    paths = set(client.app.openapi()["paths"].keys())
+    base = "/api/v1/workspaces/{workspace_id}/research"
+    for p in ("/internet-search", "/jobs", "/jobs/{job_id}", "/jobs/{job_id}/pause",
+              "/jobs/{job_id}/resume", "/jobs/{job_id}/cancel", "/jobs/{job_id}/findings",
+              "/findings", "/findings/{finding_id}/review"):
+        assert f"{base}{p}" in paths, p
+
+
+def test_internet_search_requires_authentication(client):
+    wid = uuid.uuid4()
+    base = f"/api/v1/workspaces/{wid}/research"
+    assert client.post(f"{base}/internet-search", json={"query": "Rhymney 1905"}).status_code == 401
+    assert client.get(f"{base}/jobs").status_code == 401
+    assert client.get(f"{base}/findings").status_code == 401
+    jid = uuid.uuid4()
+    assert client.post(f"{base}/jobs/{jid}/cancel").status_code == 401

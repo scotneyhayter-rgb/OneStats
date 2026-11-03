@@ -42,7 +42,26 @@ async def lifespan(app: FastAPI):
                     ensure_setup_token(conn, settings)
         except Exception as exc:  # noqa: BLE001 - never block startup on bootstrap check
             log.warning("Setup-token bootstrap skipped: %s", type(exc).__name__)
+
+        # Internet Research Engine: start the in-process background worker that drives research jobs
+        # (reconciles stale jobs, claims and runs them step by step). Only when a DB is configured;
+        # disabled by ONESTATS_RESEARCH_WORKER=0. A failure here never blocks startup.
+        try:
+            from onestats.db.session import get_engine
+            from onestats.domain.research import worker as research_worker
+
+            eng = get_engine(settings)
+            if eng is not None:
+                research_worker.start_worker(eng, settings)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Research worker not started: %s", type(exc).__name__)
     yield
+    try:
+        from onestats.domain.research import worker as research_worker
+
+        research_worker.stop_worker()
+    except Exception:  # noqa: BLE001 - best-effort shutdown
+        pass
     log.info("Shutting down %s", settings.app_name)
 
 
