@@ -261,6 +261,24 @@ def test_depth_breadth_ordering():
     assert reng.DEPTH_PER_QUERY["quick"] < reng.DEPTH_PER_QUERY["standard"] < reng.DEPTH_PER_QUERY["deep"]
 
 
+def test_allowed_sources_restricts_retrieval(conn):
+    wid = _ws(conn, "ENG_ALLOW")
+    # job restricted to example.com; discovery also offers an off-list host
+    job = jobs.create_job(conn, wid, ACTOR, query="policy", depth="quick",
+                          context={"allowed_sources": ["example.com"]})
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler),
+                  discovery=_discovery(["https://example.com/ok", "https://benchmark.test/off"]))
+    outcomes = {r[0]: r[1] for r in conn.execute(text(
+        "SELECT url, outcome FROM research_fetch WHERE job_id = :j"), {"j": claimed["id"]}).all()}
+    assert outcomes["https://example.com/ok"] == "fetched"
+    assert outcomes["https://benchmark.test/off"] == "blocked"   # off the allow-list → never fetched
+    # the only finding came from the allowed host
+    assert all(f["source_host"] == "example.com" for f in jobs.list_findings(conn, wid))
+
+
 def test_workspace_isolation_of_findings(conn):
     a = _ws(conn, "ENG_WS_A")
     job = jobs.create_job(conn, a, ACTOR, query="iso", depth="quick")
