@@ -23,7 +23,9 @@ export function Sidebar() {
   // Role-based nav gating: a section with a `perm` shows only when the user holds it in the
   // selected workspace (Super Admin holds all). Sections without a `perm` are always visible.
   // The backend independently enforces every action — hiding a link is convenience, not security.
-  const visible = (s: NavSection) => !s.perm || can(user, current, s.perm);
+  const visible = (s: NavSection) =>
+    (!s.perm || can(user, current, s.perm)) &&
+    (!s.workspaceType || current?.type === s.workspaceType);
 
   // Group the visible Club Management sections by their sub-group heading, preserving list order.
   const mgmtGroups: { name: string; items: NavSection[] }[] = [];

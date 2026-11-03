@@ -3,9 +3,10 @@ import { MANAGEMENT_SECTIONS, NAV_SECTIONS } from "./navigation";
 
 describe("primary navigation", () => {
   it("defines the primary sections in order (Records promoted next to Statistics)", () => {
-    expect(NAV_SECTIONS).toHaveLength(7);
+    expect(NAV_SECTIONS).toHaveLength(8);
     expect(NAV_SECTIONS.map((s) => s.label)).toEqual([
       "Dashboard",
+      "International Updates",
       "Matches",
       "People",
       "Statistics",
@@ -13,6 +14,16 @@ describe("primary navigation", () => {
       "Ask OneStats",
       "Settings",
     ]);
+  });
+
+  it("gates International Updates to international workspaces only", () => {
+    const intl = NAV_SECTIONS.find((s) => s.key === "intl-updates");
+    expect(intl?.workspaceType).toBe("international");
+    expect(intl?.perm).toBe("workspace.manage");
+    // every other primary section is available to any workspace type
+    for (const s of NAV_SECTIONS) {
+      if (s.key !== "intl-updates") expect(s.workspaceType).toBeUndefined();
+    }
   });
 
   it("has unique keys and paths", () => {

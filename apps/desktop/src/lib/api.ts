@@ -1301,6 +1301,61 @@ export interface Warnings {
   warnings: string[];
 }
 
+// --- International Men's Cricket: match-index register + scheduler (Update Management) ---
+export type MatchIndexState = "expected" | "indexed" | "imported" | "complete" | "verified";
+export type IntlFormat = "test" | "odi" | "t20i";
+export interface MatchIndexFormatSummary {
+  states: Record<MatchIndexState, number>;
+  candidates: number;
+  disputed: number;
+  expected: number | null;   // null = unknown (never fabricated as zero)
+  coverage_state: "unknown" | "searching" | "partial" | "reconciled" | "failed";
+}
+export type MatchIndexSummary = Record<IntlFormat, MatchIndexFormatSummary>;
+export interface MatchIndexCoverage {
+  format: string;
+  period: string;
+  coverage_state: string;
+  expected_count: number | null;
+  indexed_count: number;
+  imported_count: number;
+  verified_count: number;
+}
+export interface SchedulerTask {
+  id: string;
+  name: string;
+  task_kind: string;
+  enabled: boolean;
+  paused: boolean;
+  schedule_kind: "weekly" | "daily";
+  timezone: string;
+  day_of_week: number | null;   // 0=Mon..6=Sun (weekly only; null for daily)
+  hour: number;
+  minute: number;
+  catch_up: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+}
+export interface SchedulerTaskRun {
+  id: string;
+  task_id: string;
+  scheduled_for: string | null;   // the due instant — kept distinct from when it actually ran
+  ran_at: string;
+  was_catch_up: boolean;          // true = fired late after being missed (never claims it ran on time)
+  status: "succeeded" | "failed" | "skipped" | "no_pipeline";
+  detail: string | null;
+  error: string | null;
+  enqueued_job_id: string | null;
+}
+export interface SchedulerRunResult {
+  task_id: string;
+  status: string;
+  was_catch_up: boolean;
+  scheduled_for: string | null;
+}
+
 export const api = {
   baseUrl: getApiBase(),
   health: () => request<{ status: string; version: string; env: string }>("/api/v1/health", { auth: false }),
@@ -2124,4 +2179,20 @@ export const api = {
     request<Warnings>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships-validate`),
   derivePartnerships: (w: string, iid: string) =>
     request<Partnership[]>(`/api/v1/workspaces/${w}/innings/${iid}/partnerships/derive`, { method: "POST" }),
+
+  // --- International Men's Cricket: match index + Update Management ---
+  matchIndexSummary: (w: string) =>
+    request<MatchIndexSummary>(`/api/v1/workspaces/${w}/match-index/summary`),
+  matchIndexCoverage: (w: string, format: string, period = "all") =>
+    request<MatchIndexCoverage>(`/api/v1/workspaces/${w}/match-index/coverage${qs({ format, period })}`),
+  schedulerTasks: (w: string) =>
+    request<SchedulerTask[]>(`/api/v1/workspaces/${w}/scheduler/tasks`),
+  schedulerRuns: (w: string, taskId: string, limit = 50) =>
+    request<SchedulerTaskRun[]>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/runs${qs({ limit })}`),
+  schedulerRunNow: (w: string, taskId: string) =>
+    request<SchedulerRunResult>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/run-now`, { method: "POST" }),
+  schedulerPause: (w: string, taskId: string, value: boolean) =>
+    request<SchedulerTask>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/pause`, { method: "POST", body: { value } }),
+  schedulerEnable: (w: string, taskId: string, value: boolean) =>
+    request<SchedulerTask>(`/api/v1/workspaces/${w}/scheduler/tasks/${taskId}/enable`, { method: "POST", body: { value } }),
 };

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Building2,
+  CalendarClock,
   DatabaseBackup,
   Award,
   GitBranch,
@@ -31,6 +32,8 @@ export interface NavSection {
   perm?: string;
   /** Sub-group heading within Club Management (ordered as listed). Primary sections leave this unset. */
   group?: string;
+  /** Show this section only for workspaces of this type (e.g. "international"). Undefined = any type. */
+  workspaceType?: string;
 }
 
 export const NAV_SECTIONS: NavSection[] = [
@@ -40,6 +43,15 @@ export const NAV_SECTIONS: NavSection[] = [
     path: "/dashboard",
     icon: LayoutDashboard,
     blurb: "Overview, recent activity and alerts.",
+  },
+  {
+    key: "intl-updates",
+    label: "International Updates",
+    path: "/intl/updates",
+    icon: CalendarClock,
+    blurb: "Scheduled updates and match-index coverage for international cricket.",
+    perm: "workspace.manage",
+    workspaceType: "international",
   },
   {
     key: "matches",
