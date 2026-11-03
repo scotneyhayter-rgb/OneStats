@@ -245,6 +245,22 @@ def test_finding_flagged_conflicting_when_result_differs(conn):
     assert f["status"] == "pending_review"   # never auto-applied; the verified record is untouched
 
 
+def test_deep_depth_runs_without_js_render(conn, monkeypatch):
+    monkeypatch.delenv("ONESTATS_RESEARCH_JS", raising=False)  # JS rendering stays off
+    wid = _ws(conn, "ENG_DEEP")
+    job = jobs.create_job(conn, wid, ACTOR, query="deep run", depth="deep")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)
+    res = reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                        page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    assert res["done"] is True
+    assert len(jobs.list_findings(conn, wid)) == 1
+
+
+def test_depth_breadth_ordering():
+    assert reng.DEPTH_PER_QUERY["quick"] < reng.DEPTH_PER_QUERY["standard"] < reng.DEPTH_PER_QUERY["deep"]
+
+
 def test_workspace_isolation_of_findings(conn):
     a = _ws(conn, "ENG_WS_A")
     job = jobs.create_job(conn, a, ACTOR, query="iso", depth="quick")

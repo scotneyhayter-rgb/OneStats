@@ -27,7 +27,15 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain.research import classify, extraction, identity, jobs, webextract, webfetch
+from onestats.domain.research import (
+    classify,
+    extraction,
+    identity,
+    jobs,
+    jsrender,
+    webextract,
+    webfetch,
+)
 from onestats.domain.research.webfetch import Fetcher
 
 # A discovery provider: (queries, context) -> list of {"url", "source"} candidates.
@@ -113,10 +121,14 @@ def _q(s: str) -> str:
     return quote(s, safe="")
 
 
-def default_discovery(settings: Settings, *, fetcher: Fetcher) -> Discovery:
+# How many candidate links each discovery query yields, by search depth.
+DEPTH_PER_QUERY = {"quick": 3, "standard": 5, "deep": 8}
+
+
+def default_discovery(settings: Settings, *, fetcher: Fetcher, per_query: int = 5) -> Discovery:
     """The built-in discovery strategy (Wikipedia always; Trove when a key exists)."""
     def _discover(queries: list[str], context: dict[str, Any] | None) -> list[dict[str, str]]:
-        found = discover_wikipedia(queries, context, fetcher=fetcher)
+        found = discover_wikipedia(queries, context, fetcher=fetcher, per_query=per_query)
         found += discover_trove(queries, context, settings=settings)
         # de-dup by url, preserve order
         seen: set[str] = set()
@@ -138,7 +150,7 @@ def _page_fetcher(settings: Settings) -> Fetcher:
                                           *webfetch.IMAGE_CONTENT_TYPES))
 
 
-def _ocr_image(raw: bytes, ocr_engine: "extraction.OcrEngine | None") -> str:
+def _ocr_image(raw: bytes, ocr_engine: extraction.OcrEngine | None) -> str:
     """OCR an image's bytes with the given engine, or the local default (Tesseract). Returns "" when no
     engine is available or OCR fails — honest: an unreadable scan yields no finding, never a fabricated one."""
     engine = ocr_engine
@@ -172,7 +184,7 @@ def _host(url: str) -> str | None:
 def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, Any], *,
              settings: Settings, page_fetcher: Fetcher | None = None,
              discovery: Discovery | None = None,
-             ocr_engine: "extraction.OcrEngine | None" = None) -> dict[str, Any]:
+             ocr_engine: extraction.OcrEngine | None = None) -> dict[str, Any]:
     """Process one bounded slice of the investigation and checkpoint. Returns
     ``{"done": bool, "processed": int, "new_findings": int, "examined": int, "findings": int}``.
 
@@ -190,9 +202,10 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
     page_fetcher = page_fetcher or _page_fetcher(settings)
     context = job.get("context") or {}
 
-    # Seed the frontier once (first step).
+    # Seed the frontier once (first step). Discovery breadth scales with depth.
     if not cp.get("seeded"):
-        disc = discovery or default_discovery(settings, fetcher=_discovery_fetcher(settings))
+        per_query = DEPTH_PER_QUERY.get(depth, 5)
+        disc = discovery or default_discovery(settings, fetcher=_discovery_fetcher(settings), per_query=per_query)
         queries = generate_queries(job.get("query") or "", context)
         candidates = disc(queries, context)
         frontier = [c["url"] for c in candidates]
@@ -242,6 +255,12 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
             continue
 
         ex = webextract.extract(r.final_url or url, page_text, is_html=is_html, context=context)
+        # Deep search only: if a server-rendered page looks empty, it may be JS-built — try a rendered
+        # pass (opt-in, SSRF-screened, graceful) and re-extract. Off/unavailable → keep the plain result.
+        if not ex.cricket_relevant and is_html and depth == "deep" and jsrender.enabled():
+            rendered = jsrender.render(r.final_url or url)
+            if rendered:
+                ex = webextract.extract(r.final_url or url, rendered, is_html=True, context=context)
         if not ex.cricket_relevant:
             continue
         # Classify match-like findings against existing records (review-only; never merges).
