@@ -100,8 +100,18 @@ fn spawn_backend(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+
+    // In-app auto-updates: the official Tauri updater (signature-verified download/install) plus the
+    // process plugin for the post-install relaunch. Desktop-only; the plugins are not built for mobile.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    let app = builder
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
             spawn_backend(app.handle());
