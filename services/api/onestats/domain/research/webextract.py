@@ -46,6 +46,24 @@ _DATE_RE = re.compile(
 )
 # "<Team A> v[s] <Team B>" — team-like names around a versus token.
 _VERSUS_RE = re.compile(r"([A-Z][\w&'. ]{1,40}?)\s+(?:v\.?|vs\.?|versus)\s+([A-Z][\w&'. ]{1,40})")
+# A result phrase like "won by 14 runs" / "won by 5 wickets", or a drawn/tied/abandoned outcome.
+_RESULT_MARGIN_RE = re.compile(r"\bwon by\s+(\d{1,3})\s+(run|runs|wicket|wickets)\b", re.IGNORECASE)
+_RESULT_OUTCOME_RE = re.compile(r"\bmatch (drawn|tied)\b|\b(drawn|tied|abandoned|no result)\b", re.IGNORECASE)
+
+
+def parse_result(text: str) -> dict[str, Any] | None:
+    """A single OBSERVED result signal from the page text, or None. Values are what the source says —
+    never asserted as correct; used only to flag disagreement with an existing record for review."""
+    m = _RESULT_MARGIN_RE.search(text)
+    if m:
+        unit = "wickets" if m.group(2).lower().startswith("wicket") else "runs"
+        return {"outcome": "win", "margin": int(m.group(1)), "unit": unit, "text": m.group(0)}
+    o = _RESULT_OUTCOME_RE.search(text)
+    if o:
+        word = (o.group(1) or o.group(2) or "").lower()
+        outcome = {"drawn": "draw", "tied": "tie", "no result": "no_result"}.get(word, word)
+        return {"outcome": outcome, "margin": None, "unit": None, "text": o.group(0)}
+    return None
 
 
 _DISMISSAL_SPLIT = re.compile(
@@ -208,6 +226,7 @@ def extract(url: str, content: str, *, title_hint: str | None = None,
         "observed_scores": scores[:12] or None,
         "scorecard_lines": scorecard_lines[:20] or None,
         "observed_players": player_names_from_lines(scorecard_lines) or None,
+        "observed_result": parse_result(text),
         "context_names_present": mentioned or None,
         "source_url": url,
         "note": "Observed from a single web source; unverified. A researcher must confirm before use.",

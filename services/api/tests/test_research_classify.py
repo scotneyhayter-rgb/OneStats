@@ -45,6 +45,24 @@ def test_unknown_without_team_names():
     assert v["confidence"] is None
 
 
+def test_conflicting_when_result_margin_differs():
+    idx = [{"match_id": "m1", "year": 1905, "teams": [{"rhymney"}, {"moyston"}],
+            "margin_runs": 20, "margin_wickets": None}]
+    ex = {"observed_teams": ["Rhymney", "Moyston"], "observed_dates": ["1905"],
+          "observed_result": {"outcome": "win", "margin": 14, "unit": "runs", "text": "won by 14 runs"}}
+    v = classify.classify(ex, idx)
+    assert v["classification"] == "conflicting"
+    assert "14 runs" in v["reason"] and "20 runs" in v["reason"]
+
+
+def test_no_conflict_when_result_agrees():
+    idx = [{"match_id": "m1", "year": 1905, "teams": [{"rhymney"}, {"moyston"}],
+            "margin_runs": 14, "margin_wickets": None}]
+    ex = {"observed_teams": ["Rhymney", "Moyston"], "observed_dates": ["1905"],
+          "observed_result": {"outcome": "win", "margin": 14, "unit": "runs", "text": "won by 14 runs"}}
+    assert classify.classify(ex, idx)["classification"] == "possible_duplicate"
+
+
 def test_club_suffixes_do_not_block_match():
     # "Rhymney Cricket Club 1st XI" must still match the recorded "rhymney" token set.
     v = classify.classify(_ex(["Rhymney Cricket Club 1st XI", "Moyston CC"]), INDEX)

@@ -189,15 +189,15 @@ def test_ocr_image_graceful_fallback(monkeypatch):
     assert reng._ocr_image(b"x", lambda raw: ("hi", 0.5)) == "hi"  # injected engine is used
 
 
-def _seed_match(conn, wid, home, away, year):
+def _seed_match(conn, wid, home, away, year, *, margin_runs=None):
     org = conn.execute(text("INSERT INTO organisation(workspace_id, name) VALUES (:w, :n) RETURNING id"),
                        {"w": wid, "n": f"{home} org"}).scalar_one()
     def team(n):
         return conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w, :o, :n) RETURNING id"),
                             {"w": wid, "o": org, "n": n}).scalar_one()
     hid, aid = team(home), team(away)
-    mid = conn.execute(text("INSERT INTO match(workspace_id, match_date) VALUES (:w, :d) RETURNING id"),
-                       {"w": wid, "d": f"{year}-01-14"}).scalar_one()
+    mid = conn.execute(text("INSERT INTO match(workspace_id, match_date, margin_runs) VALUES (:w, :d, :mr) RETURNING id"),
+                       {"w": wid, "d": f"{year}-01-14", "mr": margin_runs}).scalar_one()
     for tid, home_flag in ((hid, True), (aid, False)):
         conn.execute(text("INSERT INTO match_team(workspace_id, match_id, team_id, is_home) "
                           "VALUES (:w, :m, :t, :h)"), {"w": wid, "m": mid, "t": tid, "h": home_flag})
@@ -230,6 +230,19 @@ def test_finding_suggests_existing_person_for_named_player(conn):
     sugg = (f["extracted"] or {}).get("player_suggestions") or {}
     assert any(k.lower().endswith("smith") for k in sugg)  # J Smith → John Smith suggested, not merged
     assert f["status"] == "pending_review"
+
+
+def test_finding_flagged_conflicting_when_result_differs(conn):
+    wid = _ws(conn, "ENG_CONFLICT")
+    _seed_match(conn, wid, "Rhymney", "Moyston", 1905, margin_runs=20)  # record says 20 runs
+    job = jobs.create_job(conn, wid, ACTOR, query="result conflict", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)  # SCORECARD says "won by 14 runs"
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    f = jobs.list_findings(conn, wid)[0]
+    assert f["classification"] == "conflicting"
+    assert f["status"] == "pending_review"   # never auto-applied; the verified record is untouched
 
 
 def test_workspace_isolation_of_findings(conn):
