@@ -37,8 +37,9 @@ from onestats.domain import audit
 from onestats.domain.intl import cricsheet, sources
 from onestats.domain.intl import cricsheet_import as importer
 
-# Cricsheet per-format men's international bundles.
-BUNDLES = {"test": "tests", "odi": "odis", "t20i": "t20is"}
+# Cricsheet per-format men's international bundle basenames (as published at /downloads/).
+# NB: men's international T20s are "it20s" (International T20), not "t20is".
+BUNDLES = {"test": "tests", "odi": "odis", "t20i": "it20s"}
 DEFAULT_BASE_URL = "https://cricsheet.org/downloads/"
 # A format bundle is tens of MB; allow well beyond the per-page default, and accept zip content types.
 BUNDLE_MAX_BYTES = 200_000_000

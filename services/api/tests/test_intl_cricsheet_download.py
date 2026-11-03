@@ -89,6 +89,13 @@ def test_import_bundle_logs_each_match_then_skips_unchanged(conn):
     assert n == 2                                         # still exactly two matches
 
 
+def test_bundle_urls_use_the_published_cricsheet_names():
+    # men's international T20s are published as "it20s_json.zip" (NOT "t20is") — verified live
+    assert dl.bundle_url("test").endswith("/tests_json.zip")
+    assert dl.bundle_url("odi").endswith("/odis_json.zip")
+    assert dl.bundle_url("t20i").endswith("/it20s_json.zip")
+
+
 def test_fetch_bundle_refuses_non_allowlisted_host():
     with pytest.raises(ValueError):
         dl.bundle_url("firstclass")                       # not a recognised format
