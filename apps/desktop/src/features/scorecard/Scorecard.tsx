@@ -16,6 +16,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Modal } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
+import { ResearchThisButton } from "../research/ResearchThisButton";
 import {
   api, ApiError, type Competition, type CompetitionDetail, type Match, type MatchFormat, type Team, type Venue,
 } from "../../lib/api";
@@ -211,6 +212,12 @@ export function Scorecard() {
           {m.classification !== "unclassified" && <Badge variant="brand">{m.classification.replace(/_/g, " ")}</Badge>}
           <Badge variant={m.status === "final" ? "success" : m.status === "abandoned" ? "warning" : "muted"}>{m.status}</Badge>
         </div>
+        {/* Contextual research: seed an internet search from this match's teams/date/competition (spec §15). */}
+        <ResearchThisButton size="sm" variant="ghost" label="Research"
+          query={`${teamName(m.home_team_id)} v ${teamName(m.away_team_id)} cricket ${m.match_date ? m.match_date.slice(0, 4) : ""} ${compName(m.competition_id)}`.replace(/\s+/g, " ").trim()}
+          context={{ club: teamName(m.home_team_id), opponent: teamName(m.away_team_id),
+            competition: compName(m.competition_id), year: m.match_date ? Number(m.match_date.slice(0, 4)) : undefined,
+            match_id: m.id }} />
       </CardContent>
     </Card>
   );

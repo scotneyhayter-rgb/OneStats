@@ -15,6 +15,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Select } from "../../components/ui/select";
+import { ResearchThisButton } from "../research/ResearchThisButton";
 import { api, ApiError, type PlayerAnalysis, type PlayerFullProfile } from "../../lib/api";
 import { formatDate, useDateStyle } from "../../lib/dates";
 import { openBlobUrl } from "../../lib/utils";
@@ -302,7 +303,9 @@ export function PlayerProfile() {
               {full!.detail.numbers.join(", ")}
             </span>
           )}
-          <div className={`flex gap-2 ${(full?.detail?.numbers ?? []).length > 0 ? "" : "ml-auto"}`}>
+          <div className={`flex flex-wrap gap-2 ${(full?.detail?.numbers ?? []).length > 0 ? "" : "ml-auto"}`}>
+            <ResearchThisButton query={`${name} cricket player records statistics`}
+              context={{ player: name, club: (full?.clubs ?? [])[0]?.club }} />
             <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
             <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
             <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>

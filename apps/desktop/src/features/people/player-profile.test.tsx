@@ -9,6 +9,7 @@ const H = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/workspace-context", () => ({ useWorkspace: () => ({ current: { id: "w1", name: "RMCC" } }) }));
+vi.mock("../research/ResearchThisButton", () => ({ ResearchThisButton: () => null }));
 vi.mock("../../lib/api", () => ({ ApiError: class ApiError extends Error {}, api: H }));
 vi.mock("../../components/layout/AppShell", () => ({
   AppShell: ({ children }: { children: import("react").ReactNode }) => <div>{children}</div>,

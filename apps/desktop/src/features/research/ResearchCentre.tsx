@@ -9,7 +9,7 @@
  */
 import { CalendarRange, ClipboardCheck, FileText, FolderGit2, Globe, Library, ListChecks, Newspaper, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataQuality } from "./DataQuality";
 import { InternetSearch } from "./InternetSearch";
 import { NewspaperSearch } from "./NewspaperSearch";
@@ -35,6 +35,7 @@ import {
   type ResearchTimeline,
   type SeasonCompletenessRow,
 } from "../../lib/api";
+import { can } from "../../lib/permissions";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
 type Tab = "internet" | "overview" | "seasons" | "sources" | "newspapers" | "timeline" | "gaps" | "review" | "dataquality" | "projects" | "tasks";
@@ -63,9 +64,15 @@ const COVERAGE_VARIANT: Record<string, "success" | "warning" | "muted" | "brand"
 };
 
 export function ResearchCentre() {
-  const { workspaceId } = useManage();
+  const { workspaceId, user, workspace } = useManage();
+  // Role-adaptive UI: only a Data Verifier / admin sees the verify/dispute controls (the backend
+  // enforces research.verify regardless — this just hides what the user cannot do).
+  const canVerify = can(user, workspace, "research.verify");
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>("overview");
+  const [searchParams] = useSearchParams();
+  // Deep-link from a contextual "Search the Internet" button (match/player/season view) opens straight
+  // on Discover Records so the just-started job is visible.
+  const [tab, setTab] = useState<Tab>(searchParams.get("discover") ? "internet" : "overview");
   const [gapsSub, setGapsSub] = useState<"overview" | "seasons" | "matches" | "tasks">("overview");
   const [dash, setDash] = useState<ResearchDashboard | null>(null);
   const [scRows, setScRows] = useState<SeasonCompletenessRow[]>([]);
@@ -496,18 +503,22 @@ export function ResearchCentre() {
                           Submit
                         </Button>
                       )}
-                      <Button size="sm" disabled={busy}
-                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "verified_partial"), "Verified (partial).")}>
-                        Verify partial
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busy}
-                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "approved"), "Verified.")}>
-                        Verify
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busy}
-                        onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "disputed"), "Marked disputed.")}>
-                        Dispute
-                      </Button>
+                      {canVerify && (
+                        <>
+                          <Button size="sm" disabled={busy}
+                            onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "verified_partial"), "Verified (partial).")}>
+                            Verify partial
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={busy}
+                            onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "approved"), "Verified.")}>
+                            Verify
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={busy}
+                            onClick={() => void act(() => api.researchVerify(workspaceId, m.match_id, "disputed"), "Marked disputed.")}>
+                            Dispute
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {openMatch === m.match_id && (
