@@ -24,7 +24,10 @@ def _desktop_version() -> str:
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True)
+    # check=False: the tests assert on returncode/stderr themselves (the script exits non-zero on
+    # bad input), so a raised CalledProcessError would defeat the point.
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args], check=False, capture_output=True, text=True)
 
 
 def _make_installer(tmp_path: pathlib.Path) -> pathlib.Path:
