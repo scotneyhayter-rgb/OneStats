@@ -25,18 +25,29 @@ jobs:
       run:
         working-directory: services/api
     # A throwaway Postgres so the DB-backed tests (incl. RLS/workspace isolation) actually run.
-    # Tests that need no DB skip gracefully when it is absent (settings.db_configured).
+    # The container's superuser is the OWNER/migrator role (runs DDL); the bootstrap step then
+    # creates the NON-superuser onestats_app runtime role so RLS genuinely applies to the tests
+    # (a superuser would bypass it). Tests that need no DB skip gracefully (settings.db_configured).
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: onestats_app
-          POSTGRES_PASSWORD: ci_only_not_a_secret
+          POSTGRES_USER: onestats_migrator
+          POSTGRES_PASSWORD: ci_migrator_not_a_secret
           POSTGRES_DB: onestats
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U onestats_app"
+          --health-cmd "pg_isready -U onestats_migrator"
           --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # Runtime role used by pytest — non-superuser, RLS-bound (created by the bootstrap step).
+      ONESTATS_DB_HOST: localhost
+      ONESTATS_DB_PORT: '5432'
+      ONESTATS_DB_NAME: onestats
+      ONESTATS_DB_USER: onestats_app
+      ONESTATS_DB_PASSWORD: ci_app_not_a_secret
+      # Owner/migrator role used to apply migrations (migration_url prefers it).
+      ONESTATS_MIGRATOR_PASSWORD: ci_migrator_not_a_secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,14 +60,11 @@ jobs:
           python -m pip install ruff pytest
       - name: Lint (ruff)
         run: ruff check .
-      - name: Tests (pytest)
-        env:
-          # Point tests at the CI Postgres. Leave unset to run only the DB-independent suite.
-          ONESTATS_DB_HOST: localhost
-          ONESTATS_DB_PORT: '5432'
-          ONESTATS_DB_NAME: onestats
-          ONESTATS_DB_USER: onestats_app
-          ONESTATS_DB_PASSWORD: ci_only_not_a_secret
+      - name: Provision the non-superuser RLS runtime role (mirrors production)
+        run: python ../../.github/scripts/ci_db_bootstrap.py
+      - name: Apply migrations (alembic upgrade head — as the migrator/owner)
+        run: alembic upgrade head
+      - name: Tests (pytest — as the RLS-bound onestats_app role)
         run: pytest -q
 
   frontend:
