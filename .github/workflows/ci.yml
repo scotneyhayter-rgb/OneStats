@@ -107,6 +107,16 @@ jobs:
         run: |
           npm ci
           npm run build
+      # The Tauri config bundles the packaged backend from onestats-server-dist/ (a build artifact
+      # produced only by the real installer build, which CI deliberately does NOT run). tauri-build
+      # validates bundle.resources at compile time, so provide a placeholder for this compile-only
+      # check; nothing here is bundled or shipped.
+      - name: Stub backend resource dir (compile-only; real builds bundle the packaged backend)
+        working-directory: apps/desktop/src-tauri
+        shell: bash
+        run: |
+          mkdir -p onestats-server-dist
+          echo "placeholder for cargo check only - not bundled" > onestats-server-dist/ci-placeholder.txt
       - name: Cargo check (Tauri crate — compile only, NO bundle/installer)
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
