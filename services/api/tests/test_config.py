@@ -1,6 +1,24 @@
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from onestats.core.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def _isolate_onestats_env(monkeypatch):
+    """Construct Settings purely from the explicit arguments/defaults each test gives.
+
+    Settings still reads the real process environment even with ``_env_file=None`` (that only
+    disables the .env file), so any ambient ``ONESTATS_*`` var — a developer's shell, or CI's
+    database vars (ONESTATS_DB_PASSWORD, ONESTATS_MIGRATOR_PASSWORD, …) — would otherwise leak in
+    and change the result. Strip them so these unit tests are hermetic.
+    """
+    for key in list(os.environ):
+        if key.startswith("ONESTATS_"):
+            monkeypatch.delenv(key, raising=False)
 
 
 def test_database_url_none_without_password():

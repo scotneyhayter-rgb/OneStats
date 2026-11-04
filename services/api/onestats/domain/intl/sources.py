@@ -83,7 +83,7 @@ def _norm_host(host: str) -> str:
     if "://" in h:
         h = h.split("://", 1)[1]
     h = h.split("/", 1)[0].split(":", 1)[0]
-    return h[4:] if h.startswith("www.") else h
+    return h.removeprefix("www.")
 
 
 def is_fetchable(host: str) -> bool:

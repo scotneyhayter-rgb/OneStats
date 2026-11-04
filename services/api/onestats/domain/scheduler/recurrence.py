@@ -47,11 +47,11 @@ def next_weekly_occurrence(
 
     # If that instant is not strictly in the future (same weekday but the time already passed, or
     # exactly equal), step to the following week.
-    if local_dt.astimezone(dt.timezone.utc) <= after.astimezone(dt.timezone.utc):
+    if local_dt.astimezone(dt.UTC) <= after.astimezone(dt.UTC):
         target_date = target_date + dt.timedelta(days=7)
         local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
 
-    return local_dt.astimezone(dt.timezone.utc)
+    return local_dt.astimezone(dt.UTC)
 
 
 def next_daily_occurrence(after: dt.datetime, *, hour: int, minute: int, tz: str) -> dt.datetime:
@@ -71,11 +71,11 @@ def next_daily_occurrence(after: dt.datetime, *, hour: int, minute: int, tz: str
     target_date = local_after.date()
     local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
     # Not strictly in the future (time already passed today, or exactly equal) -> tomorrow.
-    if local_dt.astimezone(dt.timezone.utc) <= after.astimezone(dt.timezone.utc):
+    if local_dt.astimezone(dt.UTC) <= after.astimezone(dt.UTC):
         target_date = target_date + dt.timedelta(days=1)
         local_dt = dt.datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=zone)
 
-    return local_dt.astimezone(dt.timezone.utc)
+    return local_dt.astimezone(dt.UTC)
 
 
 def next_occurrence(after: dt.datetime, *, schedule_kind: str, hour: int, minute: int, tz: str,

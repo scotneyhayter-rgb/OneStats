@@ -17,7 +17,8 @@ matches are imported the ledger is empty, so every figure is a genuine zero/unkn
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.engine import Connection

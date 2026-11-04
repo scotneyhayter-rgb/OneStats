@@ -5,7 +5,6 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from onestats.domain.research import webfetch
 from onestats.domain.research.webfetch import (
     BLOCKED,
     DISALLOWED,

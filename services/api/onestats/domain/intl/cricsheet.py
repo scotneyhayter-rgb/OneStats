@@ -132,10 +132,10 @@ def parse_match(doc: dict[str, Any], *, source_ref: str) -> ParsedMatch:
     structurally unusable document, so a bad/unexpected file is refused rather than half-imported.
     """
     if not isinstance(doc, dict):
-        raise ValueError("cricsheet_not_an_object")
+        raise ValueError("cricsheet_not_an_object")  # noqa: TRY004 - ValueError is the documented bad-input contract
     info = doc.get("info")
     if not isinstance(info, dict):
-        raise ValueError("cricsheet_missing_info")
+        raise ValueError("cricsheet_missing_info")  # noqa: TRY004 - ValueError is the documented bad-input contract
 
     match_type = str(info.get("match_type", ""))
     fmt = _MATCH_TYPE_FORMAT.get(match_type)

@@ -70,6 +70,7 @@ def test_text_mode_without_html() -> None:
 def _make_pdf(text: str) -> bytes:
     """A real one-page PDF built with reportlab (already a project dependency)."""
     import io
+
     from reportlab.pdfgen import canvas
     buf = io.BytesIO()
     c = canvas.Canvas(buf)
@@ -112,5 +113,5 @@ def test_extraction_degrades_without_parser(monkeypatch) -> None:
         return real_import(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    title, text = webextract.html_to_text("<html><title>T</title><body>Rhymney 112 all out</body></html>")
+    _title, text = webextract.html_to_text("<html><title>T</title><body>Rhymney 112 all out</body></html>")
     assert "Rhymney 112 all out" in text

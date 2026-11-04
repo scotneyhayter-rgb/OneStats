@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
         from onestats.domain.research import worker as research_worker
 
         research_worker.stop_worker()
-    except Exception:  # noqa: BLE001 - best-effort shutdown
+    except Exception:  # noqa: BLE001, S110 - best-effort shutdown
         pass
     log.info("Shutting down %s", settings.app_name)
 

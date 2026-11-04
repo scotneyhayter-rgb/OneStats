@@ -22,7 +22,6 @@ from sqlalchemy.engine import Connection, Engine
 from onestats.core import version as ver
 from onestats.core.config import Settings
 
-
 # --- Schema version ---------------------------------------------------------------------------
 
 def _schema_level(head: str | None) -> int | None:

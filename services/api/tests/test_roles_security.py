@@ -14,7 +14,6 @@ import uuid
 import pytest
 from sqlalchemy import create_engine, text
 
-from onestats.core import security
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import audit, competitions, matches, people, permissions, users
@@ -162,7 +161,7 @@ def test_force_rls_isolates_workspaces_no_leak(conn):
     matches.create_match(conn, ws_a, "actor", competition_id=comp_a)
     people.create_person(conn, ws_a, "actor", display_name="A Player")
     # switching the workspace context to B must reveal NONE of A's rows (fail-closed FORCE RLS)
-    ws_b = _ws(conn, "B")
+    _ws(conn, "B")
     assert conn.execute(text("SELECT count(*) FROM match")).scalar_one() == 0
     assert conn.execute(text("SELECT count(*) FROM person")).scalar_one() == 0
     # and with NO workspace context at all, nothing is visible either

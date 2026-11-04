@@ -108,7 +108,7 @@ def discover_trove(queries: list[str], context: dict[str, Any] | None, *,
     for q in queries[:2]:
         try:
             res = trove.search_newspapers(settings, query=q, year_from=yr, year_to=yr, n=5)
-        except Exception:  # noqa: BLE001 - a discovery provider failing must not abort the whole run
+        except Exception:  # noqa: BLE001, S112 - a discovery provider failing must not abort the whole run
             continue
         for art in res.get("results", []):
             if art.get("url"):
