@@ -189,7 +189,7 @@ def _overs_to_balls_overs(overs_text: Any, bpo: int | None) -> tuple[int | None,
     try:
         if "." in s:
             whole, _, part = s.partition(".")
-            full, part_balls = int(whole or 0), int((part[:1] or "0"))
+            full, part_balls = int(whole or 0), int(part[:1] or "0")
         else:
             full, part_balls = int(s), 0
     except ValueError:

@@ -29,7 +29,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.0",
-    "ruff>=0.6.0",
+    # Pinned so CI lints deterministically — an unpinned ruff would pull a newer default
+    # rule set and fail CI on rules the code was never checked against.
+    "ruff==0.17.1",
 ]
 
 [build-system]

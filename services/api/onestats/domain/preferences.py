@@ -28,7 +28,7 @@ def get_preferences(conn: Connection, user_id: UUID, namespace: str,
 def set_preferences(conn: Connection, user_id: UUID, namespace: str, prefs: dict[str, Any],
                     workspace_id: UUID | None = None) -> dict[str, Any]:
     if not isinstance(prefs, dict):
-        raise ValueError("prefs_must_be_object")
+        raise ValueError("prefs_must_be_object")  # noqa: TRY004 - ValueError is the documented bad-input contract
     # distinct upsert targets for the two partial unique indexes (global vs workspace-scoped)
     if workspace_id is None:
         conn.execute(

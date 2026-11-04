@@ -33,9 +33,9 @@ def test_cricsheet_requires_auth(client):
 
 def test_routes_are_registered(client):
     paths = client.app.openapi()["paths"]
-    assert f"/api/v1/workspaces/{{workspace_id}}/match-index/summary" in paths
-    assert f"/api/v1/workspaces/{{workspace_id}}/scheduler/tasks/{{task_id}}/run-now" in paths
-    assert f"/api/v1/workspaces/{{workspace_id}}/intl-stats/career/{{person_id}}" in paths
-    assert f"/api/v1/workspaces/{{workspace_id}}/intl-stats/leaders/{{fmt}}/{{discipline}}" in paths
-    assert f"/api/v1/workspaces/{{workspace_id}}/cricsheet/summary" in paths
-    assert f"/api/v1/workspaces/{{workspace_id}}/cricsheet/backfills/{{fmt}}/{{action}}" in paths
+    assert "/api/v1/workspaces/{workspace_id}/match-index/summary" in paths
+    assert "/api/v1/workspaces/{workspace_id}/scheduler/tasks/{task_id}/run-now" in paths
+    assert "/api/v1/workspaces/{workspace_id}/intl-stats/career/{person_id}" in paths
+    assert "/api/v1/workspaces/{workspace_id}/intl-stats/leaders/{fmt}/{discipline}" in paths
+    assert "/api/v1/workspaces/{workspace_id}/cricsheet/summary" in paths
+    assert "/api/v1/workspaces/{workspace_id}/cricsheet/backfills/{fmt}/{action}" in paths

@@ -37,7 +37,7 @@ def enabled() -> bool:
     return True
 
 
-def render(url: str, *, resolver: "webfetch.Resolver | None" = None,
+def render(url: str, *, resolver: webfetch.Resolver | None = None,
            user_agent: str = webfetch.DEFAULT_USER_AGENT, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> str | None:
     """Return the JS-rendered HTML for ``url``, or ``None`` if disabled/unavailable/blocked/failed."""
     if not enabled():

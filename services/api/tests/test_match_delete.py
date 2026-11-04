@@ -14,7 +14,8 @@ from sqlalchemy import create_engine, text
 from onestats.api.v1.matches import _may_delete
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import competitions, innings as inn, matches
+from onestats.domain import competitions, matches
+from onestats.domain import innings as inn
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")

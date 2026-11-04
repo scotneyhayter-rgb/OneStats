@@ -19,7 +19,7 @@ from onestats.domain.scheduler import tasks
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")
 ACTOR = "11111111-1111-1111-1111-111111111111"
-UTC = dt.timezone.utc
+UTC = dt.UTC
 
 
 @pytest.fixture

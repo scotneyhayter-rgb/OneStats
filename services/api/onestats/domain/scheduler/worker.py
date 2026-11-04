@@ -41,7 +41,7 @@ def _workspace_ids(engine: Engine) -> list[str]:
 def tick_all_workspaces(engine: Engine, *, now: dt.datetime | None = None) -> dict[str, int]:
     """Fire every due scheduled task across all workspaces. Returns totals for logging. Never raises
     for a single workspace's failure."""
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     total_ran = 0
     workspaces = 0
     for wsid in _workspace_ids(engine):

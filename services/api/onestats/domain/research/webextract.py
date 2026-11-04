@@ -113,7 +113,7 @@ def pdf_to_text(raw: bytes, *, max_pages: int = 20) -> str:
             for page in pdf.pages[:max_pages]:
                 try:
                     out.append(page.extract_text() or "")
-                except Exception:  # noqa: BLE001 - a bad page must not abort the whole document
+                except Exception:  # noqa: BLE001, S112 - a bad page must not abort the whole document
                     continue
     except Exception:  # noqa: BLE001 - corrupt/encrypted PDF: no text, not a crash
         return ""

@@ -257,7 +257,7 @@ class Fetcher:
                     chk = validate_url(current, resolver=self.resolver)
                     if not chk.ok:
                         return FetchResult(BLOCKED, url, detail=chk.detail)
-                    if _robots_check and self.respect_robots:
+                    if _robots_check and self.respect_robots:  # noqa: SIM102 - kept explicit in SSRF path
                         if not self._robots.allowed(current, self.user_agent, fetch_text=self.fetch_text):
                             return FetchResult(DISALLOWED, url, final_url=current,
                                                detail="robots.txt disallows this path for our agent")

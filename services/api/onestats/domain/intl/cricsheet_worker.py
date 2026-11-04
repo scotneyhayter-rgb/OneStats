@@ -14,7 +14,8 @@ Wiring (to be added to the shared worker loop, next to the scheduler tick):
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -88,5 +89,5 @@ def _mark_error(engine: Engine, workspace_id: UUID, fmt: str, message: str) -> N
             conn.execute(text("UPDATE cricsheet_backfill SET last_error = :e, updated_at = now() "
                               "WHERE workspace_id = :w AND format = :f"),
                          {"e": message[:2000], "w": workspace_id, "f": fmt})
-    except Exception:  # noqa: BLE001 - never let error-logging mask the original failure
+    except Exception:  # noqa: BLE001, S110 - never let error-logging mask the original failure
         pass

@@ -56,7 +56,7 @@ class MemberAdd(BaseModel):
     role: str
 
     @model_validator(mode="after")
-    def _one_identifier(self) -> "MemberAdd":
+    def _one_identifier(self) -> MemberAdd:
         if self.user_id is None and not (self.username and self.username.strip()):
             raise ValueError("user_id_or_username_required")
         return self

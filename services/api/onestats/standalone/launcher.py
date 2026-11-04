@@ -68,7 +68,7 @@ def _config_candidates(dir_: Path) -> list[Path]:
         exe_dir = Path(sys.executable).resolve().parent
         cands.append(exe_dir / "onestats.env")          # install dir / onestats-server-dist
         cands.append(exe_dir.parent / "onestats.env")   # install dir (next to the app exe)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 - best-effort env-file discovery; a missing path is fine
         pass
     up = os.environ.get("USERPROFILE")
     if up:
@@ -153,9 +153,10 @@ def run_migrations() -> bool:
     """Apply Alembic migrations forward to head. Forward-only and idempotent — existing data is
     preserved and never overwritten. Returns True on success."""
     try:
-        import onestats
         from alembic import command
         from alembic.config import Config
+
+        import onestats
 
         migrations_dir = Path(onestats.__file__).parent / "db" / "migrations"
         cfg = Config()
@@ -165,7 +166,7 @@ def run_migrations() -> bool:
         command.upgrade(cfg, "head")
         log.info("Database schema is up to date.")
         return True
-    except Exception:  # noqa: BLE001 - report clearly; never leave a half-applied silent failure
+    except Exception:
         log.exception("Database migration failed.")
         return False
 
@@ -214,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         return 3
     try:
         serve(port, host=resolve_bind_host())
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("The OneStats backend stopped unexpectedly.")
         return 1
     return 0

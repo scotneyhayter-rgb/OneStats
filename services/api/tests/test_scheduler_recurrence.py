@@ -15,7 +15,7 @@ import pytest
 from onestats.domain.scheduler import recurrence
 
 MEL = "Australia/Melbourne"
-UTC = dt.timezone.utc
+UTC = dt.UTC
 
 
 def _occ(after: dt.datetime) -> dt.datetime:

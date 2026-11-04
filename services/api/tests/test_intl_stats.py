@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import batting, bowling, competitions, matches, people, recalc
+from onestats.domain import batting, bowling, matches, people, recalc
 from onestats.domain import innings as inn
 from onestats.domain.intl import stats as intl_stats
 

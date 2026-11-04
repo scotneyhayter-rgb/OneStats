@@ -32,7 +32,7 @@ def register_dispatcher(task_kind: str, fn: Callable[..., dict[str, Any]]) -> No
 
 
 def _utcnow() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 def _row(conn: Connection, task_id: UUID) -> dict[str, Any] | None:

@@ -15,7 +15,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from onestats.api.deps import RequestContext, SettingsDep, require_any_permission, require_permission
+from onestats.api.deps import (
+    RequestContext,
+    SettingsDep,
+    require_any_permission,
+    require_permission,
+)
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import teams
