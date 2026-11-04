@@ -13,7 +13,8 @@ from onestats.domain.importing import detect_adapter, registry
 from onestats.domain.importing.adapters.cricket_statz import CricketStatzAdapter
 
 # a small, realistic CricketStatz slice: home player 10 is BOTH captain and keeper; away cap 20/keeper 21;
-# toss won by home (code 1); dismissals use verified (2=bowled) and unresolved-but-preserved (4) codes.
+# toss won by home (code 1); dismissals use a verified (2=bowled) code and an unresolved-but-preserved
+# code (11 = "handled the ball" — documented in CS_HOWOUT as having no 1:1 OneStats type).
 PAYLOAD = {
     "clubs": [{"ClubID": 1, "Name": "Alpha CC"}],
     "teams": [{"TeamID": 100, "Name": "Alpha 1st", "ClubID": 1}, {"TeamID": 200, "Name": "Beta 1st", "ClubID": 1}],
@@ -32,7 +33,7 @@ PAYLOAD = {
         {"InningsID": 700, "InnsNumber": 1, "cricket_batting": [
             {"Batpos": 1, "BatsmanID": 10, "Howout": 2, "Bowler": 20, "Fielder": 0, "Score": 38, "Balls": 41,
              "mins": 60, "sixes": 1, "fours": 5, "FOW": 40, "FOWPos": 1, "FOWBatID": 10, "FOWOvers": 12.3},
-            {"Batpos": 2, "BatsmanID": 11, "Howout": 4, "Bowler": 20, "Fielder": 21, "Score": 0, "Balls": None,
+            {"Batpos": 2, "BatsmanID": 11, "Howout": 11, "Bowler": 20, "Fielder": 21, "Score": 0, "Balls": None,
              "FOW": 60, "FOWPos": 2, "FOWBatID": 11, "FOWOvers": 18.0}]}]}],
     "bowling": [{"MatchID": 500, "cricket_Innings": [
         {"InningsID": 700, "InnsNumber": 1, "cricket_bowling": [
@@ -80,7 +81,7 @@ def test_normalize_scorecard_dismissals_fow_and_unknown_not_zero():
     # verified code mapped; raw code always preserved
     assert b1.dismissal_source_code == "2" and b1.dismissal_type == "bowled"
     # unresolved code: raw kept, mapped type left None (never guessed)
-    assert b2.dismissal_source_code == "4" and b2.dismissal_type is None
+    assert b2.dismissal_source_code == "11" and b2.dismissal_type is None
     # unknown is not zero: b2 faced an unknown number of balls, scored a real 0
     assert b2.runs == 0 and b2.balls_faced is None
     assert len(inn.fall_of_wickets) == 2 and inn.fall_of_wickets[0].team_score == 40
