@@ -63,6 +63,15 @@ export const NAV_SECTIONS: NavSection[] = [
     workspaceType: "international",
   },
   {
+    key: "intl-imports",
+    label: "Import Scorecards",
+    path: "/intl/imports",
+    icon: DatabaseBackup,
+    blurb: "Cricsheet import — progress, review, errors, identities and sources.",
+    perm: "match.view",
+    workspaceType: "international",
+  },
+  {
     key: "matches",
     label: "Matches",
     path: "/matches",

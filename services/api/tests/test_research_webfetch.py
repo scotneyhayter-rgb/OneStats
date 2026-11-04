@@ -5,7 +5,6 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from onestats.domain.research import webfetch
 from onestats.domain.research.webfetch import (
     BLOCKED,
     DISALLOWED,
@@ -88,6 +87,29 @@ def test_wrong_content_type_rejected() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, headers={"content-type": "application/octet-stream"}, content=b"\x00\x01")
     assert _fetcher(handler).fetch("https://example.com/file.bin").outcome == WRONG_TYPE
+
+
+def test_json_body_is_decoded_to_text() -> None:
+    # Discovery APIs (e.g. Wikipedia OpenSearch) return application/json — it MUST be decoded to text
+    # so discovery can parse it. (Regression guard: PDF/image are the only non-decoded bodies.)
+    payload = '["q",["Donald Bradman"],[],["https://en.wikipedia.org/wiki/Donald_Bradman"]]'
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "application/json"}, text=payload)
+    f = Fetcher(resolver=public_resolver, transport=httpx.MockTransport(handler), respect_robots=False,
+                allowed_content_types=("application/json",))
+    r = f.fetch("https://en.wikipedia.org/w/api.php?x=1")
+    assert r.outcome == FETCHED and r.text == payload
+
+
+def test_pdf_fetch_keeps_raw_bytes_and_no_text() -> None:
+    # A PDF body is retrieved as raw bytes (for pdfplumber), not decoded to text.
+    body = b"%PDF-1.4 fake pdf bytes"
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "application/pdf"}, content=body)
+    f = Fetcher(resolver=public_resolver, transport=httpx.MockTransport(handler), respect_robots=False,
+                allowed_content_types=("text/html", "application/pdf"))
+    r = f.fetch("https://example.com/report.pdf")
+    assert r.outcome == FETCHED and r.content == body and r.text is None
 
 
 def test_oversize_body_aborted() -> None:

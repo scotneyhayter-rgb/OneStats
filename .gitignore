@@ -5,6 +5,16 @@
 *.pem
 *.key
 *.pfx
+# Signing / certificate material (updater keypair, Authenticode, etc.) — NEVER commit.
+# The Tauri updater PRIVATE key (minisign .key) signs every release; keep it in a
+# password manager / CI secret only. The .pub is public and may be committed deliberately.
+*.p12
+*.p8
+*.cer
+*.crt
+*.jks
+*.minisign
+*.keystore
 secrets/
 .pgpass
 # One-time super-admin setup token (first run)
@@ -31,6 +41,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
 dist/
 build/
 
@@ -55,3 +69,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# === Claude Code local session tooling ===
+# Local git worktrees created for side sessions — never part of the repo.
+.claude/worktrees/
+.claude/settings.local.json
+.claude/projects/

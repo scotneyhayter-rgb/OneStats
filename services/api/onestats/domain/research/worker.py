@@ -95,6 +95,12 @@ class ResearchWorker:
             # never stop the research loop, so its failure is logged and swallowed.
             self._scheduler_tick()
 
+            # Cricsheet backfill tick (International workspace): download + import one bounded batch per
+            # active backfill. It does network I/O, so it belongs on the worker (not a request/scheduler
+            # txn); due-gated, idempotent, failure-isolated per workspace/format, and a no-op when nothing
+            # is active. Its failure must never stop the research loop.
+            self._cricsheet_tick()
+
             if not did_work:
                 self._stop.wait(self._poll)
 
@@ -105,6 +111,14 @@ class ResearchWorker:
             scheduler_worker.tick_all_workspaces(self._engine)
         except Exception as exc:  # noqa: BLE001 - scheduler tick must never stop the research loop
             log.warning("Scheduler tick failed: %s", type(exc).__name__)
+
+    def _cricsheet_tick(self) -> None:
+        try:
+            from onestats.domain.intl import cricsheet_worker
+
+            cricsheet_worker.run_due(self._engine)
+        except Exception as exc:  # noqa: BLE001 - cricsheet tick must never stop the research loop
+            log.warning("Cricsheet tick failed: %s", type(exc).__name__)
 
     def _safe_reconcile(self, wsid: str) -> None:
         try:

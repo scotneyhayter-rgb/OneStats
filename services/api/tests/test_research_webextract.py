@@ -67,6 +67,41 @@ def test_text_mode_without_html() -> None:
     assert e.candidate["observed_scores"]
 
 
+def _make_pdf(text: str) -> bytes:
+    """A real one-page PDF built with reportlab (already a project dependency)."""
+    import io
+
+    from reportlab.pdfgen import canvas
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    c.drawString(72, 720, text)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_pdf_to_text_round_trip() -> None:
+    raw = _make_pdf("Rhymney 112 all out, Moyston 98. Rhymney won by 14 runs.")
+    out = webextract.pdf_to_text(raw)
+    assert "Rhymney" in out and "won by 14 runs" in out
+    # and the extracted PDF text flows through the normal (non-HTML) extractor
+    e = extract("https://example.com/r.pdf", out, is_html=False)
+    assert e.cricket_relevant is True
+
+
+def test_pdf_to_text_graceful_without_library(monkeypatch) -> None:
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name == "pdfplumber":
+            raise ImportError("no pdfplumber")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert webextract.pdf_to_text(b"%PDF-1.4 whatever") == ""
+
+
 def test_extraction_degrades_without_parser(monkeypatch) -> None:
     # Simulate bs4 being unavailable in a stripped build: html_to_text must still return text.
     import builtins
@@ -78,5 +113,5 @@ def test_extraction_degrades_without_parser(monkeypatch) -> None:
         return real_import(name, *a, **k)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    title, text = webextract.html_to_text("<html><title>T</title><body>Rhymney 112 all out</body></html>")
+    _title, text = webextract.html_to_text("<html><title>T</title><body>Rhymney 112 all out</body></html>")
     assert "Rhymney 112 all out" in text

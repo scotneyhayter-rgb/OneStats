@@ -256,6 +256,18 @@ function JobFindings({ workspaceId, jobId }: { workspaceId: string; jobId: strin
           {typeof f.extracted?.classification_reason === "string" && (
             <p className="text-[11px] italic text-muted-foreground">{f.extracted.classification_reason as string}</p>
           )}
+          {(() => {
+            const ps = (f.extracted?.player_suggestions ?? null) as Record<string, { display_name: string }[]> | null;
+            if (!ps || Object.keys(ps).length === 0) return null;
+            const line = Object.entries(ps).slice(0, 4)
+              .map(([name, cands]) => `${name} → ${cands.map((c) => c.display_name).join(", ")}`)
+              .join("; ");
+            return (
+              <p className="text-[11px] text-muted-foreground">
+                Possible existing players: {line} (suggestions only — confirm before linking)
+              </p>
+            );
+          })()}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <a href={f.url} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1 text-brand hover:underline">

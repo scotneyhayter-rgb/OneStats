@@ -1,0 +1,66 @@
+name: Security
+
+# Draft security scanning for the public repo: secret scanning, dependency audits, and a Python
+# static security scan. NO installer build, NO release/publish. Findings are advisory in the audits
+# (|| true) so a transitive advisory does not block merges, but the secret scan is hard-failing —
+# a committed secret must never land on the public repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 18 * * 0'   # weekly, Sunday 18:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks) — hard fail
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  python-audit:
+    name: Python deps + bandit (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pip-audit bandit
+      - name: pip-audit (advisory)
+        run: pip-audit || true
+      - name: bandit static security scan (advisory)
+        run: bandit -r onestats -q || true
+
+  npm-audit:
+    name: npm audit (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - name: npm audit (advisory)
+        run: npm audit --audit-level=high || true

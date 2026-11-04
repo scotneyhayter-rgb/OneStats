@@ -102,7 +102,7 @@ def test_run_step_produces_findings_and_completes(conn):
 
 def test_identical_content_deduplicated(conn):
     wid = _ws(conn, "ENG_DEDUP")
-    job = jobs.create_job(conn, wid, ACTOR, query="dupes", depth="quick")
+    jobs.create_job(conn, wid, ACTOR, query="dupes", depth="quick")
     claimed = jobs.claim_next_job(conn, wid, ACTOR)
     urls = ["https://example.com/a", "https://example.com/b"]  # same content on both
     def handler(req): return _page(SCORECARD)
@@ -117,7 +117,7 @@ def test_identical_content_deduplicated(conn):
 
 def test_blocked_target_is_recorded_not_silent(conn):
     wid = _ws(conn, "ENG_BLOCK")
-    job = jobs.create_job(conn, wid, ACTOR, query="ssrf", depth="quick")
+    jobs.create_job(conn, wid, ACTOR, query="ssrf", depth="quick")
     claimed = jobs.claim_next_job(conn, wid, ACTOR)
     # discovery yields an internal URL; the fetcher's resolver maps it to a private IP → blocked
     def resolver(host): return ["10.0.0.9"] if host == "internal.example" else [PUBLIC_IP]
@@ -133,7 +133,7 @@ def test_blocked_target_is_recorded_not_silent(conn):
 
 def test_resume_after_interrupt_no_duplicate_work(conn):
     wid = _ws(conn, "ENG_RESUME")
-    job = jobs.create_job(conn, wid, ACTOR, query="resume", depth="standard")
+    jobs.create_job(conn, wid, ACTOR, query="resume", depth="standard")
     claimed = jobs.claim_next_job(conn, wid, ACTOR)
     urls = [f"https://example.com/p/{i}" for i in range(7)]  # > STEP_BATCH(5) → needs 2 steps
     def handler(req): return _page(SCORECARD.replace("Rhymney", f"Team{req.url.path[-1]}"))
@@ -168,15 +168,36 @@ def test_pause_resume_cancel(conn):
     assert jobs.claim_next_job(conn, wid, ACTOR) is None
 
 
-def _seed_match(conn, wid, home, away, year):
+def test_image_finding_via_injected_ocr(conn):
+    wid = _ws(conn, "ENG_OCR")
+    jobs.create_job(conn, wid, ACTOR, query="scanned clipping", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return httpx.Response(200, headers={"content-type": "image/png"}, content=b"\x89PNGfake")
+    fetcher = Fetcher(resolver=lambda h: [PUBLIC_IP], transport=httpx.MockTransport(handler),
+                      respect_robots=False, allowed_content_types=("image/png",))
+    fake_ocr = lambda raw: ("Rhymney 112 all out, Moyston 98. Rhymney won by 14 runs.", 0.7)
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=fetcher, discovery=_discovery(["https://example.com/clip.png"]), ocr_engine=fake_ocr)
+    findings = jobs.list_findings(conn, wid)
+    assert len(findings) == 1 and findings[0]["kind"] in ("scorecard", "result", "match_candidate")
+
+
+def test_ocr_image_graceful_fallback(monkeypatch):
+    from onestats.domain.research import extraction
+    monkeypatch.setattr(extraction, "default_engine", lambda: (None, None))
+    assert reng._ocr_image(b"x", None) == ""                    # no engine → no text (honest)
+    assert reng._ocr_image(b"x", lambda raw: ("hi", 0.5)) == "hi"  # injected engine is used
+
+
+def _seed_match(conn, wid, home, away, year, *, margin_runs=None):
     org = conn.execute(text("INSERT INTO organisation(workspace_id, name) VALUES (:w, :n) RETURNING id"),
                        {"w": wid, "n": f"{home} org"}).scalar_one()
     def team(n):
         return conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w, :o, :n) RETURNING id"),
                             {"w": wid, "o": org, "n": n}).scalar_one()
     hid, aid = team(home), team(away)
-    mid = conn.execute(text("INSERT INTO match(workspace_id, match_date) VALUES (:w, :d) RETURNING id"),
-                       {"w": wid, "d": f"{year}-01-14"}).scalar_one()
+    mid = conn.execute(text("INSERT INTO match(workspace_id, match_date, margin_runs) VALUES (:w, :d, :mr) RETURNING id"),
+                       {"w": wid, "d": f"{year}-01-14", "mr": margin_runs}).scalar_one()
     for tid, home_flag in ((hid, True), (aid, False)):
         conn.execute(text("INSERT INTO match_team(workspace_id, match_id, team_id, is_home) "
                           "VALUES (:w, :m, :t, :h)"), {"w": wid, "m": mid, "t": tid, "h": home_flag})
@@ -186,7 +207,7 @@ def _seed_match(conn, wid, home, away, year):
 def test_finding_classified_possible_duplicate_against_existing_match(conn):
     wid = _ws(conn, "ENG_CLASS")
     _seed_match(conn, wid, "Rhymney", "Moyston", 1905)
-    job = jobs.create_job(conn, wid, ACTOR, query="Rhymney 1905", depth="quick")
+    jobs.create_job(conn, wid, ACTOR, query="Rhymney 1905", depth="quick")
     claimed = jobs.claim_next_job(conn, wid, ACTOR)
     # SCORECARD text names "Rhymney v Moyston 1905" → should match the seeded 1905 match.
     def handler(req): return _page(SCORECARD)
@@ -197,9 +218,70 @@ def test_finding_classified_possible_duplicate_against_existing_match(conn):
     assert (f["extracted"] or {}).get("candidate_match_ids")  # points the reviewer at the existing match
 
 
+def test_finding_suggests_existing_person_for_named_player(conn):
+    wid = _ws(conn, "ENG_IDENT")
+    conn.execute(text("INSERT INTO person(workspace_id, display_name) VALUES (:w, 'John Smith')"), {"w": wid})
+    jobs.create_job(conn, wid, ACTOR, query="players", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)  # scorecard names "J Smith ..."
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    f = jobs.list_findings(conn, wid)[0]
+    sugg = (f["extracted"] or {}).get("player_suggestions") or {}
+    assert any(k.lower().endswith("smith") for k in sugg)  # J Smith → John Smith suggested, not merged
+    assert f["status"] == "pending_review"
+
+
+def test_finding_flagged_conflicting_when_result_differs(conn):
+    wid = _ws(conn, "ENG_CONFLICT")
+    _seed_match(conn, wid, "Rhymney", "Moyston", 1905, margin_runs=20)  # record says 20 runs
+    jobs.create_job(conn, wid, ACTOR, query="result conflict", depth="quick")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)  # SCORECARD says "won by 14 runs"
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    f = jobs.list_findings(conn, wid)[0]
+    assert f["classification"] == "conflicting"
+    assert f["status"] == "pending_review"   # never auto-applied; the verified record is untouched
+
+
+def test_deep_depth_runs_without_js_render(conn, monkeypatch):
+    monkeypatch.delenv("ONESTATS_RESEARCH_JS", raising=False)  # JS rendering stays off
+    wid = _ws(conn, "ENG_DEEP")
+    jobs.create_job(conn, wid, ACTOR, query="deep run", depth="deep")
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)
+    res = reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                        page_fetcher=_fetcher(handler), discovery=_discovery(["https://example.com/m"]))
+    assert res["done"] is True
+    assert len(jobs.list_findings(conn, wid)) == 1
+
+
+def test_depth_breadth_ordering():
+    assert reng.DEPTH_PER_QUERY["quick"] < reng.DEPTH_PER_QUERY["standard"] < reng.DEPTH_PER_QUERY["deep"]
+
+
+def test_allowed_sources_restricts_retrieval(conn):
+    wid = _ws(conn, "ENG_ALLOW")
+    # job restricted to example.com; discovery also offers an off-list host
+    jobs.create_job(conn, wid, ACTOR, query="policy", depth="quick",
+                          context={"allowed_sources": ["example.com"]})
+    claimed = jobs.claim_next_job(conn, wid, ACTOR)
+    def handler(req): return _page(SCORECARD)
+    reng.run_step(conn, wid, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,
+                  page_fetcher=_fetcher(handler),
+                  discovery=_discovery(["https://example.com/ok", "https://benchmark.test/off"]))
+    outcomes = {r[0]: r[1] for r in conn.execute(text(
+        "SELECT url, outcome FROM research_fetch WHERE job_id = :j"), {"j": claimed["id"]}).all()}
+    assert outcomes["https://example.com/ok"] == "fetched"
+    assert outcomes["https://benchmark.test/off"] == "blocked"   # off the allow-list → never fetched
+    # the only finding came from the allowed host
+    assert all(f["source_host"] == "example.com" for f in jobs.list_findings(conn, wid))
+
+
 def test_workspace_isolation_of_findings(conn):
     a = _ws(conn, "ENG_WS_A")
-    job = jobs.create_job(conn, a, ACTOR, query="iso", depth="quick")
+    jobs.create_job(conn, a, ACTOR, query="iso", depth="quick")
     claimed = jobs.claim_next_job(conn, a, ACTOR)
     def handler(req): return _page(SCORECARD)
     reng.run_step(conn, a, ACTOR, jobs.get_job(conn, claimed["id"]), settings=settings,

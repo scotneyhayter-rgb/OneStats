@@ -37,7 +37,7 @@ def test_live_internet_research_end_to_end():
                          {"a": ACTOR})
             set_workspace(conn, wid)
 
-            job = jobs.create_job(conn, wid, ACTOR, query="Donald Bradman", depth="quick",
+            jobs.create_job(conn, wid, ACTOR, query="Donald Bradman", depth="quick",
                                   context={"player": "Donald Bradman"})
             claimed = jobs.claim_next_job(conn, wid, ACTOR)
             assert claimed is not None

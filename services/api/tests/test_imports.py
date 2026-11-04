@@ -9,13 +9,13 @@ historical-identity preservation, rollback/recovery, isolation, permissions and 
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-import uuid
-
 from onestats.domain import competitions, imports, permissions
 
 settings = get_settings()

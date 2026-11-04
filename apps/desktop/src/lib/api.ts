@@ -1386,6 +1386,47 @@ export interface IntlCareer {
 /** A leaderboard row — shape depends on the discipline; the screen renders the columns it knows. */
 export type IntlLeaderRow = Record<string, number | string | boolean | null>;
 
+// --- Cricsheet import management ---
+export type BackfillStatus = "pending" | "running" | "paused" | "completed" | "cancelled" | "failed";
+export interface CricsheetBackfill {
+  id: string;
+  format: IntlFormat;
+  status: BackfillStatus;
+  total_seen: number;
+  processed: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  last_ref: string | null;
+  last_error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+export interface CricsheetImportRow {
+  source_ref: string;
+  format: string | null;
+  status: "awaiting_verification" | "skipped" | "failed";
+  detail: string | null;
+  match_id: string | null;
+  content_sha256: string | null;
+  source_url: string | null;
+  updated_at: string;
+}
+export interface CricsheetSummary {
+  imports: { awaiting_verification: number; skipped: number; failed: number; total: number };
+  backfills: CricsheetBackfill[];
+}
+export interface IdentityReviewRow {
+  id: string;
+  person_a_id: string;
+  person_b_id: string;
+  status: string;
+  confidence: string | null;
+  evidence: string | null;
+  notes: string | null;
+  created_at: string | null;
+}
+
 export const api = {
   baseUrl: getApiBase(),
   health: () => request<{ status: string; version: string; env: string }>("/api/v1/health", { auth: false }),
@@ -2232,4 +2273,12 @@ export const api = {
   intlLeaders: (w: string, fmt: string, discipline: string,
                 opts: { limit?: number; order_by?: string } = {}) =>
     request<IntlLeaderRow[]>(`/api/v1/workspaces/${w}/intl-stats/leaders/${fmt}/${discipline}${qs(opts)}`),
+  cricsheetSummary: (w: string) =>
+    request<CricsheetSummary>(`/api/v1/workspaces/${w}/cricsheet/summary`),
+  cricsheetImports: (w: string, statusFilter?: string, limit = 200) =>
+    request<CricsheetImportRow[]>(`/api/v1/workspaces/${w}/cricsheet/imports${qs({ status_filter: statusFilter, limit })}`),
+  cricsheetControl: (w: string, fmt: string, action: "start" | "pause" | "resume" | "cancel") =>
+    request<CricsheetBackfill>(`/api/v1/workspaces/${w}/cricsheet/backfills/${fmt}/${action}`, { method: "POST" }),
+  cricsheetIdentityReviews: (w: string, statusFilter = "pending") =>
+    request<IdentityReviewRow[]>(`/api/v1/workspaces/${w}/cricsheet/identity-reviews${qs({ status_filter: statusFilter })}`),
 };

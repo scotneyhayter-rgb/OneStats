@@ -90,7 +90,7 @@ def create_backup(settings: Settings) -> dict[str, object]:
     env = dict(os.environ, PGPASSWORD=password)
     cmd = [pg_dump, "-h", parts["host"], "-p", parts["port"], "-U", user,
            "-d", parts["dbname"], "-F", "c", "-f", str(out)]
-    res = subprocess.run(cmd, env=env, capture_output=True, text=True)  # noqa: S603
+    res = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)
     if res.returncode != 0 or not out.exists():
         out.unlink(missing_ok=True)  # never leave a partial/failed dump behind
         err = res.stderr.strip()[:300]
@@ -110,7 +110,7 @@ def verify_backup(path: Path) -> bool:
     pg_restore = _find_tool("pg_restore")
     if pg_restore is None:
         return False
-    res = subprocess.run([pg_restore, "--list", str(path)], capture_output=True, text=True)  # noqa: S603
+    res = subprocess.run([pg_restore, "--list", str(path)], capture_output=True, text=True, check=False)
     return res.returncode == 0 and bool(res.stdout.strip())
 
 
@@ -125,7 +125,7 @@ def restore_backup(settings: Settings, path: Path) -> bool:
     env = dict(os.environ, PGPASSWORD=password)
     cmd = [pg_restore, "-h", parts["host"], "-p", parts["port"], "-U", user,
            "-d", parts["dbname"], "--clean", "--if-exists", "--no-owner", str(path)]
-    res = subprocess.run(cmd, env=env, capture_output=True, text=True)  # noqa: S603
+    res = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)
     if res.stderr:
         print(res.stderr[:1000])
     return res.returncode == 0

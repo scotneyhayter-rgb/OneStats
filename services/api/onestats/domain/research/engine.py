@@ -27,7 +27,15 @@ from uuid import UUID
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain.research import classify, jobs, webextract, webfetch
+from onestats.domain.research import (
+    classify,
+    extraction,
+    identity,
+    jobs,
+    jsrender,
+    webextract,
+    webfetch,
+)
 from onestats.domain.research.webfetch import Fetcher
 
 # A discovery provider: (queries, context) -> list of {"url", "source"} candidates.
@@ -100,7 +108,7 @@ def discover_trove(queries: list[str], context: dict[str, Any] | None, *,
     for q in queries[:2]:
         try:
             res = trove.search_newspapers(settings, query=q, year_from=yr, year_to=yr, n=5)
-        except Exception:  # noqa: BLE001 - a discovery provider failing must not abort the whole run
+        except Exception:  # noqa: BLE001, S112 - a discovery provider failing must not abort the whole run
             continue
         for art in res.get("results", []):
             if art.get("url"):
@@ -113,25 +121,56 @@ def _q(s: str) -> str:
     return quote(s, safe="")
 
 
-def default_discovery(settings: Settings, *, fetcher: Fetcher) -> Discovery:
-    """The built-in discovery strategy (Wikipedia always; Trove when a key exists)."""
+# How many candidate links each discovery query yields, by search depth.
+DEPTH_PER_QUERY = {"quick": 3, "standard": 5, "deep": 8}
+
+
+def default_discovery(settings: Settings, *, fetcher: Fetcher, per_query: int = 5,
+                      allowed: list[str] | None = None) -> Discovery:
+    """The built-in discovery strategy (Wikipedia always; Trove when a key exists). When a job restricts
+    sources, a provider whose own host is off-list is skipped, and every candidate is filtered to the
+    allow-list — so a restricted job never even queries, nor surfaces, an off-list host."""
     def _discover(queries: list[str], context: dict[str, Any] | None) -> list[dict[str, str]]:
-        found = discover_wikipedia(queries, context, fetcher=fetcher)
-        found += discover_trove(queries, context, settings=settings)
-        # de-dup by url, preserve order
+        found: list[dict[str, str]] = []
+        if _host_allowed("en.wikipedia.org", allowed):
+            found += discover_wikipedia(queries, context, fetcher=fetcher, per_query=per_query)
+        if _host_allowed("api.trove.nla.gov.au", allowed):
+            found += discover_trove(queries, context, settings=settings)
+        # de-dup by url + drop any candidate off the allow-list, preserve order
         seen: set[str] = set()
         uniq: list[dict[str, str]] = []
         for c in found:
-            if c["url"] not in seen:
-                seen.add(c["url"])
-                uniq.append(c)
+            if c["url"] in seen or not _host_allowed(_host(c["url"]), allowed):
+                continue
+            seen.add(c["url"])
+            uniq.append(c)
         return uniq
     return _discover
 
 
 def _page_fetcher(settings: Settings) -> Fetcher:
     ua = getattr(settings, "research_user_agent", None) or webfetch.DEFAULT_USER_AGENT
-    return Fetcher(user_agent=ua, respect_robots=True)
+    # Accept HTML/text, PDF (annual reports, handbooks, archived scorecards) and images (scanned
+    # clippings/scorecards, read via OCR when a local engine is available).
+    return Fetcher(user_agent=ua, respect_robots=True, max_bytes=15_000_000,
+                   allowed_content_types=(*webfetch.ALLOWED_CONTENT_TYPES, webfetch.PDF_CONTENT_TYPE,
+                                          *webfetch.IMAGE_CONTENT_TYPES))
+
+
+def _ocr_image(raw: bytes, ocr_engine: extraction.OcrEngine | None) -> str:
+    """OCR an image's bytes with the given engine, or the local default (Tesseract). Returns "" when no
+    engine is available or OCR fails — honest: an unreadable scan yields no finding, never a fabricated one."""
+    engine = ocr_engine
+    if engine is None:
+        from onestats.domain.research import extraction
+        engine, _ = extraction.default_engine()
+    if engine is None or not raw:
+        return ""
+    try:
+        text, _conf = engine(raw)
+        return text or ""
+    except Exception:  # noqa: BLE001 - OCR engines raise many error types; a failure yields no text
+        return ""
 
 
 def _discovery_fetcher(settings: Settings) -> Fetcher:
@@ -149,9 +188,30 @@ def _host(url: str) -> str | None:
         return None
 
 
+def _allowed_hosts(context: dict[str, Any]) -> list[str] | None:
+    """A job may restrict retrieval to an explicit host allow-list via context.allowed_sources (e.g. the
+    International workspace's policy: Cricsheet + Wikipedia/Wikidata only, never a benchmark site).
+    Returns the normalised list, or None when the job places no restriction (open discovery)."""
+    raw = (context or {}).get("allowed_sources")
+    if not isinstance(raw, list) or not raw:
+        return None
+    return [str(h).strip().lower().lstrip(".") for h in raw if str(h).strip()]
+
+
+def _host_allowed(host: str | None, allowed: list[str] | None) -> bool:
+    """True when ``allowed`` is None (no restriction) or ``host`` equals / is a subdomain of an entry."""
+    if allowed is None:
+        return True
+    if not host:
+        return False
+    h = host.lower()
+    return any(h == a or h.endswith("." + a) for a in allowed)
+
+
 def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, Any], *,
              settings: Settings, page_fetcher: Fetcher | None = None,
-             discovery: Discovery | None = None) -> dict[str, Any]:
+             discovery: Discovery | None = None,
+             ocr_engine: extraction.OcrEngine | None = None) -> dict[str, Any]:
     """Process one bounded slice of the investigation and checkpoint. Returns
     ``{"done": bool, "processed": int, "new_findings": int, "examined": int, "findings": int}``.
 
@@ -168,10 +228,13 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
 
     page_fetcher = page_fetcher or _page_fetcher(settings)
     context = job.get("context") or {}
+    allowed = _allowed_hosts(context)   # optional per-job host allow-list (None = open discovery)
 
-    # Seed the frontier once (first step).
+    # Seed the frontier once (first step). Discovery breadth scales with depth.
     if not cp.get("seeded"):
-        disc = discovery or default_discovery(settings, fetcher=_discovery_fetcher(settings))
+        per_query = DEPTH_PER_QUERY.get(depth, 5)
+        disc = discovery or default_discovery(settings, fetcher=_discovery_fetcher(settings),
+                                              per_query=per_query, allowed=allowed)
         queries = generate_queries(job.get("query") or "", context)
         candidates = disc(queries, context)
         frontier = [c["url"] for c in candidates]
@@ -188,6 +251,7 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
     # Load the workspace's match index once per step so each match-like finding can be classified
     # (possible_duplicate / additional_evidence / new) against existing records — review-only, never merged.
     match_index = classify.load_match_index(conn, workspace_id)
+    person_index = identity.load_person_index(conn, workspace_id)
     while frontier and processed < jobs.STEP_BATCH and examined < budget:
         url = frontier.pop(0)
         if url in visited:
@@ -195,12 +259,20 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
         visited.add(url)
         processed += 1
 
+        # Enforce the job's source policy at retrieval time: an off-list host is never fetched, however
+        # it reached the frontier (honours context.allowed_sources — e.g. never touch a benchmark site).
+        if not _host_allowed(_host(url), allowed):
+            jobs.record_fetch(conn, workspace_id, job["id"], url=url, outcome=webfetch.BLOCKED,
+                              detail="host is not on this job's allowed-sources list")
+            examined += 1
+            continue
+
         r = page_fetcher.fetch(url)
         jobs.record_fetch(conn, workspace_id, job["id"], url=url, outcome=r.outcome,
                           http_status=r.http_status, content_type=r.content_type, nbytes=r.bytes,
                           content_sha256=r.content_sha256, detail=r.detail)
         examined += 1
-        if not r.ok or not r.text:
+        if not r.ok:
             continue
         if r.content_sha256 and r.content_sha256 in hashes:
             jobs.record_fetch(conn, workspace_id, job["id"], url=url, outcome=webfetch.DUPLICATE,
@@ -209,7 +281,23 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
         if r.content_sha256:
             hashes.add(r.content_sha256)
 
-        ex = webextract.extract(r.final_url or url, r.text, context=context)
+        # Choose the text source by content type: PDFs via pdfplumber, images via OCR, else HTML/text.
+        if r.content_type == webfetch.PDF_CONTENT_TYPE:
+            page_text, is_html = webextract.pdf_to_text(r.content or b""), False
+        elif r.content_type in webfetch.IMAGE_CONTENT_TYPES:
+            page_text, is_html = _ocr_image(r.content or b"", ocr_engine), False
+        else:
+            page_text, is_html = (r.text or ""), True
+        if not page_text.strip():
+            continue
+
+        ex = webextract.extract(r.final_url or url, page_text, is_html=is_html, context=context)
+        # Deep search only: if a server-rendered page looks empty, it may be JS-built — try a rendered
+        # pass (opt-in, SSRF-screened, graceful) and re-extract. Off/unavailable → keep the plain result.
+        if not ex.cricket_relevant and is_html and depth == "deep" and jsrender.enabled():
+            rendered = jsrender.render(r.final_url or url)
+            if rendered:
+                ex = webextract.extract(r.final_url or url, rendered, is_html=True, context=context)
         if not ex.cricket_relevant:
             continue
         # Classify match-like findings against existing records (review-only; never merges).
@@ -221,6 +309,12 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
             candidate["classification_reason"] = verdict["reason"]
             if verdict["candidate_match_ids"]:
                 candidate["candidate_match_ids"] = verdict["candidate_match_ids"]
+        # Suggest existing persons for any named players (suggest-not-auto; never links or merges).
+        observed_players = [p for p in (ex.candidate.get("observed_players") or []) if isinstance(p, str)]
+        if observed_players and person_index:
+            suggestions = identity.suggest(observed_players, person_index)
+            if suggestions:
+                candidate["player_suggestions"] = suggestions
         fid = jobs.record_finding(
             conn, workspace_id, job["id"], url=r.final_url or url, kind=ex.kind,
             classification=classification, confidence=ex.confidence, title=ex.title, summary=ex.summary,

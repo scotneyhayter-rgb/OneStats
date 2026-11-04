@@ -147,7 +147,7 @@ def search_newspapers(
         data = client.result(params)
     except TroveError:
         raise
-    except Exception as exc:  # noqa: BLE001 — upstream/network error surfaced cleanly
+    except Exception as exc:
         raise TroveError(f"Could not reach Trove: {exc}") from exc
 
     out = _parse(data)

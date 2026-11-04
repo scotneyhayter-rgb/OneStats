@@ -242,8 +242,8 @@ def parse_and_stage(
             status="staged" if confident else "unresolved",
             resolution="new" if confident else "unresolved",
             issues=None if confident else [
-                "ambiguous_grade: an unnamed division or a finals-round/classification label — not "
-                "promoted as a grade; admin must resolve the grade for its matches"],
+                ("ambiguous_grade: an unnamed division or a finals-round/classification label — not "
+                 "promoted as a grade; admin must resolve the grade for its matches")],
         )
     counts["division"] = len(payload.get("divisions") or [])
 
@@ -266,8 +266,8 @@ def parse_and_stage(
             {"synthetic_opponent_of": info["orig_ref"]},
             {"name": info["name"], "club_source_ref": info["club_ref"]},
             resolution="new",
-            issues=["intra_club_opponent: the source listed the same team on both sides; this distinct "
-                    "opponent side was created so the match imports — rename or merge to the correct side"],
+            issues=[("intra_club_opponent: the source listed the same team on both sides; this distinct "
+                     "opponent side was created so the match imports — rename or merge to the correct side")],
         )
     counts["team"] += len(opponents)
 
@@ -571,8 +571,8 @@ def _stage_scorecards(
                                    "noballs": _sum_opt([r.get("noballs") for r in rows]),
                                }, resolution="new",
                                issues=None if not merged else [
-                                   f"bowling_spells_merged: {len(rows)} spells for this bowler in "
-                                   f"innings {iref} combined into one bowling line"])
+                                   (f"bowling_spells_merged: {len(rows)} spells for this bowler in "
+                                    f"innings {iref} combined into one bowling line")])
                 n_bowl += 1
 
     counts.update({"innings": n_inn, "batting_entry": n_bat, "bowling_entry": n_bowl, "fall_of_wicket": n_fow})
@@ -1156,7 +1156,9 @@ def backfill_imported_fielders(conn: Connection, workspace_id: UUID, actor: str)
     manual correction is preserved; an absent/unresolved source fielder is left unset (never invented).
     Safe to re-run. Returns how many entries were filled and how many matches were recomputed.
     """
-    from onestats.domain import recalc  # local import avoids a module-load cycle (recalc imports domain)
+    from onestats.domain import (
+        recalc,  # local import avoids a module-load cycle (recalc imports domain)
+    )
 
     rows = conn.execute(
         text("SELECT r.normalised AS norm, r.matched_canonical_id AS eid "
