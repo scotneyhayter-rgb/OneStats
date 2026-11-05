@@ -4,6 +4,23 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.2 — 2026-11-05
+
+First **updater-capable** build. Adds in-app automatic updates via the official Tauri 2 updater,
+with signed releases hosted free on GitHub Releases (check → download → signature-verify against the
+embedded public key → install → relaunch). See `docs/74-update-system.md`.
+
+**Changed since beta.1:**
+- In-app "Check for updates" now drives the real Tauri updater when a release service is configured and
+  the app is running inside the Tauri runtime; it still falls back honestly to the installer-based state
+  otherwise.
+- Release-manifest generator (`scripts/build-release-manifest.py`) produces the Tauri `latest.json` and a
+  rich manifest; an unsigned/unhosted run is flagged (non-zero exit) so nothing can be published silently.
+
+> Note: self-update only works on builds that already ship **with** the updater plugin, so beta.2 must be
+> installed manually (the in-app button cannot bootstrap itself onto a beta.1 install). Existing beta.1
+> users are not forced to update — the minimum-supported-desktop floor stays at `1.0.0-beta.1`.
+
 ## 1.0.0-beta.1 — 2026-10-26 (pre-acceptance release candidate)
 
 First packaged release candidate. Feature-complete through Phase 16; manual acceptance is scheduled after

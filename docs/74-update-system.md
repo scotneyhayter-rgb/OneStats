@@ -14,8 +14,8 @@ Independently versioned components (single sources of truth in parentheses):
 
 | Component | Source of truth | Current |
 |---|---|---|
-| Desktop app | `apps/desktop/src-tauri/tauri.conf.json` (+ `package.json`, `src/lib/version.ts`) | `1.0.0-beta.1` |
-| Server | `services/api/onestats/core/version.py` → `SERVER_VERSION` (`onestats.__version__`) | `1.0.0-beta.1` |
+| Desktop app | `apps/desktop/src-tauri/tauri.conf.json` (+ `package.json`, `src/lib/version.ts`) | `1.0.0-beta.2` |
+| Server | `services/api/onestats/core/version.py` → `SERVER_VERSION` (`onestats.__version__`) | `1.0.0-beta.2` |
 | API contract | `core/version.py` → `API_VERSION` (integer; bump only on a breaking API change) | `1` |
 | Database schema | Alembic head (`core/version.py` → `DB_SCHEMA_HEAD` / `DB_SCHEMA_LEVEL`) | `0058_update_system` / `58` |
 
