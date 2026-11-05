@@ -99,9 +99,13 @@ class Settings(BaseSettings):
     # --- Update system (release management) ---
     # Release channel this server reports to clients: "stable" (default) or "testing".
     release_channel: str = Field(default="stable")
-    # HTTPS URL of the update manifest (e.g. Tauri latest.json / release index). None → the update
-    # service is "not configured" and the app simply reports no remote updates (no recurring cost).
-    release_manifest_url: str | None = Field(default=None)
+    # HTTPS URL of the update manifest (Tauri latest.json). Defaults to the official OneStats public
+    # GitHub Releases endpoint (scotneyhayter-rgb/OneStats); the desktop updater fetches & verifies it
+    # directly — the server never proxies downloads. Override with ONESTATS_RELEASE_MANIFEST_URL, or set
+    # it to None to report "no update service configured". No recurring cost (GitHub Releases is free).
+    release_manifest_url: str | None = Field(
+        default="https://github.com/scotneyhayter-rgb/OneStats/releases/latest/download/latest.json"
+    )
     # Minutes between automatic (non-blocking) update checks in the desktop app.
     update_check_interval_minutes: int = Field(default=240)
     # Directory for pre-update database backups. None → <media_root>/backups.

@@ -1,0 +1,75 @@
+# OneStats desktop release — builds, signs and uploads the Windows installer + Tauri `latest.json`
+# to a GitHub Release so the in-app updater can find it. See docs/74-update-system.md.
+#
+# IMPORTANT (status): this workflow is PREPARED, not yet exercised. It will not run until a `v*` tag is
+# pushed (or it is dispatched manually), and it creates a DRAFT release — nothing is published to users
+# until a human reviews and publishes it. The PyInstaller backend-sidecar packaging is still a deferred
+# decision (docs/31 D7 / docs/74 §3), so the "Build backend sidecar" step below must be completed before
+# the first real run. No tag is pushed by this change.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           the updater PRIVATE key (string or file contents) — NEVER commit it
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password ("" if the key was generated without one)
+# GITHUB_TOKEN is provided automatically and only needs `contents: write` (granted below).
+
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create/use (e.g. v1.0.0-beta.2)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      # The standalone Windows build bundles the FastAPI backend as a PyInstaller *onedir* sidecar at
+      # apps/desktop/src-tauri/onestats-server-dist/. The exact PyInstaller spec is a deferred decision
+      # (docs/31 D7); fill this step in before the first real release. Until then the job stops here so a
+      # half-built, backend-less installer is never produced.
+      - name: Build backend sidecar (onestats-server-dist)
+        run: |
+          echo "::error::Backend sidecar packaging (PyInstaller onedir) is not yet wired — see docs/31 D7 / docs/74 §3."
+          exit 1
+
+      # tauri-action builds the app, signs the update artifacts with TAURI_SIGNING_PRIVATE_KEY, creates
+      # the GitHub Release for the tag and uploads the NSIS setup, its `.sig`, and `latest.json`. The
+      # release is a DRAFT: a human reviews and publishes it, which is the go-live gate.
+      - name: Build, sign and upload release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "OneStats ${{ github.event.inputs.tag || github.ref_name }}"
+          releaseBody: "See docs/RELEASE_NOTES.md. Updates are signature-verified before install."
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true

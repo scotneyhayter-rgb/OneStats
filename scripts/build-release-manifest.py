@@ -10,9 +10,18 @@ Usage:
   python scripts/build-release-manifest.py \
       --installer path/to/OneStats_x.y.z_x64-setup.exe \
       --channel stable \
+      --github-repo OWNER/REPO \
+      --sig-file path/to/OneStats_x.y.z_x64-setup.exe.sig \
       [--notes docs/RELEASE_NOTES.md] [--out dist/release]
 
-It never embeds secrets, signing keys or connection strings.
+`--github-repo OWNER/REPO` points the Tauri `latest.json` download URL at that repo's GitHub
+Releases (`https://github.com/OWNER/REPO/releases/latest/download/<installer>`); `--base-url` can
+point at any other HTTPS host instead. `--sig-file`/`--signature` embed the Tauri updater signature
+(the `.sig` beside the installer, produced by a signed build) so the manifest verifies in production.
+Without a signature the manifest is emitted with a clearly-marked placeholder and the script warns —
+an unsigned manifest must never be published.
+
+It never embeds secrets, signing keys or connection strings (the signature is a public artifact).
 """
 from __future__ import annotations
 
@@ -69,6 +78,37 @@ def _notes(notes_path: pathlib.Path | None, version: str) -> str:
     return f"OneStats {version}"
 
 
+def _resolve_base_url(base_url: str | None, github_repo: str | None) -> str | None:
+    """Download base URL for the installer. --base-url wins; otherwise derive it from a GitHub repo.
+
+    GitHub's `releases/latest/download/<asset>` always resolves to the newest published release, which
+    matches the single `latest.json` the Tauri updater polls. HTTPS is required (security invariant §9).
+    """
+    if base_url:
+        if not base_url.startswith("https://"):
+            raise SystemExit("ERROR: --base-url must be an https:// URL (secure distribution only).")
+        return base_url.rstrip("/")
+    if github_repo:
+        repo = github_repo.strip().strip("/")
+        if repo.count("/") != 1 or not all(repo.split("/")):
+            raise SystemExit("ERROR: --github-repo must be OWNER/REPO.")
+        return f"https://github.com/{repo}/releases/latest/download"
+    return None
+
+
+def _resolve_signature(signature: str | None, sig_file: str | None) -> tuple[str, bool]:
+    """Return (signature, signed?). The Tauri updater signature is produced by a signed build; it is a
+    public verification artifact, never the private key. Absent → a clearly-marked placeholder."""
+    if signature:
+        return signature.strip(), True
+    if sig_file:
+        p = pathlib.Path(sig_file)
+        if not p.exists():
+            raise SystemExit(f"ERROR: --sig-file not found: {p}")
+        return p.read_text(encoding="utf-8").strip(), True
+    return "PLACEHOLDER_TAURI_SIGNATURE", False
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Build an OneStats release manifest + checksums.")
     ap.add_argument("--installer", required=True, help="Path to the built installer (.exe/.msi).")
@@ -76,6 +116,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--arch", default="x64")
     ap.add_argument("--notes", default=str(ROOT / "docs" / "RELEASE_NOTES.md"))
     ap.add_argument("--min-prior", default=None, help="Minimum prior desktop version that may upgrade to this one.")
+    ap.add_argument("--github-repo", default=None, help="OWNER/REPO whose GitHub Releases host the artifacts.")
+    ap.add_argument("--base-url", default=None,
+                    help="HTTPS base URL the installer is downloaded from (overrides --github-repo).")
+    sig = ap.add_mutually_exclusive_group()
+    sig.add_argument("--signature", default=None, help="Tauri updater signature string (the .sig content).")
+    sig.add_argument("--sig-file", default=None, help="Path to the installer's .sig file (Tauri updater signature).")
     ap.add_argument("--out", default=str(ROOT / "dist" / "release"))
     args = ap.parse_args(argv)
 
@@ -84,11 +130,16 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: installer not found: {installer}", file=sys.stderr)
         return 2
 
+    base_url = _resolve_base_url(args.base_url, args.github_repo)
+    signature, signed = _resolve_signature(args.signature, args.sig_file)
+
     version = _read_desktop_version()
     contract = _read_server_contract()
     checksum = _sha256(installer)
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     notes = _notes(pathlib.Path(args.notes), version)
+    download_url = f"{base_url}/{installer.name}" if base_url else (
+        "https://RELEASES.EXAMPLE/CONFIGURE_HOSTING/" + installer.name)
 
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -111,21 +162,22 @@ def main(argv: list[str]) -> int:
             "required_db_schema_level": contract["db_schema_level"],
             "api_version": contract["api_version"],
         },
-        # Filled by the signing step (approval-gated); verification fails until present in production.
-        "signature": None,
-        "signing": "PLACEHOLDER — run the Tauri updater signer; never commit private keys.",
+        "download_url": download_url,
+        # The Tauri updater signature is a public verification artifact (never the private key).
+        "signature": signature if signed else None,
+        "signing": "signed" if signed else "PLACEHOLDER — run a signed build; never commit private keys.",
     }
     (out_dir / "onestats-release.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    # 2) Tauri-updater latest.json skeleton (signature + download URL filled by signing/hosting steps).
+    # 2) Tauri-updater latest.json (the manifest the desktop updater polls and verifies).
     latest = {
         "version": version,
         "notes": notes.splitlines()[0] if notes else f"OneStats {version}",
         "pub_date": now,
         "platforms": {
             "windows-x86_64": {
-                "signature": "PLACEHOLDER_TAURI_SIGNATURE",
-                "url": "https://RELEASES.EXAMPLE/CONFIGURE_HOSTING/" + installer.name,
+                "signature": signature,
+                "url": download_url,
             }
         },
     }
@@ -136,9 +188,13 @@ def main(argv: list[str]) -> int:
 
     print(f"Wrote release metadata to {out_dir}")
     print(f"  version={version} channel={args.channel} sha256={checksum[:16]}…")
-    print("  NOTE: signature and download URL are placeholders — signing & hosting are separate,")
-    print("        approval-gated steps (see docs/74-update-system.md). Do not publish unsigned.")
-    return 0
+    print(f"  download_url={download_url}")
+    if not signed:
+        print("  WARNING: no --signature/--sig-file given — latest.json carries a PLACEHOLDER signature.")
+        print("           A signed build produces the .sig; do NOT publish an unsigned manifest (docs/74 §9).")
+    if base_url is None:
+        print("  WARNING: no --github-repo/--base-url given — download URL is a placeholder. Configure hosting.")
+    return 0 if (signed and base_url) else 3
 
 
 if __name__ == "__main__":
