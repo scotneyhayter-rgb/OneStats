@@ -103,3 +103,29 @@ def test_scorecard_line_hint():
     hints = extraction.likely_scorecard_lines(text_in)
     assert any("SMITH" in h for h in hints)
     assert "The weather was fine" not in hints
+
+
+def test_preprocess_grayscales_and_upscales():
+    # No DB or Tesseract binary needed — pure Pillow image handling.
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (120, 50), "white").save(buf, "JPEG")
+    out = extraction._preprocess(buf.getvalue())
+    assert out.mode == "L"            # OCR runs on grayscale
+    assert max(out.size) >= 240       # small scans are upscaled (120 -> >=240)
+
+
+def test_preprocess_coerces_exotic_mode():
+    # A palette-mode ('P') image must be coerced to a safe mode rather than raising — this mirrors the
+    # phone-camera MPO/CMYK sources that previously made OCR fail silently.
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("P", (130, 60)).save(buf, "PNG")
+    out = extraction._preprocess(buf.getvalue())
+    assert out.mode == "L"
