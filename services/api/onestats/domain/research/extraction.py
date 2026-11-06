@@ -27,6 +27,52 @@ class OcrUnavailable(RuntimeError):
     """No local OCR engine is installed; manual transcription is the fallback."""
 
 
+def _resolve_tesseract_cmd() -> None:
+    """Point pytesseract at the Tesseract binary when it is installed but not on PATH. Honours the
+    ONESTATS_TESSERACT_CMD override, then the default Windows install locations. A no-op when the binary
+    is already resolvable on PATH."""
+    import os
+
+    try:
+        import pytesseract  # type: ignore
+    except Exception:  # noqa: BLE001 - no bridge package means "no engine" upstream; nothing to resolve
+        return
+    for cand in (os.environ.get("ONESTATS_TESSERACT_CMD"),
+                 r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                 r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"):
+        if cand and os.path.isfile(cand):
+            pytesseract.pytesseract.tesseract_cmd = cand
+            return
+
+
+def _preprocess(raw: bytes):
+    """Decode source bytes into a clean grayscale image for OCR. Converts any exotic mode/format (a
+    phone-camera MPO, CMYK or palette image) to a safe mode so Tesseract never rejects it — the previous
+    code passed the raw image straight through and MPO photos failed silently — then upscales small scans
+    and stretches contrast to fight fading. Returns a PIL image."""
+    import io
+
+    from PIL import Image, ImageFilter, ImageOps  # type: ignore
+
+    img = Image.open(io.BytesIO(raw))
+    img.load()
+    if img.mode not in ("L", "RGB"):
+        img = img.convert("RGB")
+    img = img.convert("L")
+    w, h = img.size
+    longest = max(w, h)
+    if longest and longest < 2200:
+        scale = max(2, round(2200 / longest))
+        img = img.resize((w * scale, h * scale), Image.LANCZOS)
+    img = ImageOps.autocontrast(img, cutoff=2)
+    return img.filter(ImageFilter.SHARPEN)
+
+
+# OCR config: LSTM engine (--oem 1) and treat the clipping as a single uniform block (--psm 6), which
+# reads column scorecards markedly better than the default page-segmentation mode on real newspaper scans.
+_TESSERACT_CONFIG = "--oem 1 --psm 6"
+
+
 def default_engine() -> tuple[OcrEngine | None, str | None]:
     """Detect a local OCR engine (Tesseract via pytesseract). Returns (engine, version) or (None, None).
 
@@ -34,22 +80,22 @@ def default_engine() -> tuple[OcrEngine | None, str | None]:
     fallback, not an import error at startup."""
     try:
         import pytesseract  # type: ignore
-        from PIL import Image  # type: ignore
+        from PIL import Image  # noqa: F401 - ensure Pillow imports before we promise an engine  # type: ignore
     except Exception:  # noqa: BLE001 - any import/env problem means "no engine", fall back gracefully
         return None, None
+    _resolve_tesseract_cmd()
     try:
         version = str(pytesseract.get_tesseract_version())
     except Exception:  # noqa: BLE001 - a missing/broken Tesseract binary means "no engine"
         return None, None
 
     def _engine(raw: bytes) -> tuple[str, float | None]:
-        import io
-
-        img = Image.open(io.BytesIO(raw))
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-        words = [w for w in data.get("text", []) if w and w.strip()]
+        img = _preprocess(raw)
+        # image_to_string keeps line breaks (so likely_scorecard_lines can find rows); image_to_data
+        # gives the per-word confidences we average into a single 0..1 score.
+        text_out = pytesseract.image_to_string(img, config=_TESSERACT_CONFIG)
+        data = pytesseract.image_to_data(img, config=_TESSERACT_CONFIG, output_type=pytesseract.Output.DICT)
         confs = [int(c) for c in data.get("conf", []) if str(c).lstrip("-").isdigit() and int(c) >= 0]
-        text_out = " ".join(words)
         conf = (sum(confs) / len(confs) / 100.0) if confs else None
         return text_out, conf
 
