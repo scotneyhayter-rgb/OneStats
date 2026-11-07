@@ -25,6 +25,14 @@ export const NON_WICKET_STATUSES = new Set([
 export const BOWLER_CREDIT = new Set([
   "bowled", "caught", "caught_behind", "caught_and_bowled", "lbw", "stumped", "hit_wicket",
 ]);
+
+/** Whether the Bowler selector should be shown for a batting row. Shown only for dismissals that credit
+ *  a bowler (BOWLER_CREDIT); hidden for not out, retired, run out, dnb/absent and other non-bowler
+ *  outcomes — but always shown when a bowler is already recorded, so existing data is never hidden. */
+export function bowlerApplies(dismissalType: string | null | undefined, hasBowler = false): boolean {
+  if (hasBowler) return true;
+  return BOWLER_CREDIT.has(dismissalType ?? "");
+}
 /** Dismissals that involve a fielder, so the Fielder box is relevant: catches, stumpings and run-outs.
  *  caught_and_bowled credits the bowler as the catcher, so it needs no separate fielder. Bowled, lbw
  *  and hit wicket are the bowler's alone. */
