@@ -103,8 +103,11 @@ def list_entries(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ct
 def update_entry(workspace_id: UUID, innings_id: UUID, entry_id: UUID, body: BowlingUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
+            # exclude_unset (not exclude_none): the grid PATCHes only the field it changed, so an
+            # explicit null means "clear this field" (e.g. the ✕ next to a bowler) and must be sent
+            # through — fields the client never touched stay absent and are left unchanged.
             out = _ids(bowling_domain.update_entry(conn, workspace_id, str(ctx.user["id"]), entry_id,
-                                                   **body.model_dump(exclude_none=True)))
+                                                   **body.model_dump(exclude_unset=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
         results.recalc_for_innings(conn, workspace_id, str(ctx.user["id"]), innings_id)
