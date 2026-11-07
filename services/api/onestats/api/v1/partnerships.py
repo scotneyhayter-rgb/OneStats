@@ -156,8 +156,10 @@ def list_fow(workspace_id: UUID, innings_id: UUID, settings: SettingsDep, ctx: M
 def update_fow(workspace_id: UUID, innings_id: UUID, fow_id: UUID, body: FowUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
+            # exclude_unset (not exclude_none): an explicit null clears that field (e.g. the ✕ next to
+            # the dismissed batter); untouched fields stay absent and are left unchanged.
             updated = _ids(pshp.update_fow(conn, workspace_id, str(ctx.user["id"]), fow_id,
-                                           **body.model_dump(exclude_none=True)))
+                                           **body.model_dump(exclude_unset=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
         _auto_derive(conn, workspace_id, str(ctx.user["id"]), innings_id)
@@ -196,8 +198,10 @@ def list_partnerships(workspace_id: UUID, innings_id: UUID, settings: SettingsDe
 def update_partnership(workspace_id: UUID, innings_id: UUID, partnership_id: UUID, body: PartnershipUpdate, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
+            # exclude_unset (not exclude_none): an explicit null clears that field (e.g. the ✕ next to
+            # a partnership batter); untouched fields stay absent and are left unchanged.
             return _ids(pshp.update_partnership(conn, workspace_id, str(ctx.user["id"]), partnership_id,
-                                                **body.model_dump(exclude_none=True)))
+                                                **body.model_dump(exclude_unset=True)))
         except ValueError as exc:
             raise _value_error(exc) from exc
 

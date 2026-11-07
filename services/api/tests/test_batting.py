@@ -218,6 +218,31 @@ def test_permission_and_audit(conn):
         assert expected in actions
 
 
+def test_update_can_clear_a_field(conn):
+    # Regression: clearing a player (the ✕ button) or blanking a figure sends an explicit null; the
+    # update must write NULL rather than silently ignore it. Every scorecard column is nullable
+    # (unknown is not zero), and only fields the caller passes are touched.
+    wid = _ws(conn, "BAT CLEAR")
+    iid = _innings(conn, wid)
+    bowler = _person(conn, wid, "Clear Bowler")
+    fielder = _person(conn, wid, "Clear Fielder")
+    e = bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Clearable"),
+                         batting_position=1, runs=27, dismissal_type="caught",
+                         bowler_person_id=bowler, fielder_person_id=fielder)
+    assert bat.get_entry(conn, e)["fielder_person_id"] == fielder
+
+    # clear only the fielder — the other fields must be left untouched
+    bat.update_entry(conn, wid, ACTOR, e, fielder_person_id=None)
+    row = bat.get_entry(conn, e)
+    assert row["fielder_person_id"] is None       # cleared
+    assert row["bowler_person_id"] == bowler       # untouched (absent from the update)
+    assert row["runs"] == 27                       # untouched
+
+    # blanking a figure returns it to unknown — NOT zero
+    bat.update_entry(conn, wid, ACTOR, e, runs=None)
+    assert bat.get_entry(conn, e)["runs"] is None
+
+
 def test_invalid_inputs(conn):
     wid = _ws(conn, "BAT INVALID")
     with pytest.raises(ValueError, match="innings_not_found"):

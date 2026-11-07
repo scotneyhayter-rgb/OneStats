@@ -136,7 +136,9 @@ def update_entry(conn: Connection, workspace_id: UUID, actor: str, entry_id: UUI
         raise ValueError("invalid_dismissal_type")
     if fields.get("batting_position") is not None and fields["batting_position"] < 1:
         raise ValueError("invalid_batting_position")
-    data = {k: v for k, v in fields.items() if k in _SET_FIELDS and v is not None}
+    # A field present with value None means "clear it" (every scorecard column is nullable — unknown
+    # is not zero); only fields the caller actually passed are present, so absent = unchanged.
+    data = {k: v for k, v in fields.items() if k in _SET_FIELDS}
     # Re-check duplicates against OTHER entries when identity/position change.
     if "person_id" in data and conn.execute(
         text("SELECT 1 FROM batting_entry WHERE innings_id = :i AND person_id = :p AND id <> :id"),

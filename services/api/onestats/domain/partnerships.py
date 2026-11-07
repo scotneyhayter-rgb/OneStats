@@ -120,7 +120,8 @@ def update_fow(conn: Connection, workspace_id: UUID, actor: str, fow_id: UUID, *
         raise ValueError("fow_not_found")
     if fields.get("wicket_number") is not None and fields["wicket_number"] < 1:
         raise ValueError("invalid_wicket_number")
-    data = {k: v for k, v in fields.items() if k in _FOW_SET and v is not None}
+    # A field present with value None means "clear it" (nullable = unknown); only passed fields appear.
+    data = {k: v for k, v in fields.items() if k in _FOW_SET}
     if "wicket_number" in data and conn.execute(
         text("SELECT 1 FROM fall_of_wicket WHERE innings_id = :i AND wicket_number = :n AND id <> :id"),
         {"i": before["innings_id"], "n": data["wicket_number"], "id": fow_id},
@@ -213,7 +214,8 @@ def update_partnership(conn: Connection, workspace_id: UUID, actor: str, pid: UU
         raise ValueError("invalid_end_reason")
     if fields.get("origin") is not None and fields["origin"] not in PARTNERSHIP_ORIGINS:
         raise ValueError("invalid_origin")
-    data = {k: v for k, v in fields.items() if k in _PART_SET and v is not None}
+    # A field present with value None means "clear it" (nullable = unknown); only passed fields appear.
+    data = {k: v for k, v in fields.items() if k in _PART_SET}
     p1 = data.get("player1_person_id", before["player1_person_id"])
     p2 = data.get("player2_person_id", before["player2_person_id"])
     if p1 is not None and p2 is not None and p1 == p2:
