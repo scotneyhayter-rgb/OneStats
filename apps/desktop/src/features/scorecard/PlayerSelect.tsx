@@ -176,13 +176,35 @@ export function PlayerSelect({
     [workspaceId],
   );
 
-  const pick = (opt: Option) => {
+  // When the panel closes we must not let focus fall back to document.body: the panel lives in a
+  // portal, so its unmount strands focus there and Tab would restart from the top of the page instead
+  // of continuing along the row. Return focus to the trigger, and optionally step to the adjacent cell
+  // so picking a player can flow straight into tab-across entry.
+  const restoreFocus = (advance: "fwd" | "back" | null = null) => {
+    // Deferred so the portal panel has unmounted before we read the document's tab order.
+    setTimeout(() => {
+      const t = triggerRef.current;
+      if (!t) return;
+      if (!advance) { t.focus(); return; }
+      const tabbables = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null || el === t);
+      const i = tabbables.indexOf(t);
+      if (i === -1) { t.focus(); return; }
+      (tabbables[i + (advance === "back" ? -1 : 1)] ?? t).focus();
+    }, 0);
+  };
+
+  const pick = (opt: Option, advance: "fwd" | "back" | null = null) => {
     // the name cache only needs id + display_name; a priority item carries no full record
     onPersonLoaded(opt.full ?? ({ id: opt.id, display_name: opt.display_name } as Person));
     onChange(opt.id);
     setOpen(false);
     setQuery("");
     void checkDuplicates(opt.id);
+    restoreFocus(advance);
   };
 
   // "Create new …" launches the shared Create Person wizard (prefilled with the search text),
@@ -204,6 +226,16 @@ export function PlayerSelect({
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
     else if (e.key === "Enter") { e.preventDefault(); chooseActive(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); triggerRef.current?.focus(); }
+    else if (e.key === "Tab") {
+      // Tab confirms the highlighted player and moves straight on to the next cell, so a whole line
+      // can be entered without leaving the keyboard; Shift+Tab steps back. If the highlight is on the
+      // "Create new" row we launch the wizard instead; with nothing to pick we just move on.
+      const dir = e.shiftKey ? "back" : "fwd";
+      e.preventDefault();
+      if (active < options.length) pick(options[active], dir);
+      else if (canCreate) launchWizard();
+      else { setOpen(false); restoreFocus(dir); }
+    }
   };
 
   return (
@@ -293,7 +325,7 @@ export function PlayerSelect({
               onMouseEnter={() => setActive(options.length)}
               onClick={launchWizard}
               disabled={busy}
-              className={`mt-1 flex w-full shrink-0 items-center gap-2 rounded-[var(--radius-app)] border border-dashed border-border px-2 py-1.5 text-left text-sm text-brand ${active === results.length ? "bg-muted" : "hover:bg-muted"}`}
+              className={`mt-1 flex w-full shrink-0 items-center gap-2 rounded-[var(--radius-app)] border border-dashed border-border px-2 py-1.5 text-left text-sm text-brand ${active === options.length ? "bg-muted" : "hover:bg-muted"}`}
             >
               <UserPlus className="h-3.5 w-3.5" aria-hidden />
               Create New Person “{query.trim()}”

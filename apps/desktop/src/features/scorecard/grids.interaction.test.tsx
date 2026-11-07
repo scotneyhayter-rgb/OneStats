@@ -100,6 +100,34 @@ describe("player dropdown selection", () => {
     expect(onChange).toHaveBeenCalledWith("pd");
   });
 
+  it("returns focus to the field after a selection, so Tab keeps moving along the row", async () => {
+    // Regression: the results panel is a portal; on close, focus must return to the trigger and never
+    // fall to document.body (which would strand keyboard entry and break Tab across the line).
+    listPeople.mockResolvedValue([frank]);
+    identityCandidates.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<Harness onChange={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "Batter 1" }));
+    await user.type(await screen.findByPlaceholderText(/Search player/i), "Frank");
+    await user.click(await screen.findByText("Frank Frederick"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Batter 1" })));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("confirms the highlighted player on Tab and closes the picker", async () => {
+    listPeople.mockResolvedValue([frank]);
+    identityCandidates.mockResolvedValue([]);
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Batter 1" }));
+    await user.type(await screen.findByPlaceholderText(/Search player/i), "Frank");
+    await screen.findByText("Frank Frederick"); // results loaded -> first option highlighted
+    await user.keyboard("{Tab}");
+    expect(onChange).toHaveBeenCalledWith("p1");
+    await waitFor(() => expect(screen.queryByPlaceholderText(/Search player/i)).toBeNull());
+  });
+
   it("can be cleared back to unknown", async () => {
     listPeople.mockResolvedValue([frank]);
     identityCandidates.mockResolvedValue([]);
