@@ -14,6 +14,10 @@ dependencies = [
     "argon2-cffi>=23.1.0",
     "cryptography>=43.0.0",
     "pillow>=10.4.0",
+    # OCR bridge to a locally-installed Tesseract binary (Research Centre source extraction). Pure
+    # Python and optional at runtime — extraction.default_engine() falls back to manual transcription
+    # when the Tesseract binary is absent, so this never forces a cloud/paid dependency.
+    "pytesseract>=0.3.10",
     "python-multipart>=0.0.9",
     "openpyxl>=3.1.0",
     "defusedxml>=0.7.1",
