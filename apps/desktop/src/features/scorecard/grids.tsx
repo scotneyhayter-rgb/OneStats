@@ -15,6 +15,7 @@ import { api, ApiError, type BattingEntry, type BowlingEntry, type DismissalFiel
 import { PlayerSelect } from "./PlayerSelect";
 import {
   battingOrderIssues,
+  bowlerApplies,
   DEFAULT_BATTING_SLOTS,
   DISMISSAL_TYPES,
   fielderApplies,
@@ -307,9 +308,11 @@ export function BattingGrid(ctx: GridCtx) {
                   onChange={(e) => {
                     const dt = e.target.value || null;
                     const body: Record<string, unknown> = { dismissal_type: dt };
-                    // a bowler-only / non-fielding dismissal has no fielder — clear any stale one so
-                    // the Fielder box disappears cleanly and no fielding credit is left orphaned
+                    // Clear a stale fielder/bowler when the new dismissal no longer involves one (e.g.
+                    // switching to not out / run out), so the box disappears cleanly and no catch or
+                    // bowling credit is left orphaned on a dismissal that cannot carry it.
                     if (r.fielder_person_id && !fielderApplies(dt, false)) body.fielder_person_id = null;
+                    if (r.bowler_person_id && !bowlerApplies(dt, false)) body.bowler_person_id = null;
                     void commit(r.id, body);
                   }} className="h-8 w-36">
                   <option value="">— unknown —</option>
@@ -332,9 +335,14 @@ export function BattingGrid(ctx: GridCtx) {
                 )}
               </td>
               <td className="min-w-[150px] px-1 py-1">
-                <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
-                  onChange={(pid) => void commit(r.id, { bowler_person_id: pid })} />
+                {bowlerApplies(r.dismissal_type, r.bowler_person_id !== null) ? (
+                  <PlayerSelect workspaceId={workspaceId} value={r.bowler_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
+                    disabled={!canManage} aria-label={`Bowler for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
+                    onChange={(pid) => void commit(r.id, { bowler_person_id: pid })} />
+                ) : (
+                  <span className="pl-2 text-sm italic text-muted-foreground"
+                    aria-label={`Bowler not applicable for batter ${i + 1}`}>—</span>
+                )}
               </td>
               <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
                 inputRef={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)} onCommit={(v) => void commit(r.id, { runs: v })} /></td>

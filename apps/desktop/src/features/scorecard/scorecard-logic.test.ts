@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   battingOrderIssues,
   battingRunsTotal,
+  bowlerApplies,
   creditedBowlerWickets,
   derivedInningsTotal,
   deserializeDraft,
@@ -240,6 +241,22 @@ describe("fielderApplies", () => {
   });
   it("still shows it when a fielder is already recorded, so existing data is never hidden", () => {
     expect(fielderApplies("bowled", true)).toBe(true);
+  });
+});
+
+describe("bowlerApplies", () => {
+  it("shows the bowler box for bowler-credit dismissals", () => {
+    for (const dt of ["bowled", "caught", "caught_behind", "caught_and_bowled", "lbw", "stumped", "hit_wicket"]) {
+      expect(bowlerApplies(dt)).toBe(true);
+    }
+  });
+  it("hides it for not out, retired, run out and other non-bowler outcomes", () => {
+    for (const dt of ["not_out", "retired_not_out", "retired", "run_out", "dnb", "absent", "obstructing", "", null]) {
+      expect(bowlerApplies(dt)).toBe(false);
+    }
+  });
+  it("still shows it when a bowler is already recorded", () => {
+    expect(bowlerApplies("not_out", true)).toBe(true);
   });
 });
 

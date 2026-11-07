@@ -130,4 +130,28 @@ describe("fresh-card seeding and the fielder box", () => {
     await waitFor(() =>
       expect(H.updateBatting).toHaveBeenCalledWith("w", "i1", "c1", { dismissal_type: "bowled", fielder_person_id: null }));
   });
+
+  it("hides the Bowler box for a not-out batter and shows it for a bowled one", async () => {
+    const notout = mkRow({ id: "n1", batting_position: 1, person_id: "p1", dismissal_type: "not_out" });
+    const bowled = mkRow({ id: "b2", batting_position: 2, person_id: "p2", dismissal_type: "bowled" });
+    H.listBatting.mockResolvedValue([notout, bowled]);
+    H.listPeople.mockResolvedValue([]);
+    renderGrid();
+    await screen.findByRole("button", { name: /^Batter 1$/i });
+    expect(screen.queryByRole("button", { name: /Bowler for batter 1/i })).toBeNull();   // not out: hidden
+    expect(screen.getByRole("button", { name: /Bowler for batter 2/i })).toBeTruthy();     // bowled: shown
+  });
+
+  it("clears a stale bowler when the dismissal becomes not out", async () => {
+    const caught = mkRow({ id: "c1", batting_position: 1, person_id: "p1", dismissal_type: "caught", bowler_person_id: "bw1" });
+    H.listBatting.mockResolvedValue([caught]);
+    H.updateBatting.mockResolvedValue({});
+    H.listPeople.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderGrid();
+    const sel = await screen.findByLabelText(/How out 1/i);
+    await user.selectOptions(sel, "not_out");
+    await waitFor(() =>
+      expect(H.updateBatting).toHaveBeenCalledWith("w", "i1", "c1", { dismissal_type: "not_out", bowler_person_id: null }));
+  });
 });
