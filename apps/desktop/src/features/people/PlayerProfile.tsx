@@ -232,12 +232,16 @@ export function PlayerProfile() {
     }
   };
 
+  // Hover text for the known-minimum ("min.") badge, so the flag explains itself.
+  const KNOWN_MIN_HINT =
+    "At least this many — the total includes innings with unknown figures, so it's a floor, never overstated. Completing those innings can only raise it.";
+
   const statCard = (label: string, value: unknown, dp?: number, flag?: boolean) => (
     <div className="rounded-[var(--radius-app)] border border-border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-2xl font-semibold tabular-nums">{num(value, dp)}</span>
-        {flag && <Badge variant="warning">min.</Badge>}
+        {flag && <Badge variant="warning" title={KNOWN_MIN_HINT}>min.</Badge>}
       </div>
     </div>
   );
@@ -446,7 +450,7 @@ export function PlayerProfile() {
                       <li key={i} className="flex items-center gap-2 py-1.5 text-sm">
                         <Trophy className="h-4 w-4 shrink-0 text-brand" aria-hidden /><span>{r.title}</span>
                         <span className="ml-auto font-semibold tabular-nums">{typeof r.value === "number" ? num(r.value) : r.value}</span>
-                        {r.known_minimum && <Badge variant="warning">min.</Badge>}
+                        {r.known_minimum && <Badge variant="warning" title={KNOWN_MIN_HINT}>min.</Badge>}
                       </li>
                     ))}
                   </ul>

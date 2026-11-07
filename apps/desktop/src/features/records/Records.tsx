@@ -174,7 +174,12 @@ export function Records() {
                       <span className="text-lg font-semibold">{c.holder?.player}</span>
                       <span className="text-xl font-bold tabular-nums text-brand">{c.value}</span>
                       {c.holder?.tied && <Badge variant="muted">tied</Badge>}
-                      {c.holder?.known_minimum && <Badge variant="warning">known min.</Badge>}
+                      {c.holder?.known_minimum && (
+                        <Badge variant="warning"
+                          title="At least this many — this record total includes innings with unknown figures, so it's a floor, never overstated. Completing those innings can only raise it.">
+                          known min.
+                        </Badge>
+                      )}
                     </div>
                     {c.holder?.club && <span className="text-xs text-muted-foreground">{c.holder.club}</span>}
                     {expanded === key && (
