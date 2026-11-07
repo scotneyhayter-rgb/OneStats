@@ -4,6 +4,26 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.3 — 2026-11-08
+
+Research Centre OCR and manual scorecard-entry fixes.
+
+**Changed since beta.2:**
+- Research Centre OCR now actually extracts text: fixes a silent failure on phone-camera (MPO) and other
+  non-RGB images, and preprocesses faded newspaper scans (grayscale, upscale, autocontrast, sharpen).
+- Manual scorecard entry: clearing a player (the ✕) or blanking a figure back to unknown now persists —
+  the batting/bowling/fall-of-wicket/partnership update paths no longer drop an explicit null, so a field
+  can be un-set, not only set.
+- Batting grid: you can now Tab across a row even after selecting a player — the player picker no longer
+  strands focus when it closes, and Tab inside it confirms the highlighted player and moves to the next cell.
+- Batting grid: a fresh, editable card opens a full XI (11 positions) ready for input.
+- Batting grid: the Fielder box now shows only for fielding dismissals (caught, caught behind, stumped,
+  run out); it is hidden for bowled/lbw/hit wicket/caught & bowled, and switching to one of those clears
+  any stale fielder.
+
+> Installed manually, like beta.2 (self-update is not enabled). The minimum-supported-desktop floor stays
+> at `1.0.0-beta.1`.
+
 ## 1.0.0-beta.2 — 2026-11-05
 
 First **updater-capable** build. Adds in-app automatic updates via the official Tauri 2 updater,
