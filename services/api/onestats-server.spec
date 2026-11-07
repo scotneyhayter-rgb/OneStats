@@ -28,7 +28,11 @@ binaries = []
 hiddenimports = collect_submodules("onestats")
 
 # Pull data/binaries/submodules for packages that load things dynamically.
-for pkg in ("uvicorn", "psycopg", "psycopg_binary", "alembic", "reportlab"):
+# pytesseract + PIL power Research Centre OCR: PIL loads its image-format plugins (incl. the MPO
+# plugin the OCR preprocessing depends on) dynamically, and pytesseract is imported lazily, so both
+# are collected explicitly to be sure the packaged backend can run OCR rather than silently falling
+# back to manual transcription. The Tesseract binary itself stays external (optional on the host).
+for pkg in ("uvicorn", "psycopg", "psycopg_binary", "alembic", "reportlab", "pytesseract", "PIL"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
