@@ -6,7 +6,9 @@ import {
   derivedInningsTotal,
   deserializeDraft,
   draftKey,
+  DEFAULT_BATTING_SLOTS,
   extrasTotal,
+  fielderApplies,
   fowIssues,
   inningsAdvisories,
   nextCell,
@@ -221,5 +223,28 @@ describe("score display formatting (Phase 7.7)", () => {
     expect(scoreStatusLabel(3, "declared")).toBe("Declared");
     expect(scoreStatusLabel(4, "in_progress")).toBe("In progress");
     expect(scoreStatusLabel(2, null)).toBeNull();
+  });
+});
+
+describe("fielderApplies", () => {
+  it("shows the fielder box for fielding dismissals (catch, stumping, run out)", () => {
+    expect(fielderApplies("caught")).toBe(true);
+    expect(fielderApplies("caught_behind")).toBe(true);
+    expect(fielderApplies("stumped")).toBe(true);
+    expect(fielderApplies("run_out")).toBe(true);
+  });
+  it("hides it for bowler-only and other non-fielding outcomes", () => {
+    for (const dt of ["bowled", "lbw", "hit_wicket", "caught_and_bowled", "not_out", "dnb", "", null]) {
+      expect(fielderApplies(dt)).toBe(false);
+    }
+  });
+  it("still shows it when a fielder is already recorded, so existing data is never hidden", () => {
+    expect(fielderApplies("bowled", true)).toBe(true);
+  });
+});
+
+describe("default batting slots", () => {
+  it("opens a full XI ready for input", () => {
+    expect(DEFAULT_BATTING_SLOTS).toBe(11);
   });
 });

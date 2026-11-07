@@ -25,6 +25,25 @@ export const NON_WICKET_STATUSES = new Set([
 export const BOWLER_CREDIT = new Set([
   "bowled", "caught", "caught_behind", "caught_and_bowled", "lbw", "stumped", "hit_wicket",
 ]);
+/** Dismissals that involve a fielder, so the Fielder box is relevant: catches, stumpings and run-outs.
+ *  caught_and_bowled credits the bowler as the catcher, so it needs no separate fielder. Bowled, lbw
+ *  and hit wicket are the bowler's alone. */
+export const FIELDER_DISMISSALS = new Set([
+  "caught", "caught_behind", "stumped", "run_out",
+]);
+
+/** Whether the Fielder selector should be shown for a batting row. Hidden for bowler-only dismissals
+ *  (bowled, lbw, hit wicket, caught & bowled) and other non-fielding outcomes — but always shown when
+ *  a fielder is already recorded, so existing data is never hidden behind the rule. */
+export function fielderApplies(dismissalType: string | null | undefined, hasFielder = false): boolean {
+  if (hasFielder) return true;
+  return FIELDER_DISMISSALS.has(dismissalType ?? "");
+}
+
+/** Positions opened ready for input on a fresh batting card — a full XI. Extras can be added and
+ *  unused ones removed; an empty row is simply a position with everything still unknown. */
+export const DEFAULT_BATTING_SLOTS = 11;
+
 export const INNINGS_STATUSES = [
   "in_progress", "completed", "declared", "closed", "forfeited", "incomplete", "unknown",
 ] as const;
