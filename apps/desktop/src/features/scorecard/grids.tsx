@@ -15,7 +15,9 @@ import { api, ApiError, type BattingEntry, type BowlingEntry, type DismissalFiel
 import { PlayerSelect } from "./PlayerSelect";
 import {
   battingOrderIssues,
+  DEFAULT_BATTING_SLOTS,
   DISMISSAL_TYPES,
+  fielderApplies,
   fowIssues,
   nextCell,
   parseIntOrNull,
@@ -144,9 +146,11 @@ function NumCell({
 
 function useRows<T>(load: () => Promise<T[]>, onError: Saver, refreshKey = 0) {
   const [rows, setRows] = useState<T[]>([]);
+  const [loaded, setLoaded] = useState(false); // true once a fetch has completed (distinguishes "empty" from "not yet loaded")
   const refresh = useCallback(async () => {
     try {
       setRows(await load());
+      setLoaded(true);
     } catch (e) {
       onError(e instanceof ApiError ? e.message : "Failed to load rows");
     }
@@ -156,19 +160,40 @@ function useRows<T>(load: () => Promise<T[]>, onError: Saver, refreshKey = 0) {
   useEffect(() => {
     void refresh();
   }, [refresh, refreshKey]);
-  return { rows, setRows, refresh };
+  return { rows, setRows, refresh, loaded };
 }
 
 // ---- batting ---------------------------------------------------------------------------------
 
 export function BattingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
-  const { rows, refresh } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty, ctx.refreshKey);
+  const { rows, refresh, loaded } = useRows<BattingEntry>(() => api.listBatting(workspaceId, inningsId), onDirty, ctx.refreshKey);
   const nav = useFocusGrid(4, rows.length); // runs, balls, 4s, 6s
   // immediate, non-blocking advisories: a batter out of order / appearing twice (subtle highlight)
   const bIssues = battingOrderIssues(rows.map((r) => ({ id: r.id, batting_position: r.batting_position, person_id: r.person_id })));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BattingEntry | null>(null);
+
+  // Open a fresh card with a full XI ready for input. Only when the innings is editable and genuinely
+  // empty after loading; guarded per-innings so emptying the card by hand never re-seeds it. Each row
+  // is just a position with everything still unknown — extras can be added and spare rows removed.
+  const seededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!canManage || !loaded || rows.length > 0 || seededRef.current === inningsId) return;
+    seededRef.current = inningsId;
+    void (async () => {
+      try {
+        for (let pos = 1; pos <= DEFAULT_BATTING_SLOTS; pos += 1) {
+          await api.createBatting(workspaceId, inningsId, { batting_position: pos });
+        }
+        await refresh();
+        onChanged();
+      } catch (e) {
+        onDirty(e instanceof ApiError ? e.message : "Could not open batting positions");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, loaded, rows.length, inningsId]);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -279,17 +304,31 @@ export function BattingGrid(ctx: GridCtx) {
               </td>
               <td className="px-1 py-1">
                 <Select aria-label={`How out ${i + 1}`} disabled={!canManage} value={r.dismissal_type ?? ""}
-                  onChange={(e) => void commit(r.id, { dismissal_type: e.target.value || null })} className="h-8 w-36">
+                  onChange={(e) => {
+                    const dt = e.target.value || null;
+                    const body: Record<string, unknown> = { dismissal_type: dt };
+                    // a bowler-only / non-fielding dismissal has no fielder — clear any stale one so
+                    // the Fielder box disappears cleanly and no fielding credit is left orphaned
+                    if (r.fielder_person_id && !fielderApplies(dt, false)) body.fielder_person_id = null;
+                    void commit(r.id, body);
+                  }} className="h-8 w-36">
                   <option value="">— unknown —</option>
                   {DISMISSAL_TYPES.map((d) => <option key={d} value={d}>{d.replace(/_/g, " ")}</option>)}
                 </Select>
               </td>
               <td className="min-w-[150px] px-1 py-1">
-                <PlayerSelect workspaceId={workspaceId} value={r.fielder_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
-                  disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
-                  onChange={(pid) => void commit(r.id, { fielder_person_id: pid })} />
-                {r.dismissal_type === "run_out" && r.fielder_person_id && (
-                  <RunOutAssists ctx={ctx} entryId={r.id} primaryId={r.fielder_person_id} />
+                {fielderApplies(r.dismissal_type, r.fielder_person_id !== null) ? (
+                  <>
+                    <PlayerSelect workspaceId={workspaceId} value={r.fielder_person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
+                      disabled={!canManage} aria-label={`Fielder for batter ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
+                      onChange={(pid) => void commit(r.id, { fielder_person_id: pid })} />
+                    {r.dismissal_type === "run_out" && r.fielder_person_id && (
+                      <RunOutAssists ctx={ctx} entryId={r.id} primaryId={r.fielder_person_id} />
+                    )}
+                  </>
+                ) : (
+                  <span className="pl-2 text-sm italic text-muted-foreground"
+                    aria-label={`Fielder not applicable for batter ${i + 1}`}>—</span>
                 )}
               </td>
               <td className="min-w-[150px] px-1 py-1">

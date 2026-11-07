@@ -89,3 +89,45 @@ describe("batting-order controls", () => {
     expect(H.deleteBatting).not.toHaveBeenCalled();
   });
 });
+
+describe("fresh-card seeding and the fielder box", () => {
+  it("opens a full XI (11 positions) when the batting card is empty", async () => {
+    H.listBatting.mockResolvedValue([]);
+    H.createBatting.mockResolvedValue({});
+    renderGrid();
+    await waitFor(() => expect(H.createBatting).toHaveBeenCalledTimes(11));
+    expect(H.createBatting).toHaveBeenNthCalledWith(1, "w", "i1", { batting_position: 1 });
+    expect(H.createBatting).toHaveBeenNthCalledWith(11, "w", "i1", { batting_position: 11 });
+  });
+
+  it("does not seed when the card already has batters", async () => {
+    H.listBatting.mockResolvedValue([r1, r2]);
+    renderGrid();
+    await screen.findByRole("button", { name: /Remove batter 1/i });
+    expect(H.createBatting).not.toHaveBeenCalled();
+  });
+
+  it("hides the Fielder box for a bowler-only dismissal and shows it for a catch", async () => {
+    const bowled = mkRow({ id: "b1", batting_position: 1, person_id: "p1", dismissal_type: "bowled" });
+    const caught = mkRow({ id: "c1", batting_position: 2, person_id: "p2", dismissal_type: "caught" });
+    H.listBatting.mockResolvedValue([bowled, caught]);
+    H.listPeople.mockResolvedValue([]);
+    renderGrid();
+    await screen.findByRole("button", { name: /^Batter 1$/i });
+    expect(screen.queryByRole("button", { name: /Fielder for batter 1/i })).toBeNull();   // bowled: hidden
+    expect(screen.getByRole("button", { name: /Fielder for batter 2/i })).toBeTruthy();    // caught: shown
+  });
+
+  it("clears a stale fielder when the dismissal becomes bowler-only", async () => {
+    const caught = mkRow({ id: "c1", batting_position: 1, person_id: "p1", dismissal_type: "caught", fielder_person_id: "f1" });
+    H.listBatting.mockResolvedValue([caught]);
+    H.updateBatting.mockResolvedValue({});
+    H.listPeople.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderGrid();
+    const sel = await screen.findByLabelText(/How out 1/i);
+    await user.selectOptions(sel, "bowled");
+    await waitFor(() =>
+      expect(H.updateBatting).toHaveBeenCalledWith("w", "i1", "c1", { dismissal_type: "bowled", fielder_person_id: null }));
+  });
+});
