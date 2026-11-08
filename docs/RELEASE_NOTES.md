@@ -4,6 +4,31 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.4 — 2026-11-08
+
+Scorecard entry, research gap click-through, and club-scoped profile publishing.
+
+**Changed since beta.3:**
+- Manual scorecard entry: the Bowler box now shows only when a bowler is actually part of the entry —
+  it is hidden for a not-out batter and for dismissals with no bowler, and switching to one of those
+  clears any stale bowler.
+- Records & profile: the `min.` badge now has a tooltip explaining it marks a *known minimum* — the real
+  figure may be higher where some innings are still unknown (unknown is never treated as zero).
+- Website publishing: a published Player Profile can now be **scoped to a single club**, so a club's site
+  only shows that club's stats and not figures from a player's other clubs. Published profiles also now
+  carry the player's **honour/role badges**.
+- Website publishing panel: it no longer presents the internal relative path as if it were a public URL.
+  Until central hosting exists it tells you to **download** the profile/report and upload it to your own
+  site, with the Copy action reserved for a genuinely public address.
+- Research Centre: a season assessed as complete but still flagged incomplete now shows a short
+  reconciliation note explaining why, and the gap tiles are **clickable** — they take you straight to the
+  affected matches (via a new `?issue=` filter on the match list) instead of making you hunt for them.
+- Research Centre overview: each gap row has a **View matches** button that opens the filtered match list.
+- People: a player's **Club & team affiliations** now shows the club on each row (club · role — years).
+
+> Installed manually, like beta.3 (self-update is not enabled). The minimum-supported-desktop floor stays
+> at `1.0.0-beta.1`.
+
 ## 1.0.0-beta.3 — 2026-11-08
 
 Research Centre OCR and manual scorecard-entry fixes.
