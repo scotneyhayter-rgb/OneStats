@@ -482,7 +482,10 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
               <ul className="space-y-1 text-sm">
                 {(view?.affiliations ?? []).map((a: any) => (
                   <li key={a.id} className="flex justify-between gap-3">
-                    <span>{humanise(a.role)}</span>
+                    <span>
+                      <span className="font-medium">{orgs.find((o) => o.id === a.organisation_id)?.name ?? "Unknown club"}</span>
+                      {a.role ? <span className="text-muted-foreground"> · {humanise(a.role)}</span> : null}
+                    </span>
                     <span className="text-muted-foreground"><Unknown value={a.valid_from} /> – {a.valid_to ?? "present"}</span>
                   </li>
                 ))}
