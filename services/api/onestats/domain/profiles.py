@@ -304,11 +304,17 @@ def _related_organisations(conn: Connection, org_ids: set[UUID]) -> list[dict[st
     return [dict(r) for r in rows]
 
 
-def career_view(conn: Connection, person_id: UUID, *, public: bool = False) -> dict[str, Any] | None:
+def career_view(conn: Connection, person_id: UUID, *, public: bool = False,
+                workspace_id: UUID | None = None) -> dict[str, Any] | None:
     """Assemble the full profile for the (future) Player Profile screen: identity, profile detail,
     names, roles, affiliations (by organisation/season), numbers, leadership, recognition, photos,
     documented related organisations, and the reserved statistics contract. ``public=True`` returns
-    only public-authorised, non-internal fields and nothing for a privacy-protected person."""
+    only public-authorised, non-internal fields and nothing for a privacy-protected person.
+
+    When ``workspace_id`` is given, ``played_for_clubs`` additionally lists clubs the player is linked to
+    only through the matches they appeared in (derived from recorded appearances) and that have NO
+    recorded affiliation — so the screen can show those without duplicating the affiliations list. It
+    carries no year span, because an appearance-derived link has none."""
     include_protected = not public
     person = people.detail(conn, person_id, include_protected=include_protected)
     if person is None:
@@ -317,6 +323,18 @@ def career_view(conn: Connection, person_id: UUID, *, public: bool = False) -> d
     affs = affiliations.list_affiliations(conn, person_id=person_id)
     org_ids = {a["organisation_id"] for a in affs}
     photos = list_photos(conn, person_id)
+
+    played_for_clubs: list[dict[str, Any]] = []
+    if workspace_id is not None:
+        from onestats.domain.records import player_profile
+        affiliated = {str(o) for o in org_ids}
+        seen: set[str] = set()
+        for ct in player_profile.clubs_and_teams(conn, workspace_id, person_id):
+            oid = ct["org_id"]
+            if oid in affiliated or oid in seen:
+                continue
+            seen.add(oid)
+            played_for_clubs.append({"org_id": oid, "club": ct["club"]})
 
     if public:
         # Internal profile existing never implies public visibility.
@@ -337,6 +355,7 @@ def career_view(conn: Connection, person_id: UUID, *, public: bool = False) -> d
         "leadership": list_leadership(conn, person_id),
         "recognition": list_recognition(conn, person_id),
         "photos": photos,
+        "played_for_clubs": played_for_clubs,
         "related_organisations": [] if public else _related_organisations(conn, org_ids),
         "statistics": career_statistics_contract(person_id),
     }

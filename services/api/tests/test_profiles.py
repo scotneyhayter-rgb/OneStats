@@ -176,6 +176,39 @@ def test_career_view_preserves_per_org_attribution_and_lists_related_orgs(conn):
     assert view["statistics"]["status"] == "not_available"
 
 
+def test_career_view_played_for_clubs_from_matches_excludes_recorded_affiliations(conn):
+    import json
+
+    wid = _ws(conn, "PLAYED FOR")
+    p = _person(conn, wid, "A Allrounder")
+    affiliated_org = _org(conn, wid, "Rhymney Cricket Club")
+    appearance_org = _org(conn, wid, "Moyston Cricket Club")   # linked only via a match appearance
+    # A recorded affiliation to Rhymney only — Moyston has none.
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=p, organisation_id=affiliated_org, role="player",
+                                    valid_from=date(1980, 10, 1))
+    aff_team = conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w,:o,'Rhymney XI') "
+                                 "RETURNING id"), {"w": wid, "o": affiliated_org}).scalar_one()
+    app_team = conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w,:o,'Moyston XI') "
+                                 "RETURNING id"), {"w": wid, "o": appearance_org}).scalar_one()
+    match1 = conn.execute(text("INSERT INTO match(workspace_id) VALUES (:w) RETURNING id"), {"w": wid}).scalar_one()
+    match2 = conn.execute(text("INSERT INTO match(workspace_id) VALUES (:w) RETURNING id"), {"w": wid}).scalar_one()
+    # The player appeared for a Rhymney team in one match and a Moyston team in another.
+    conn.execute(
+        text("INSERT INTO match_stat_contribution(workspace_id, match_id, calculator, subject_kind, subject_id, "
+             "team_id, metrics) VALUES (:w,:m,'player_appearance','person',:sid,:tid, CAST(:met AS jsonb))"),
+        [{"w": wid, "m": str(match1), "sid": str(p), "tid": str(aff_team), "met": json.dumps({"matches": 1})},
+         {"w": wid, "m": str(match2), "sid": str(p), "tid": str(app_team), "met": json.dumps({"matches": 1})}],
+    )
+    view = profiles.career_view(conn, p, workspace_id=wid)
+    clubs = {c["org_id"] for c in view["played_for_clubs"]}
+    # Moyston (appearance only) is listed; Rhymney (a recorded affiliation) is NOT duplicated here.
+    assert str(appearance_org) in clubs
+    assert str(affiliated_org) not in clubs
+    assert all("org_id" in c and "club" in c for c in view["played_for_clubs"])
+    # Without a workspace_id the field is present but empty (no appearance lookup performed).
+    assert profiles.career_view(conn, p)["played_for_clubs"] == []
+
+
 def test_public_view_strips_internal_and_hidden(conn):
     wid = _ws(conn, "PROF PRIV")
     # public (non-junior) person with a public-visible profile

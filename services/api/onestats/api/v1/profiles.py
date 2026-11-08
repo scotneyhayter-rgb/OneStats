@@ -110,7 +110,7 @@ class PhotoMeta(BaseModel):
 @router.get("/{person_id}/profile")
 def get_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: PCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        view = profiles.career_view(conn, person_id)
+        view = profiles.career_view(conn, person_id, workspace_id=workspace_id)
         if view is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "person_not_found")
         return view
@@ -119,7 +119,7 @@ def get_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx:
 @router.get("/{person_id}/public-profile")
 def get_public_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: PCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        view = profiles.career_view(conn, person_id, public=True)
+        view = profiles.career_view(conn, person_id, public=True, workspace_id=workspace_id)
         if view is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "not_public")
         return view
