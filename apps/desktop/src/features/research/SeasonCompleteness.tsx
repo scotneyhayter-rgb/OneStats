@@ -120,11 +120,22 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
   }
 
   if (sel) {
-    const metric = (label: string, value: string | number) => (
-      <div className="rounded-[var(--radius-app)] border border-border p-3">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-xl font-semibold tabular-nums">{value}</div>
-      </div>
+    const goMatches = (issue?: string) =>
+      navigate(`/matches?season=${sel.season_id}&label=${encodeURIComponent(sel.label)}${issue ? `&issue=${issue}` : ""}`);
+    const metric = (label: string, value: string | number, onClick?: () => void) => (
+      onClick ? (
+        <button type="button" onClick={onClick}
+          className="rounded-[var(--radius-app)] border border-border p-3 text-left hover:border-brand">
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className="text-xl font-semibold tabular-nums">{value}</div>
+          <div className="text-[10px] font-medium text-brand">Open matches →</div>
+        </button>
+      ) : (
+        <div className="rounded-[var(--radius-app)] border border-border p-3">
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className="text-xl font-semibold tabular-nums">{value}</div>
+        </div>
+      )
     );
     return (
       <div className="flex flex-col gap-3">
@@ -139,13 +150,24 @@ export function SeasonCompleteness({ onCreateTask }: { onCreateTask?: () => void
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {metric("Known matches", sel.known_matches)}
           {metric("With scorecard", `${sel.with_scorecard} of ${sel.known_matches}`)}
-          {metric("Missing scorecards", sel.missing_scorecards)}
-          {metric("Missing results", sel.missing_results)}
+          {metric("Missing scorecards", sel.missing_scorecards, sel.missing_scorecards > 0 ? () => goMatches() : undefined)}
+          {metric("Missing results", sel.missing_results, sel.missing_results > 0 ? () => goMatches("no_result") : undefined)}
           {metric("Verified", `${sel.verified_matches} of ${sel.known_matches}`)}
-          {metric("Awaiting / draft", sel.draft_matches)}
-          {metric("Conflicting", sel.disputed_matches)}
+          {metric("Awaiting / draft", sel.draft_matches, sel.draft_matches > 0 ? () => goMatches("unverified") : undefined)}
+          {metric("Conflicting", sel.disputed_matches, sel.disputed_matches > 0 ? () => goMatches("disputed") : undefined)}
           {metric("Fixture coverage", sel.fixture_coverage === "established" ? "Established" : "Unknown")}
         </div>
+        {sel.assessed_class && sel.status !== "verified" && (
+          <div className="rounded-[var(--radius-app)] border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-foreground">
+            You've recorded this season as <span className="font-medium">{ASSESS_LABEL[sel.assessed_class] ?? sel.assessed_class}</span>,
+            but it still shows as <span className="font-medium">{STATUS_LABEL[sel.status]}</span> because {[
+              sel.missing_results > 0 ? `${sel.missing_results} match${sel.missing_results === 1 ? " has" : "es have"} no recorded result` : null,
+              sel.missing_scorecards > 0 ? `${sel.missing_scorecards} known match${sel.missing_scorecards === 1 ? " has" : "es have"} no scorecard` : null,
+              sel.draft_matches > 0 ? `${sel.draft_matches} scorecard${sel.draft_matches === 1 ? " is" : "s are"} not yet verified` : null,
+              sel.disputed_matches > 0 ? `${sel.disputed_matches} match${sel.disputed_matches === 1 ? " has" : "es have"} conflicting evidence` : null,
+            ].filter(Boolean).join("; ")}. OneStats won't mark a season fully complete while a result is missing — click a highlighted tile above to open those matches and resolve them.
+          </div>
+        )}
         {sel.fixture_coverage === "unknown" && (
           <p className="text-xs text-muted-foreground">
             Fixture coverage is unknown — the expected number of fixtures for this season has not been
