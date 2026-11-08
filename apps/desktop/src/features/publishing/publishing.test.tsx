@@ -27,7 +27,9 @@ describe("Publishing", () => {
 
     render(<Publishing />);
     await waitFor(() => expect(screen.getByText("Leading Run Scorers")).toBeTruthy());
-    expect(screen.getByText("/api/v1/public/r/abc123")).toBeTruthy();
+    // with no public hosting address configured, the panel no longer offers the internal relative path
+    // as a "URL" — it tells the user to download and host it instead.
+    expect(screen.getByText(/Not publicly hosted yet/i)).toBeTruthy();
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "bat_most_runs" } });
     // after a report is selected the Publish button is enabled
