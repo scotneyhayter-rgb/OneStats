@@ -62,6 +62,12 @@ def _no_context(conn):
     conn.execute(text("SELECT set_config('onestats.workspace_id', '', true)"))
 
 
+def _snap(conn, pub_id):
+    """Read a publication's stored snapshot as a dict (admin read; keeps workspace context intact)."""
+    s = conn.execute(text("SELECT snapshot FROM publication WHERE id = :i"), {"i": pub_id}).scalar_one()
+    return s if isinstance(s, dict) else json.loads(s)
+
+
 @pytest.fixture
 def seeded(conn):
     wid = _ws(conn, "PUB")
@@ -181,6 +187,42 @@ def test_member_portal_includes_non_public_items(seeded, conn):
     assert "Gone" not in by_title                                   # revoked never appears
     assert portal["public_count"] == 1 and portal["member_only_count"] == 1
     assert portal["club"] == "PUB"
+
+
+def test_profile_publish_scoped_to_one_club_excludes_other_clubs_and_shows_badges(seeded, conn):
+    """A club-scoped published profile shows ONLY that club's statistics (a player's runs for other clubs
+    are excluded), omits the season-by-season/records sections that are not club-scoped (so nothing leaks),
+    labels the scope, and carries the player's badges. The whole-career profile counts every club."""
+    d = seeded; wid = d["wid"]; p = d["p"]
+    rhymney_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": d["home"]}).scalar_one()
+    # the same player also turns out for another club and scores 50 there — must NOT appear on the Rhymney profile
+    other_team = _team(conn, wid, "Moyston")
+    _match(conn, wid, d["comp"], d["se"], other_team, d["away"], p, 50)
+
+    # whole career: both clubs counted (100 + 50), season-by-season present, no scope label
+    career = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile", title="Star Player", person_id=p)
+    sa = _snap(conn, career["id"])
+    assert sa["career"]["batting"]["runs"] == 150
+    assert not sa.get("scope_club")
+    assert len(sa["seasons"]) >= 1
+
+    # scoped to Rhymney: only its 100, the un-scopable sections omitted, scope labelled, badges present
+    scoped = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile", title="Star Player",
+                                           person_id=p, filters={"organisation_id": str(rhymney_org)})
+    ss = _snap(conn, scoped["id"])
+    assert ss["career"]["batting"]["runs"] == 100          # the other club's 50 is excluded
+    assert ss["scope_club"]                                 # labelled with the club it is published for
+    assert ss["seasons"] == [] and ss["records"] == []     # not club-scoped -> omitted, never leaked
+    assert "badges" in ss                                  # badges carried into the published export
+    html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"), {"i": scoped["id"]}).scalar_one()
+    assert "only" in html.lower()                          # the "Statistics for … only" note is rendered
+
+
+def test_publish_profile_rejects_unknown_club(seeded, conn):
+    import uuid
+    with pytest.raises(ValueError, match="unknown_organisation"):
+        publishing.create_publication(conn, TS, seeded["wid"], ACTOR, kind="player_profile", title="X",
+                                      person_id=seeded["p"], filters={"organisation_id": str(uuid.uuid4())})
 
 
 def test_isolation_admin_cannot_see_other_workspace(seeded, conn):

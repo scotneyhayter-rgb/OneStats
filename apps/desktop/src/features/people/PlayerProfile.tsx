@@ -224,9 +224,17 @@ export function PlayerProfile() {
 
   const publishProfile = async () => {
     try {
-      await api.publicationCreate(current.id, { kind: "player_profile", person_id: personId!, title: name });
+      // Publish for the club currently selected above (or the whole career when "all clubs" is chosen),
+      // so a club's website shows only that club's statistics.
+      const clubName = clubOptions.find((c) => c.org_id === clubFilter)?.club;
+      await api.publicationCreate(current.id, {
+        kind: "player_profile", person_id: personId!, title: name,
+        filters: clubFilter ? { organisation_id: clubFilter } : {},
+      });
       setError(null);
-      window.alert("Published to a permanent public URL. Manage it under Website Publishing.");
+      window.alert(clubFilter
+        ? `Published ${name}'s profile for ${clubName ?? "the selected club"} — only this club's statistics are shown. It's live; open Preview under Website Publishing to view or download it.`
+        : `Published ${name}'s whole-career profile (all clubs). It's live; open Preview under Website Publishing to view or download it.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not publish this profile (admins only).");
     }
