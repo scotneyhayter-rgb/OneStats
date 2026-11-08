@@ -383,6 +383,10 @@ export function ResearchCentre() {
           const cats = Object.entries(gaps) as [string, GapCategory][];
           const totalGaps = cats.reduce((a, [, c]) => a + c.count, 0);
           const top = [...cats].filter(([, c]) => c.count > 0).sort((a, b) => b[1].count - a[1].count);
+          // Gap kinds that map to a Matches-list filter, so a gap row can jump straight to those matches.
+          const GAP_ISSUE: Record<string, string> = {
+            matches_without_result: "no_result", draft_scorecards: "unverified", disputed_matches: "disputed",
+          };
           const subBtn = (key: typeof gapsSub, label: string) => (
             <button type="button" onClick={() => setGapsSub(key)}
               className={`rounded-[var(--radius-app)] border px-3 py-1 text-xs ${gapsSub === key ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground hover:text-foreground"}`}>
@@ -411,11 +415,18 @@ export function ResearchCentre() {
                     <div key={key} className="flex items-center gap-2 rounded-[var(--radius-app)] border border-border px-3 py-2 text-sm">
                       <span className="font-medium">{key.replace(/_/g, " ")}</span>
                       <Badge variant="warning">{cat.count}</Badge>
-                      <Button size="sm" variant="outline" className="ml-auto" disabled={busy}
-                        onClick={() => void act(() => api.researchCreateTask(workspaceId,
-                          { title: `Address: ${key.replace(/_/g, " ")}`, gap_kind: key }), "Research task created.")}>
-                        Create task
-                      </Button>
+                      <div className="ml-auto flex gap-1">
+                        {GAP_ISSUE[key] && (
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/matches?issue=${GAP_ISSUE[key]}`)}>
+                            View matches
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" disabled={busy}
+                          onClick={() => void act(() => api.researchCreateTask(workspaceId,
+                            { title: `Address: ${key.replace(/_/g, " ")}`, gap_kind: key }), "Research task created.")}>
+                          Create task
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
