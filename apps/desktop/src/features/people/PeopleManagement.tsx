@@ -491,6 +491,20 @@ function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: 
                 ))}
               </ul>
             )}
+            {(view?.played_for_clubs ?? []).length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-muted-foreground">
+                  Played for (from match appearances, no recorded affiliation):
+                </p>
+                <ul className="mt-1 flex flex-wrap gap-1.5">
+                  {(view?.played_for_clubs ?? []).map((c: any) => (
+                    <li key={c.org_id} className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs">
+                      {c.club}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
 
           <section className="grid gap-3 sm:grid-cols-3">
