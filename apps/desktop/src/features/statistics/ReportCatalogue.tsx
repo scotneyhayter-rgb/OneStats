@@ -11,7 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type CatalogueReport, type ReportCatalogue as Catalogue, type StatColumn, type StatReport } from "../../lib/api";
+import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -61,13 +61,47 @@ export function ReportCatalogue() {
   const [formats, setFormats] = useState<string[]>([]);
   const [data, setData] = useState<StatReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Scope filters an opened report honours (the engine applies them identically to the Statistics screen).
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [organisations, setOrganisations] = useState<Organisation[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [primaryClub, setPrimaryClub] = useState<{ organisation_id?: string; name?: string }>({});
+  const [competitionId, setCompetitionId] = useState("");
+  const [organisationId, setOrganisationId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [venueId, setVenueId] = useState("");
+  const [gradeId, setGradeId] = useState("");
+  const [seasonId, setSeasonId] = useState("");
 
   useEffect(() => {
     if (!current) return;
     api.statsCatalogue(current.id).then(setCat).catch((e) =>
       setError(e instanceof ApiError ? e.message : "Could not load the report catalogue."));
     api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
-  }, [current]);
+    api.listCompetitions(current.id).then(setCompetitions).catch(() => setCompetitions([]));
+    api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
+    api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
+    api.listVenues(current.id).then(setVenues).catch(() => setVenues([]));
+    api.statsPrimaryClub(current.id).then(setPrimaryClub).catch(() => setPrimaryClub({}));
+    // Depend on the workspace id (a stable string), not the `current` object whose identity changes each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
+
+  // Grades and seasons belong to a competition — load them when one is picked, and clear the picks.
+  useEffect(() => {
+    if (current && competitionId) {
+      api.getCompetition(current.id, competitionId)
+        .then((c) => { setGrades(c.grades ?? []); setSeasons(c.seasons ?? []); })
+        .catch(() => { setGrades([]); setSeasons([]); });
+    } else {
+      setGrades([]); setSeasons([]);
+    }
+    setGradeId(""); setSeasonId("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, competitionId]);
 
   const allReports = useMemo(() => (cat?.categories ?? []).flatMap((c) => c.reports), [cat]);
   const byId = useMemo(() => new Map(allReports.map((r) => [r.id, r])), [allReports]);
@@ -80,34 +114,54 @@ export function ReportCatalogue() {
     });
   }, []);
 
-  const loadReport = useCallback(async (r: CatalogueReport, sp: string, fmt: string) => {
+  // Which scope filters this report honours (declared by the catalogue; the engine applies them).
+  const buildQuery = useCallback((r: CatalogueReport): Record<string, string | undefined> => {
+    const s = (t: string) => r.filters.includes(t);
+    return {
+      organisation_id: s("organisation") && organisationId ? organisationId : undefined,
+      team_id: s("team") && teamId ? teamId : undefined,
+      competition_id: s("competition") && competitionId ? competitionId : undefined,
+      grade_id: s("grade") && gradeId ? gradeId : undefined,
+      season_id: s("season") && seasonId ? seasonId : undefined,
+      venue_id: s("venue") && venueId ? venueId : undefined,
+      split: s("split") && split ? split : undefined,
+      format: s("format") && format ? format : undefined,
+    };
+  }, [organisationId, teamId, competitionId, gradeId, seasonId, venueId, split, format]);
+
+  const loadReport = useCallback(async (r: CatalogueReport) => {
     if (!current) return;
     setError(null);
     try {
-      const d = await api.statsReport(current.id, r.id, { split: sp || undefined, format: fmt || undefined });
-      setData(d);
+      setData(await api.statsReport(current.id, r.id, buildQuery(r)));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not open the report.");
       setData(null);
     }
-  }, [current]);
+  }, [current, buildQuery]);
 
   const openReport = useCallback((r: CatalogueReport) => {
     if (r.id === "capt_compare") { window.location.hash = "#/statistics/captaincy-compare"; return; }
-    setOpen(r);
-    setSplit("");
-    setFormat("");
+    // Reset scope, defaulting the club to the workspace's primary club where the report supports it.
+    setSplit(""); setFormat(""); setCompetitionId(""); setTeamId(""); setVenueId(""); setGradeId(""); setSeasonId("");
+    setOrganisationId(r.filters.includes("organisation") ? (primaryClub.organisation_id ?? "") : "");
     setData(null);
-    void loadReport(r, "", "");
+    setOpen(r);
     setRecent((prev) => {
       const next = [r.id, ...prev.filter((x) => x !== r.id)];
       saveIds(RECENT_KEY, next);
       return next;
     });
-  }, [loadReport]);
+  }, [primaryClub]);
 
-  // The opened report renders below the catalogue list; bring it into view so it isn't missed off-screen.
+  const closeReport = useCallback(() => { setOpen(null); setData(null); }, []);
+
+  // Reload whenever the opened report or any of its scope filters change.
   const reportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) void loadReport(open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open?.id, organisationId, teamId, competitionId, gradeId, seasonId, venueId, split, format]);
   useEffect(() => {
     if (open) reportRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, [open?.id]);
@@ -115,7 +169,7 @@ export function ReportCatalogue() {
   const exportUrl = useCallback(async (kind: "pdf" | "csv") => {
     if (!current || !open) return;
     try {
-      const q = { split: split || undefined, format: format || undefined };
+      const q = buildQuery(open);
       const url = kind === "pdf"
         ? await api.statsReportPdfUrl(current.id, open.id, q)
         : await api.statsReportCsvUrl(current.id, open.id, q);
@@ -123,7 +177,7 @@ export function ReportCatalogue() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Export failed.");
     }
-  }, [current, open, split, format]);
+  }, [current, open, buildQuery]);
 
   const printIndex = useCallback(async () => {
     if (!current) return;
@@ -172,6 +226,7 @@ export function ReportCatalogue() {
       <div className="flex flex-col gap-4">
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
 
+        {!open && (<>
         <Card><CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[12rem]">
@@ -224,28 +279,118 @@ export function ReportCatalogue() {
           </CardContent></Card>
         ))}
         {visibleCategories.length === 0 && cat && <p className="text-sm text-muted-foreground">No reports match “{query}”.</p>}
+        </>)}
 
         {open && (
           <div ref={reportRef}><Card><CardContent className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={closeReport}>← All reports</Button>
               <h3 className="text-sm font-semibold">{open.name}</h3>
               <Badge variant="muted">{open.category}</Badge>
               <div className="ml-auto flex items-center gap-2">
-                <Select value={split} onChange={(e) => { setSplit(e.target.value); void loadReport(open, e.target.value, format); }}>
-                  {SPLITS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </Select>
-                {formats.length > 0 && (
-                  <Select value={format} aria-label="Match format"
-                    onChange={(e) => { setFormat(e.target.value); void loadReport(open, split, e.target.value); }}>
+                {open.pdf && <Button size="sm" variant="outline" onClick={() => void exportUrl("pdf")}><Download className="h-4 w-4" aria-hidden /> PDF</Button>}
+                {open.csv && <Button size="sm" variant="outline" onClick={() => void exportUrl("csv")}><Download className="h-4 w-4" aria-hidden /> CSV</Button>}
+                <Button size="sm" variant="ghost" onClick={closeReport} aria-label="Close"><X className="h-4 w-4" aria-hidden /></Button>
+              </div>
+            </div>
+
+            {/* Scope filters this report supports — the engine applies them to the figures and the PDF/CSV. */}
+            <div className="flex flex-wrap items-end gap-2 text-xs">
+              {open.filters.includes("organisation") && organisations.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Club</span>
+                  <Select value={organisationId} onChange={(e) => setOrganisationId(e.target.value)} className="w-44">
+                    <option value="">All clubs</option>
+                    {organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("team") && teams.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Team</span>
+                  <Select value={teamId} onChange={(e) => setTeamId(e.target.value)} className="w-44">
+                    <option value="">All teams</option>
+                    {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("competition") && competitions.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Competition</span>
+                  <Select value={competitionId} onChange={(e) => setCompetitionId(e.target.value)} className="w-44">
+                    <option value="">All competitions</option>
+                    {competitions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("grade") && grades.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Grade</span>
+                  <Select value={gradeId} onChange={(e) => setGradeId(e.target.value)} className="w-36">
+                    <option value="">All grades</option>
+                    {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("season") && seasons.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Season</span>
+                  <Select value={seasonId} onChange={(e) => setSeasonId(e.target.value)} className="w-32">
+                    <option value="">All seasons</option>
+                    {seasons.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("venue") && venues.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Ground</span>
+                  <Select value={venueId} onChange={(e) => setVenueId(e.target.value)} className="w-44">
+                    <option value="">All grounds</option>
+                    {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("split") && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Matches</span>
+                  <Select value={split} onChange={(e) => setSplit(e.target.value)} className="w-40">
+                    {SPLITS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </Select>
+                </label>
+              )}
+              {open.filters.includes("format") && formats.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Format</span>
+                  <Select value={format} onChange={(e) => setFormat(e.target.value)} className="w-40">
                     <option value="">All formats</option>
                     {formats.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
                   </Select>
-                )}
-                {open.pdf && <Button size="sm" variant="outline" onClick={() => void exportUrl("pdf")}><Download className="h-4 w-4" aria-hidden /> PDF</Button>}
-                {open.csv && <Button size="sm" variant="outline" onClick={() => void exportUrl("csv")}><Download className="h-4 w-4" aria-hidden /> CSV</Button>}
-                <Button size="sm" variant="ghost" onClick={() => { setOpen(null); setData(null); }} aria-label="Close"><X className="h-4 w-4" aria-hidden /></Button>
-              </div>
+                </label>
+              )}
             </div>
+            {(() => {
+              const chips = [
+                organisationId && open.filters.includes("organisation") && { label: `Club: ${organisations.find((o) => o.id === organisationId)?.name ?? "—"}`, clear: () => setOrganisationId("") },
+                teamId && open.filters.includes("team") && { label: `Team: ${teams.find((t) => t.id === teamId)?.name ?? "—"}`, clear: () => setTeamId("") },
+                competitionId && open.filters.includes("competition") && { label: `Comp: ${competitions.find((c) => c.id === competitionId)?.name ?? "—"}`, clear: () => setCompetitionId("") },
+                gradeId && open.filters.includes("grade") && { label: `Grade: ${grades.find((g) => g.id === gradeId)?.name ?? "—"}`, clear: () => setGradeId("") },
+                seasonId && open.filters.includes("season") && { label: `Season: ${seasons.find((s) => s.id === seasonId)?.label ?? "—"}`, clear: () => setSeasonId("") },
+                venueId && open.filters.includes("venue") && { label: `Ground: ${venues.find((v) => v.id === venueId)?.name ?? "—"}`, clear: () => setVenueId("") },
+                split && open.filters.includes("split") && { label: SPLITS.find((s) => s.value === split)?.label ?? split, clear: () => setSplit("") },
+                format && open.filters.includes("format") && { label: `Format: ${format}`, clear: () => setFormat("") },
+              ].filter(Boolean) as { label: string; clear: () => void }[];
+              return chips.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Scope:</span>
+                  {chips.map((c, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 rounded-full border border-brand bg-brand/10 px-2 py-0.5 text-xs text-brand">
+                      {c.label}
+                      <button type="button" aria-label={`Clear ${c.label}`} className="hover:text-danger" onClick={c.clear}>×</button>
+                    </span>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-muted-foreground">Showing all matches. Use the filters above to scope this report to a club, team or season.</p>;
+            })()}
             <p className="text-xs text-muted-foreground">{open.description}</p>
             {(open.qualification || open.limitations) && (
               <p className="text-xs text-muted-foreground">
