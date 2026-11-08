@@ -26,7 +26,7 @@ def test_research_routes_registered(client):
               "/sources/{source_id}/transcription", "/extractions/{extraction_id}/correct",
               "/reconstructions", "/matches/{match_id}/attach-source", "/matches/{match_id}/reconstruction",
               "/matches/{match_id}/submit-for-review", "/matches/{match_id}/verify",
-              "/timeline", "/timeline/assessment", "/gaps",
+              "/timeline", "/timeline/assessment", "/gaps", "/parse-clipping",
               "/tasks", "/tasks/{task_id}", "/notes", "/matches/{match_id}/suggestions",
               "/aliases", "/aliases/expand"):
         assert f"{base}{p}" in paths, p
@@ -40,6 +40,7 @@ def test_research_requires_authentication(client):
     assert client.post(f"{base}/projects", json={"title": "x"}).status_code == 401
     assert client.get(f"{base}/sources").status_code == 401
     assert client.post(f"{base}/sources", json={"title": "x", "source_type": "pdf"}).status_code == 401
+    assert client.post(f"{base}/parse-clipping", json={"text": "J Smith b Brown 1"}).status_code == 401
 
 
 def test_internet_search_routes_registered(client):

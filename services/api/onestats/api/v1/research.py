@@ -18,9 +18,11 @@ from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
 from onestats.domain import matches as matches_domain
+from onestats.domain import people as people_domain
 from onestats.domain.research import (
     aliases,
     assist,
+    clipping,
     dashboard,
     extraction,
     gaps,
@@ -408,6 +410,54 @@ def correct_extraction(workspace_id: UUID, extraction_id: UUID, body: Correction
                                                 body.corrected_text))
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+class ClippingParse(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+def _player_candidates(conn, name: str, *, limit: int = 6) -> list[dict[str, Any]]:
+    """Existing people whose name plausibly matches a parsed scorecard name. Read-only: this suggests
+    matches so the researcher can link to an existing player instead of creating a duplicate — it never
+    creates anyone. Exact-name matches are ranked first."""
+    import re
+
+    name = (name or "").strip()
+    if not name:
+        return []
+    norm = re.sub(r"\s+", " ", name).lower()
+    tokens = name.split()
+    surname = tokens[-1] if tokens else name
+    seen: dict[str, dict[str, Any]] = {}
+    for term in (name, surname):
+        if len(term) < 2:
+            continue
+        for p in people_domain.list_people(conn, search=term):
+            pid = str(p["id"])
+            if pid in seen:
+                continue
+            dn = p.get("display_name") or ""
+            seen[pid] = {"person_id": pid, "display_name": dn,
+                         "exact": re.sub(r"\s+", " ", dn).lower() == norm}
+            if len(seen) >= limit * 3:
+                break
+    cands = sorted(seen.values(), key=lambda c: (not c["exact"], c["display_name"].lower()))
+    return cands[:limit]
+
+
+@router.post("/parse-clipping")
+def parse_clipping_text(workspace_id: UUID, body: ClippingParse, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """Parse OCR'd / transcribed scorecard text into a **draft** and suggest existing-player matches for
+    each name. Entirely read-only: it creates no people and saves no scorecard. The researcher reviews
+    every row, links each name to an existing player or marks it to create a new one, and only then (via
+    the normal reconstruction + approval workflow) is anything written."""
+    parsed = clipping.parse_clipping(body.text).to_dict()
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        for b in parsed["batters"]:
+            b["candidates"] = _player_candidates(conn, b["name"])
+        for b in parsed["bowlers"]:
+            b["candidates"] = _player_candidates(conn, b["name"])
+    return parsed
 
 
 @router.post("/sources/{source_id}/link")

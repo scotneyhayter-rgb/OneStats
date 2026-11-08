@@ -10,6 +10,7 @@
 import { CalendarRange, ClipboardCheck, FileText, FolderGit2, Globe, Library, ListChecks, Newspaper, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { ClippingScorecard } from "./ClippingScorecard";
 import { DataQuality } from "./DataQuality";
 import { InternetSearch } from "./InternetSearch";
 import { NewspaperSearch } from "./NewspaperSearch";
@@ -1024,6 +1025,7 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [clippingFor, setClippingFor] = useState<string | null>(null);
 
   const viewDoc = async () => {
     try {
@@ -1104,9 +1106,26 @@ function SourceRow({ workspaceId, source, busy, onUpload, onExtract }: {
                 className="w-full rounded-[var(--radius-app)] border border-border bg-background p-2"
                 placeholder="Type or correct the transcription here"
               />
-              <Button size="sm" className="self-start" disabled={saving} onClick={() => void saveCorrection(e.id)}>
-                Save transcription
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" disabled={saving} onClick={() => void saveCorrection(e.id)}>
+                  Save transcription
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={saving || !(draft[e.id] ?? "").trim()}
+                  onClick={() => setClippingFor((cur) => (cur === e.id ? null : e.id))}
+                >
+                  {clippingFor === e.id ? "Hide clipping draft" : "Create scorecard from clipping"}
+                </Button>
+              </div>
+              {clippingFor === e.id && (
+                <ClippingScorecard
+                  workspaceId={workspaceId}
+                  initialText={draft[e.id] ?? ""}
+                  onClose={() => setClippingFor(null)}
+                />
+              )}
             </div>
           ))}
           {msg && <p className="text-xs text-success">{msg}</p>}
