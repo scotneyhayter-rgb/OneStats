@@ -63,6 +63,12 @@ export function Scorecard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [seasonFilter, setSeasonFilter] = useState("");
   const [seasonLabel, setSeasonLabel] = useState("");
+  // Deep-link gap filter (from the Research Centre's Season view): scope the list to the matches with a
+  // specific issue, so the user lands on the exact problem matches instead of hunting for them.
+  const [issueFilter, setIssueFilter] = useState("");
+  const ISSUE_FILTER_LABEL: Record<string, string> = {
+    no_result: "No recorded result", unverified: "Awaiting approval / draft", disputed: "Conflicting / disputed",
+  };
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -94,11 +100,13 @@ export function Scorecard() {
     const open = searchParams.get("open");
     const season = searchParams.get("season");
     const label = searchParams.get("label");
-    if (!open && !season) return;
+    const issue = searchParams.get("issue");
+    if (!open && !season && !issue) return;
     if (open) setOpenMatch(open);
     if (season) { setSeasonFilter(season); setSeasonLabel(label ?? ""); }
+    if (issue) setIssueFilter(issue);
     const next = new URLSearchParams(searchParams);
-    next.delete("open"); next.delete("season"); next.delete("label");
+    next.delete("open"); next.delete("season"); next.delete("label"); next.delete("issue");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
@@ -143,9 +151,16 @@ export function Scorecard() {
     if (h || a) return `${h ?? "TBC"} v ${a ?? "TBC"}`;
     return "Teams not set";
   };
+  const matchHasIssue = (m: Match) => {
+    if (!issueFilter) return true;
+    if (issueFilter === "no_result") return m.result_type == null || m.result_type === "unknown";
+    if (issueFilter === "unverified") return m.approval_status === "draft" || m.approval_status === "awaiting_approval";
+    if (issueFilter === "disputed") return m.approval_status === "disputed";
+    return true;   // an issue not derivable from the match list (e.g. missing scorecard) just scopes to the season
+  };
   const filtered = matches.filter((m) => {
     const hay = `${matchTitle(m)} ${m.round ?? ""} ${m.match_date ?? ""} ${compName(m.competition_id)}`.toLowerCase();
-    return hay.includes(search.toLowerCase());
+    return matchHasIssue(m) && hay.includes(search.toLowerCase());
   });
 
   const toggleSel = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -236,6 +251,14 @@ export function Scorecard() {
             <button type="button" aria-label="Clear season filter"
               onClick={() => { setSeasonFilter(""); setSeasonLabel(""); }}
               className="ml-0.5 rounded-full px-1 hover:bg-brand/20">✕</button>
+          </span>
+        )}
+        {issueFilter && (
+          <span className="flex items-center gap-1 rounded-full border border-warning bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">
+            {ISSUE_FILTER_LABEL[issueFilter] ?? "Filtered"}
+            <button type="button" aria-label="Clear issue filter"
+              onClick={() => setIssueFilter("")}
+              className="ml-0.5 rounded-full px-1 hover:bg-warning/20">✕</button>
           </span>
         )}
         <div className="flex-1" />
