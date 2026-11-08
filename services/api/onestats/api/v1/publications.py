@@ -24,6 +24,7 @@ _ERRORS = {
     "invalid_kind": status.HTTP_400_BAD_REQUEST,
     "unknown_report": status.HTTP_400_BAD_REQUEST,
     "person_required": status.HTTP_400_BAD_REQUEST,
+    "unknown_organisation": status.HTTP_400_BAD_REQUEST,
     "invalid_status": status.HTTP_400_BAD_REQUEST,
     "publication_not_found": status.HTTP_404_NOT_FOUND,
 }

@@ -61,10 +61,13 @@ def _report_snapshot(conn: Connection, workspace_id: UUID, report_id: str, saved
             "columns": data["columns"], "rows": data["rows"], "qualifications": quals, "branding": brand}
 
 
-def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, brand: dict[str, Any]) -> dict[str, Any]:
+def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, brand: dict[str, Any],
+                      filters: dict[str, Any] | None = None) -> dict[str, Any]:
     # public career view strips internal / non-public / DOB / junior data (deliverable 12a/29.4a)
     view = profiles.career_view(conn, person_id, public=True) or {}
-    prof = player_profile.full_profile(conn, workspace_id, person_id)
+    org_raw = (filters or {}).get("organisation_id")
+    org_id = UUID(str(org_raw)) if org_raw else None
+    prof = player_profile.full_profile(conn, workspace_id, person_id, organisation_id=org_id)
     person = view.get("person") or {}
     det = prof.get("detail") or {}
     # Public playing-style/service detail — club-appropriate public info only (no DOB, no contact).
@@ -72,15 +75,31 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
                      "is_wicketkeeper": det.get("is_wicketkeeper"), "biography": det.get("biography"),
                      "numbers": det.get("numbers") or [],
                      "leadership": det.get("leadership") or [], "recognition": det.get("recognition") or []}
+    # When a club is chosen, the published figures are that club's ONLY: full_profile scopes career, match
+    # span and grand finals by organisation. Season-by-season and all-time records are NOT club-scoped, so
+    # they are omitted on a club-scoped profile rather than leak figures from other clubs. Honours and
+    # badges stay — they are the player's own recognition, not other clubs' match statistics.
+    scope_club = None
+    seasons = prof.get("seasons") or []
+    records = prof.get("records") or []
+    if org_id is not None:
+        scope_club = next((c.get("club") for c in (prof.get("clubs") or [])
+                           if str(c.get("org_id")) == str(org_id)), None)
+        seasons, records = [], []
+    b = prof.get("badges") or {}
+    badges = {"calculated": [{"label": x.get("label"), "state": x.get("state")} for x in (b.get("calculated") or [])],
+              "awarded": [{"label": x.get("label")} for x in (b.get("awarded") or [])]}
+    quals = [("Public profile — approved statistics only; personal contact details and "
+              "dates of birth are never published.")]
+    if scope_club:
+        quals.insert(0, f"Statistics shown for {scope_club} only — figures from other clubs are not included.")
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
-            "detail": public_detail, "span": prof.get("span"),
-            "career": prof["career"], "seasons": prof["seasons"], "records": prof["records"],
-            "grand_finals": prof.get("grand_finals"),
+            "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club,
+            "career": prof["career"], "seasons": seasons, "records": records,
+            "grand_finals": prof.get("grand_finals"), "badges": badges,
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
                          "season": h.get("awarded_season")} for h in prof["honours"]],
-            "branding": brand,
-            "qualifications": [("Public profile — approved statistics only; personal contact details and "
-                                "dates of birth are never published.")]}
+            "branding": brand, "qualifications": quals}
 
 
 def _num(v: Any, dp: int = 0) -> str:
@@ -131,6 +150,18 @@ def _render_profile_body(snap: dict[str, Any]) -> str:
         if last:
             s.append(f"<b>Most recent:</b> {last}")
         parts.append("<p class='muted'>" + " &nbsp;·&nbsp; ".join(s) + "</p>")
+
+    # Club-scope note (when published for a single club) and achievement/honour badges.
+    if snap.get("scope_club"):
+        parts.append(f"<p class='scope'><b>Statistics for {escape(str(snap['scope_club']))} only.</b></p>")
+    bdg = snap.get("badges") or {}
+    chips = [f"<span class='badge badge-honour'>{escape(str(x.get('label') or ''))}</span>"
+             for x in (bdg.get("awarded") or [])]
+    chips += [f"<span class='badge'>{escape(str(x.get('label') or ''))}"
+              + (" &ge;" if "known_minimum" in str(x.get("state") or "") else "") + "</span>"
+              for x in (bdg.get("calculated") or [])]
+    if chips:
+        parts.append("<div class='badges'>" + "".join(chips) + "</div>")
 
     # Career tiles
     tiles = [("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
@@ -253,6 +284,10 @@ th{{background:var(--brand);color:#fff;padding:6px 8px}} td{{padding:5px 8px;bor
 tr:nth-child(even) td{{background:#f3f6f4}}
 .cards{{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}}
 .card{{border:1px solid #e5eae7;border-radius:8px;padding:8px 14px}} .card span{{display:block;font-size:12px;color:#5b665f}} .card b{{font-size:20px}}
+.badges{{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}}
+.badge{{background:#f3f6f4;border:1px solid #e5eae7;border-radius:999px;padding:3px 10px;font-size:12px;color:#2c3a33}}
+.badge-honour{{background:var(--brand);color:#fff;border-color:var(--brand)}}
+.scope{{font-size:13px;color:#2c3a33;margin:.3em 0}}
 .muted{{color:#5b665f;font-size:12px}} footer{{color:#8a938d;font-size:11px;padding:10px 20px;border-top:1px solid #e5eae7}}
 </style></head><body>
 <header><b>{club}</b></header>
@@ -266,7 +301,7 @@ def _snapshot(conn: Connection, settings: Settings, workspace_id: UUID, row: dic
     if row["kind"] == "report":
         snap = _report_snapshot(conn, workspace_id, row["report_id"], row.get("filters") or {}, brand)
     else:
-        snap = _profile_snapshot(conn, workspace_id, row["person_id"], brand)
+        snap = _profile_snapshot(conn, workspace_id, row["person_id"], brand, row.get("filters"))
     snap["title"] = row["title"]
     snap["generated_at"] = datetime.now(UTC).isoformat()
     html = _render_html(snap, row["title"], settings.public_base_url or "", row["slug"])
@@ -289,6 +324,11 @@ def create_publication(conn: Connection, settings: Settings, workspace_id: UUID,
         raise ValueError("unknown_report")
     if kind == "player_profile" and not person_id:
         raise ValueError("person_required")
+    if kind == "player_profile" and (filters or {}).get("organisation_id"):
+        ok = conn.execute(text("SELECT 1 FROM organisation WHERE id = CAST(:o AS uuid) AND workspace_id = :w"),
+                          {"o": str(filters["organisation_id"]), "w": workspace_id}).first()
+        if ok is None:
+            raise ValueError("unknown_organisation")
     slug = _slug()
     pub_id = conn.execute(
         text("INSERT INTO publication(workspace_id, kind, report_id, person_id, title, filters, slug, status, created_by) "
