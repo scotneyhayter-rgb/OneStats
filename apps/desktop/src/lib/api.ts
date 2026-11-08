@@ -807,6 +807,36 @@ export interface ResearchExtraction {
   confidence: number | null;
   status: string;
 }
+// --- Scorecard-from-clipping: a parsed DRAFT (nothing is created until the researcher confirms) ---
+export interface ClippingPlayerCandidate { person_id: string; display_name: string; exact: boolean }
+export interface ParsedBatter {
+  position: number;
+  name: string;
+  runs: number | null;
+  balls: number | null;
+  dismissal_kind: string | null;
+  dismissal_text: string | null;
+  bowler_name: string | null;
+  fielder_name: string | null;
+  raw: string;
+  candidates: ClippingPlayerCandidate[];
+}
+export interface ParsedBowler {
+  position: number;
+  name: string;
+  overs_text: string | null;
+  maidens: number | null;
+  runs_conceded: number | null;
+  wickets: number | null;
+  raw: string;
+  candidates: ClippingPlayerCandidate[];
+}
+export interface ParsedClipping {
+  batters: ParsedBatter[];
+  bowlers: ParsedBowler[];
+  unparsed_lines: string[];
+  disclaimer: string;
+}
 // --- Internet Research Engine ("Search the Internet") ---
 export type ResearchJobStatus =
   | "pending" | "running" | "paused" | "succeeded" | "failed" | "cancelled" | "interrupted";
@@ -1913,6 +1943,8 @@ export const api = {
   researchCorrect: (w: string, extractionId: string, corrected_text: string) =>
     request<ResearchExtraction>(`/api/v1/workspaces/${w}/research/extractions/${extractionId}/correct`,
       { method: "POST", body: { corrected_text } }),
+  researchParseClipping: (w: string, text: string) =>
+    request<ParsedClipping>(`/api/v1/workspaces/${w}/research/parse-clipping`, { method: "POST", body: { text } }),
   researchTimeline: (w: string) => request<ResearchTimeline>(`/api/v1/workspaces/${w}/research/timeline`),
   researchSeasonCompleteness: (w: string, competition_id?: string) =>
     request<SeasonCompleteness>(`/api/v1/workspaces/${w}/research/season-completeness${competition_id ? `?competition_id=${competition_id}` : ""}`),
