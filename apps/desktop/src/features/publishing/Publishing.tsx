@@ -136,11 +136,13 @@ export function Publishing() {
                   <Badge variant="muted">{p.kind === "player_profile" ? "profile" : "report"}</Badge>
                   {statusBadge(p.status)}
                   {p.stale && <Badge variant="warning">needs refresh</Badge>}
-                  <code className="truncate rounded bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground">{p.public_path}</code>
+                  {p.public_url
+                    ? <code className="truncate rounded bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground">{p.public_url}</code>
+                    : <span className="text-xs italic text-muted-foreground">Not publicly hosted yet — download it and upload to your website</span>}
                   <div className="ml-auto flex flex-wrap gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => copy(p.public_url || (p.public_path ?? ""))} aria-label="Copy URL"><Copy className="h-4 w-4" aria-hidden /></Button>
+                    {p.public_url && <Button size="sm" variant="ghost" onClick={() => copy(p.public_url!)} aria-label="Copy public URL" title="Copy the public web address"><Copy className="h-4 w-4" aria-hidden /></Button>}
                     {p.public_path && <Button size="sm" variant="ghost" onClick={() => window.open(api.publicPreviewUrl(p.public_path!), "_blank")}>Preview</Button>}
-                    <Button size="sm" variant="ghost" onClick={() => void download(p)} aria-label="Download static files"><Download className="h-4 w-4" aria-hidden /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => void download(p)} aria-label="Download for your website" title="Download the HTML + JSON to upload to your website, then paste that page's address into the site's Stats URL / link field"><Download className="h-4 w-4" aria-hidden /> Download</Button>
                     {p.status === "published"
                       ? <Button size="sm" variant="ghost" onClick={() => void act(() => api.publicationRefresh(current.id, p.id), "Snapshot refreshed.")}>Refresh</Button>
                       : <Button size="sm" variant="ghost" onClick={() => void act(() => api.publicationSetStatus(current.id, p.id, "published"), "Re-published.")}>Publish</Button>}
@@ -150,7 +152,7 @@ export function Publishing() {
                 </div>
               ))}
             </div>}
-          <p className="text-xs text-muted-foreground">Download gives you a self-contained HTML + JSON pair to upload to existing website hosting (e.g. the club site's External URL field). Public serving never exposes the database.</p>
+          <p className="text-xs text-muted-foreground">To show a profile or report on your club website, use <b>Download</b> to get a self-contained HTML + JSON page, upload it to your site's hosting, then paste that page's web address into the site's link / &ldquo;Stats URL&rdquo; field. A copyable public URL only appears here once a public hosting address is configured; the Preview link opens the page on this computer only. Public serving never exposes the database.</p>
         </CardContent></Card>
       </div>
     </AppShell>
