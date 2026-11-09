@@ -260,9 +260,11 @@ class CatEntry:
     pdf: bool = True
 
 
-# Standard filter sets (names only — the engine applies them).
-_SCOPE = ("season", "grade", "competition", "team", "date_range", "format", "venue", "split")
-_SCOPE_NO_VENUE = ("season", "grade", "competition", "team", "date_range", "split")
+# Standard filter sets (names only — the engine applies them). "organisation" scopes to one club: the
+# shared engine filter restricts contributions to that club's teams, so every standard-scope report
+# honours it (the report screen offers a Club selector for these).
+_SCOPE = ("organisation", "season", "grade", "competition", "team", "date_range", "format", "venue", "split")
+_SCOPE_NO_VENUE = ("organisation", "season", "grade", "competition", "team", "date_range", "split")
 _QUAL_BAT = "Average/strike-rate reports qualify players by a minimum run threshold; others are kept but flagged unqualified."
 _QUAL_BOWL = "Average/economy/strike-rate reports qualify players by a minimum wicket threshold; others are kept but flagged."
 _KNOWN_MIN = "Totals from scorecards with unknown balls/runs are a known-minimum; unknown is never treated as zero."
