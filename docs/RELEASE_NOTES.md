@@ -4,6 +4,30 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.5 — 2026-11-10
+
+Research, statistics, venues, honours and a redesigned player screen.
+
+**Changed since beta.4:**
+- Research Centre: a new **Create scorecard from clipping** action turns OCR'd / transcribed scorecard
+  text into a reviewable draft — it suggests existing players to match each name against, and creates no
+  players and saves nothing until you confirm. Unknown figures stay blank, never zero. (Batting first;
+  bowler/fielder matching and bowling figures to follow.)
+- People: a player's screen now also lists clubs they only **played for** (from match appearances, no
+  recorded affiliation), separately from recorded affiliations.
+- Statistics → Report Catalogue: an opened report now offers the **Club / Team / Season / Competition /
+  Grade / Ground** filters it supports (defaulting to your club), feeding both the on-screen figures and
+  the PDF/CSV export; opening a report now shows it in a focused, full-width view.
+- Teams & Venues: a ground's **Locality, Region, Country, Postcode, Address and Coordinates** are now
+  editable (previously only the name). Merging two names of one ground was already available.
+- Records: the **Life Members & honorary recognition** list now also shows members recorded as a
+  per-person recognition (not only dedicated honour records), each with the player's name.
+- People: the player detail screen is redesigned as a **full page** (header band + two-column layout),
+  and you can now **affiliate a player to a club** directly from it.
+
+> Installed manually, like beta.4 (self-update is not enabled). The minimum-supported-desktop floor stays
+> at `1.0.0-beta.1`.
+
 ## 1.0.0-beta.4 — 2026-11-08
 
 Scorecard entry, research gap click-through, and club-scoped profile publishing.
