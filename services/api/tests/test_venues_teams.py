@@ -76,6 +76,11 @@ def test_venue_create_update_and_unknown_not_invented(conn):
     assert v["latitude"] is None and v["longitude"] is None
     updated = venues.update_venue(conn, wid, ACTOR, vid, region="Victoria", country="Australia")
     assert updated["region"] == "Victoria" and updated["country"] == "Australia"
+    # Coordinates and address are editable too (the ground-details form on the venue dialog).
+    located = venues.update_venue(conn, wid, ACTOR, vid, address="1 Park Rd",
+                                  latitude=-37.2846, longitude=142.9312)
+    assert located["address"] == "1 Park Rd"
+    assert float(located["latitude"]) == -37.2846 and float(located["longitude"]) == 142.9312
 
 
 def test_venue_is_standalone_and_reusable(conn):

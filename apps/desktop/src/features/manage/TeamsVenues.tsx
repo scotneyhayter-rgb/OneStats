@@ -445,6 +445,9 @@ function EntityDetailModal({
   const [confirm, setConfirm] = useState<{ candidateId: string; candidateName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [rename, setRename] = useState<string>("");
+  // Editable ground details (venues only) — locality/region/country/address/postcode/coordinates.
+  const emptyVd = { locality: "", region: "", country: "", address: "", postcode: "", latitude: "", longitude: "" };
+  const [vd, setVd] = useState<typeof emptyVd>(emptyVd);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -452,6 +455,15 @@ function EntityDetailModal({
     try {
       const d = kind === "team" ? await api.getTeam(workspaceId, entityId) : await api.getVenue(workspaceId, entityId);
       setData(d);
+      if (kind === "venue") {
+        const v = d as Venue;
+        setVd({
+          locality: v.locality ?? "", region: v.region ?? "", country: v.country ?? "",
+          address: v.address ?? "", postcode: v.postcode ?? "",
+          latitude: v.latitude != null ? String(v.latitude) : "",
+          longitude: v.longitude != null ? String(v.longitude) : "",
+        });
+      }
       try {
         setCandidates(
           kind === "team"
@@ -491,6 +503,26 @@ function EntityDetailModal({
     }
   };
 
+  const saveDetails = async () => {
+    setBusy(true); setErr(null);
+    const lat = vd.latitude.trim() ? Number(vd.latitude) : null;
+    const lng = vd.longitude.trim() ? Number(vd.longitude) : null;
+    if ((lat !== null && Number.isNaN(lat)) || (lng !== null && Number.isNaN(lng))) {
+      setErr("Latitude and longitude must be numbers."); setBusy(false); return;
+    }
+    try {
+      await api.updateVenue(workspaceId, entityId, {
+        locality: vd.locality.trim() || null, region: vd.region.trim() || null,
+        country: vd.country.trim() || null, address: vd.address.trim() || null,
+        postcode: vd.postcode.trim() || null, latitude: lat, longitude: lng,
+      });
+      onChanged("Ground details saved.");
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not save the ground details.");
+    } finally { setBusy(false); }
+  };
+
   const saveRename = async () => {
     const next = rename.trim();
     if (!next || !data || next === data.name) return;
@@ -518,16 +550,45 @@ function EntityDetailModal({
               <Detail label="Organisation">{extraOrgName((data as Team).organisation_id)}</Detail>
             )}
             {kind === "team" && <Detail label="Program">{humanise((data as Team).program)}</Detail>}
-            {kind === "venue" && (
+            {kind === "venue" && !canManage && (
               <>
                 <Detail label="Locality"><Unknown value={(data as Venue).locality} /></Detail>
                 <Detail label="Region"><Unknown value={(data as Venue).region} /></Detail>
+                <Detail label="Country"><Unknown value={(data as Venue).country} /></Detail>
+                <Detail label="Address"><Unknown value={(data as Venue).address} /></Detail>
                 <Detail label="Coordinates">
                   <Unknown value={(data as Venue).latitude !== null ? `${(data as Venue).latitude}, ${(data as Venue).longitude}` : null} />
                 </Detail>
               </>
             )}
             <Detail label="Status">{data.status}</Detail>
+            {kind === "venue" && canManage && (
+              <div className="mt-3 rounded-[var(--radius-app)] border border-border p-3">
+                <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Ground details</h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-sm">Locality
+                    <Input value={vd.locality} onChange={(e) => setVd((s) => ({ ...s, locality: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm">Region / State
+                    <Input value={vd.region} onChange={(e) => setVd((s) => ({ ...s, region: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm">Country
+                    <Input value={vd.country} onChange={(e) => setVd((s) => ({ ...s, country: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm">Postcode
+                    <Input value={vd.postcode} onChange={(e) => setVd((s) => ({ ...s, postcode: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm sm:col-span-2">Address
+                    <Input value={vd.address} onChange={(e) => setVd((s) => ({ ...s, address: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm">Latitude
+                    <Input value={vd.latitude} inputMode="decimal" placeholder="e.g. -37.2846"
+                      onChange={(e) => setVd((s) => ({ ...s, latitude: e.target.value }))} /></label>
+                  <label className="flex flex-col gap-1 text-sm">Longitude
+                    <Input value={vd.longitude} inputMode="decimal" placeholder="e.g. 142.9312"
+                      onChange={(e) => setVd((s) => ({ ...s, longitude: e.target.value }))} /></label>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button size="sm" disabled={busy} onClick={() => void saveDetails()}>Save details</Button>
+                  <span className="text-xs text-muted-foreground">A blank field is left unchanged.</span>
+                </div>
+              </div>
+            )}
             {canManage && (
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <label className="flex flex-1 flex-col gap-1 text-sm">Rename display name
