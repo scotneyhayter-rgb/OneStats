@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import batting, competitions, matches, people
+from onestats.domain import batting, competitions, matches, people, profiles
 from onestats.domain import innings as inn
 from onestats.domain.records import badges, honours
 
@@ -57,6 +57,34 @@ def test_honours_recorded_not_inferred(conn):
         honours.create_honour(conn, wid, ACTOR, honour_type="knighthood", title="x")
     with pytest.raises(ValueError, match="title_required"):
         honours.create_honour(conn, wid, ACTOR, honour_type="club_award", title="  ")
+
+
+def test_honorary_members_merges_honour_table_and_person_recognition(conn):
+    """The Records 'Life Members & honorary recognition' list must show members recorded EITHER as a
+    dedicated honour OR as a per-person recognition (what the People screen writes). Previously the
+    recognition-based members were missing from the list entirely."""
+    wid = _ws(conn, "HONMERGE")
+    p1 = people.create_person(conn, wid, ACTOR, display_name="Alice Honour")
+    p2 = people.create_person(conn, wid, ACTOR, display_name="Bob Recognition")
+    honours.create_honour(conn, wid, ACTOR, honour_type="life_member", title="Life Member", person_id=p1)
+    profiles.add_recognition(conn, wid, ACTOR, p2, recognition_type="Life Member", season_label="2019/20")
+
+    members = honours.list_honorary_members(conn, wid)
+    listed = {m["person"] for m in members}
+    assert "Alice Honour" in listed
+    assert "Bob Recognition" in listed          # the previously-missing recognition-based member now appears
+    bob = next(m for m in members if m["person"] == "Bob Recognition")
+    assert bob["honour_type"] == "life_member" and bob["source"] == "recognition"
+    assert bob["awarded_season"] == "2019/20"
+
+
+def test_honorary_members_does_not_double_count(conn):
+    wid = _ws(conn, "HONDUP")
+    p = people.create_person(conn, wid, ACTOR, display_name="Dup Member")
+    honours.create_honour(conn, wid, ACTOR, honour_type="life_member", title="Life Member", person_id=p)
+    profiles.add_recognition(conn, wid, ACTOR, p, recognition_type="Life Member")
+    dup = [m for m in honours.list_honorary_members(conn, wid) if m["person"] == "Dup Member"]
+    assert len(dup) == 1 and dup[0]["source"] == "honour"   # dedicated honour wins; not listed twice
 
 
 def test_badges_distinguish_calculated_from_awarded(conn):

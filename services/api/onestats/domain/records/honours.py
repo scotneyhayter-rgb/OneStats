@@ -59,6 +59,51 @@ def list_honours(conn: Connection, workspace_id: UUID, *, honour_type: str | Non
     return [dict(r) for r in conn.execute(text(sql), params).mappings().all()]
 
 
+def list_honorary_members(conn: Connection, workspace_id: UUID) -> list[dict[str, Any]]:
+    """Every recorded honour/honorary recognition for the Records "Life Members & honorary recognition"
+    list, from BOTH stores: the dedicated ``honour`` table AND per-person ``person_recognition`` entries
+    that record a life membership / honorary recognition (what the People screen writes). Members recorded
+    either way now appear here. Each row carries the person's name; nothing is inferred from statistics."""
+    honour_rows = conn.execute(
+        text("SELECT h.honour_type, h.title, h.person_id, p.display_name AS person, "
+             "h.awarded_season, h.status, 'honour' AS source "
+             "FROM honour h LEFT JOIN person p ON p.id = h.person_id "
+             "WHERE h.workspace_id = :w"),
+        {"w": workspace_id},
+    ).mappings().all()
+    # person_recognition rows that denote a life membership or honorary recognition (free-text type/title).
+    recog_rows = conn.execute(
+        text("SELECT r.recognition_type, r.title, r.person_id, p.display_name AS person, r.season_label "
+             "FROM person_recognition r JOIN person p ON p.id = r.person_id "
+             "WHERE r.workspace_id = :w AND ("
+             "r.recognition_type ILIKE '%life member%' OR r.title ILIKE '%life member%' "
+             "OR r.recognition_type ILIKE '%honorary%' OR r.title ILIKE '%honorary%' "
+             "OR r.recognition_type ILIKE '%life mem%')"),
+        {"w": workspace_id},
+    ).mappings().all()
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[Any, str]] = set()
+    for h in honour_rows:
+        key = (h["person_id"], str(h["honour_type"]).lower())
+        seen.add(key)
+        out.append({"honour_type": h["honour_type"], "title": h["title"], "person_id": h["person_id"],
+                    "person": h["person"], "awarded_season": h["awarded_season"], "status": h["status"],
+                    "source": "honour"})
+    for r in recog_rows:
+        label = f"{r['recognition_type'] or ''} {r['title'] or ''}".lower()
+        inferred = "life_member" if "life" in label else "honorary_member"
+        key = (r["person_id"], inferred)
+        if key in seen:   # already recorded as a dedicated honour — do not list twice
+            continue
+        seen.add(key)
+        out.append({"honour_type": inferred, "title": r["title"] or r["recognition_type"],
+                    "person_id": r["person_id"], "person": r["person"],
+                    "awarded_season": r["season_label"], "status": "confirmed", "source": "recognition"})
+    out.sort(key=lambda x: ((x.get("person") or "").lower(), str(x.get("honour_type"))))
+    return out
+
+
 def update_honour(conn: Connection, workspace_id: UUID, actor: str, honour_id: UUID, **fields: Any) -> dict[str, Any]:
     if get_honour(conn, honour_id) is None:
         raise ValueError("honour_not_found")

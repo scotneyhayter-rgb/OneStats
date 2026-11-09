@@ -153,6 +153,15 @@ def list_honours(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx, honour
         return [_s(r) for r in honours.list_honours(conn, workspace_id, honour_type=honour_type, person_id=person_id)]
 
 
+@router.get("/honorary-members")
+def list_honorary_members(workspace_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
+    """Unified Life Members & honorary recognition for the Records page: dedicated honour records AND
+    per-person life-member/honorary recognitions (the People screen writes the latter), each with the
+    person's name. Nothing inferred from statistics."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_s(r) for r in honours.list_honorary_members(conn, workspace_id)]
+
+
 @router.post("/honours", status_code=status.HTTP_201_CREATED)
 def create_honour(workspace_id: UUID, body: HonourCreate, settings: SettingsDep, ctx: HonourCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
