@@ -1,6 +1,5 @@
 import { GitMerge, Plus, Undo2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { compressImage } from "../../lib/utils";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -16,10 +15,9 @@ import {
   type ImportBatch,
   type ImportRecord,
   type Person,
-  type PersonDuplicateCandidate,
   type PersonMerge,
 } from "../../lib/api";
-import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "../manage/_shared";
+import { Field, NoWorkspace, humanise, useManage } from "../manage/_shared";
 
 const ROLES = ["player", "umpire", "scorer", "coach", "administrator", "selector", "captain", "official", "other"];
 
@@ -73,7 +71,6 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const PAGE = 25;
 
@@ -135,7 +132,7 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
                   </button>
                   {p.is_junior && <Badge variant="warning">junior</Badge>}
                   {p.merged_into_id && <Badge variant="muted">merged</Badge>}
-                  <Button size="sm" variant="outline" onClick={() => setSelected(p.id)}>Details</Button>
+                  <Button size="sm" variant="outline" onClick={() => { window.location.hash = `#/people/${p.id}/manage`; }}>Manage</Button>
                 </CardContent>
               </Card>
             ))}
@@ -150,10 +147,6 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
         </>
       )}
 
-      {selected && (
-        <ProfileModal workspaceId={workspaceId} personId={selected} canManage={canManage}
-          onClose={() => setSelected(null)} onChanged={(m) => { onMsg(m); void load(); }} />
-      )}
       {showCreate && (
         <CreatePersonModal workspaceId={workspaceId} onClose={() => setShowCreate(false)}
           onCreated={(n) => { setShowCreate(false); onMsg(`Created "${n}".`); void load(); }} />
@@ -198,440 +191,6 @@ function CreatePersonModal({ workspaceId, onClose, onCreated }: { workspaceId: s
   );
 }
 
-function ProfileModal({ workspaceId, personId, canManage, onClose, onChanged }: {
-  workspaceId: string; personId: string; canManage: boolean; onClose: () => void; onChanged: (m: string) => void;
-}) {
-  const [view, setView] = useState<Record<string, any> | null>(null);
-  const [candidates, setCandidates] = useState<PersonDuplicateCandidate[]>([]);
-  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [bio, setBio] = useState("");
-  const [batStyle, setBatStyle] = useState("");
-  const [bowlStyle, setBowlStyle] = useState("");
-  const [yearFor, setYearFor] = useState<{ kind: "number" | "leadership" | "recognition"; id: string; body: Record<string, unknown> } | null>(null);
-  const [yearSeason, setYearSeason] = useState("");
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [confirm, setConfirm] = useState<{ candidateId: string; name: string; kind: "merge" | "distinct" } | null>(null);
-  const [busy, setBusy] = useState(false);
-  // core-detail editing (name / status / date of birth)
-  const [editOpen, setEditOpen] = useState(false);
-  const [edName, setEdName] = useState("");
-  const [edStatus, setEdStatus] = useState("active");
-  const [edDob, setEdDob] = useState("");
-  const [edDobPrec, setEdDobPrec] = useState("unknown");
-  // manual merge: search for any other record to merge into this one (beyond auto-suggestions)
-  const [mergeSearch, setMergeSearch] = useState("");
-  const [mergeResults, setMergeResults] = useState<Person[]>([]);
-  const [searching, setSearching] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr(null);
-    try {
-      const v = await api.getProfile(workspaceId, personId);
-      setView(v);
-      const pp = v.person as any;
-      setEdName((pp?.display_name as string) ?? "");
-      setEdStatus((pp?.status as string) || "active");
-      setEdDob((pp?.dob as string) ?? "");
-      setEdDobPrec((pp?.dob_precision as string) || "unknown");
-      setBio(((v.profile as any)?.biography as string) ?? "");
-      setBatStyle(((v.profile as any)?.batting_style as string) ?? "");
-      setBowlStyle(((v.profile as any)?.bowling_style as string) ?? "");
-      try { setOrgs(await api.listOrganisations(workspaceId)); } catch { setOrgs([]); }
-      try { setCandidates(await api.identityCandidates(workspaceId, personId)); } catch { setCandidates([]); }
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Failed to load profile"); }
-    finally { setLoading(false); }
-  }, [workspaceId, personId]);
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
-    (view?.photos ?? []).forEach((p: any) => {
-      if (photoUrls[p.id]) return;
-      api.personPhotoUrl(workspaceId, p.id).then((u) => setPhotoUrls((m) => ({ ...m, [p.id]: u }))).catch(() => {});
-    });
-  }, [view, workspaceId, photoUrls]);
-
-  const uploadPhoto = async (file: File) => {
-    setBusy(true);
-    try {
-      const compressed = await compressImage(file);
-      await api.uploadPersonPhoto(workspaceId, personId, compressed, { isPrimary: (view?.photos ?? []).length === 0 });
-      onChanged("Photo uploaded."); await load();
-    } catch (e) {
-      const m = e instanceof ApiError ? e.message : "";
-      setErr(m === "file_too_large" ? "That image is too large (max 15 MB). Please choose a smaller photo."
-        : m === "dimensions_too_large" ? "That image's resolution is too high. Please choose a smaller photo."
-        : (/unsupported|invalid_image|type_mismatch/.test(m) ? "Please use a JPEG, PNG or WebP image." : (m || "Photo upload failed.")));
-    }
-    finally { setBusy(false); }
-  };
-  const removePhoto = async (photoId: string) => {
-    try { await api.deletePersonPhoto(workspaceId, photoId); onChanged("Photo removed."); await load(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove photo."); }
-  };
-
-  const saveBio = async () => {
-    setBusy(true);
-    try {
-      await api.upsertProfile(workspaceId, personId,
-        { biography: bio, batting_style: batStyle || null, bowling_style: bowlStyle || null });
-      onChanged("Profile saved."); await load();
-    }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Save failed"); }
-    finally { setBusy(false); }
-  };
-
-  const protectedDob = Boolean((view?.person as any)?.protected_fields_hidden);
-  const saveDetails = async () => {
-    if (!edName.trim()) { setErr("Name cannot be empty."); return; }
-    setBusy(true); setErr(null);
-    try {
-      const body: Record<string, unknown> = { display_name: edName.trim(), status: edStatus };
-      // only touch the date of birth when it isn't privacy-protected (never overwrite a hidden value)
-      if (!protectedDob) { body.set_dob = true; body.dob = edDob || null; body.dob_precision = edDob ? edDobPrec : "unknown"; }
-      await api.updatePerson(workspaceId, personId, body);
-      setEditOpen(false); onChanged("Details saved."); await load();
-    }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Could not save details."); }
-    finally { setBusy(false); }
-  };
-
-  // live search for any other record to merge into this one (the auto-suggestions below are name-based only)
-  useEffect(() => {
-    const q = mergeSearch.trim();
-    if (q.length < 2) { setMergeResults([]); return; }
-    let active = true; setSearching(true);
-    api.listPeople(workspaceId, { search: q })
-      .then((ppl) => { if (active) setMergeResults(ppl.filter((p) => p.id !== personId && !p.merged_into_id).slice(0, 8)); })
-      .catch(() => { if (active) setMergeResults([]); })
-      .finally(() => { if (active) setSearching(false); });
-    return () => { active = false; };
-  }, [mergeSearch, workspaceId, personId]);
-
-  const removeAttr = async (kind: "number" | "leadership" | "recognition", attrId: string) => {
-    try {
-      if (kind === "number") await api.deletePersonNumber(workspaceId, personId, attrId);
-      else if (kind === "leadership") await api.deletePersonLeadership(workspaceId, personId, attrId);
-      else await api.deletePersonRecognition(workspaceId, personId, attrId);
-      onChanged("Removed."); await load();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove."); }
-  };
-
-  // "+yr": add another season to an existing role/recognition without retyping (creates a new entry with
-  // the same role/number + club, just a new season). Entries group by label on the career profile.
-  const addYear = async () => {
-    if (!yearFor || !yearSeason.trim()) return;
-    const body = { ...yearFor.body, season_label: yearSeason.trim() };
-    try {
-      if (yearFor.kind === "number") await api.addPersonNumber(workspaceId, personId, body);
-      else if (yearFor.kind === "leadership") await api.addPersonLeadership(workspaceId, personId, body);
-      else await api.addPersonRecognition(workspaceId, personId, body);
-      setYearFor(null); setYearSeason(""); onChanged("Season added."); await load();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not add season."); }
-  };
-
-  const attrChips = (kind: "number" | "leadership" | "recognition", items: any[],
-                     label: (x: any) => string, bodyOf: (x: any) => Record<string, unknown>) => (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap gap-1 text-sm">
-        {(items ?? []).length === 0 ? <span className="text-muted-foreground">—</span> :
-          (items ?? []).map((it: any) => (
-            <span key={it.id} className="inline-flex items-center gap-1 rounded-[var(--radius-app)] border border-border px-1.5 py-0.5 text-xs">
-              {label(it)}{it.season_label ? ` (${it.season_label})` : ""}
-              {canManage && <>
-                <button type="button" aria-label="Add another season" title="Add another season"
-                  className="text-muted-foreground hover:text-brand"
-                  onClick={() => { setYearFor({ kind, id: it.id, body: bodyOf(it) }); setYearSeason(""); }}>+yr</button>
-                <button type="button" aria-label="Remove" className="text-muted-foreground hover:text-danger"
-                  onClick={() => void removeAttr(kind, it.id)}>×</button>
-              </>}
-            </span>
-          ))}
-      </div>
-      {canManage && yearFor && (items ?? []).some((it: any) => it.id === yearFor.id) && (
-        <div className="flex flex-col gap-1">
-          <Input value={yearSeason} placeholder="Add season (e.g. 2024/25)" className="h-8 w-full text-sm"
-            autoFocus onChange={(e) => setYearSeason(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addYear(); }} />
-          <div className="flex gap-1">
-            <Button size="sm" variant="outline" disabled={!yearSeason.trim()} onClick={() => void addYear()}>Add</Button>
-            <Button size="sm" variant="ghost" onClick={() => setYearFor(null)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const runConfirm = async () => {
-    if (!confirm) return;
-    setBusy(true);
-    try {
-      if (confirm.kind === "merge") {
-        await api.identityMerge(workspaceId, { canonical_person_id: personId, merged_person_id: confirm.candidateId, reason: "confirmed (desktop)" });
-        onChanged(`Merged "${confirm.name}" into this person.`);
-      } else {
-        await api.identityAssertDistinct(workspaceId, { person_a_id: personId, person_b_id: confirm.candidateId, reason: "distinct (desktop)" });
-        onChanged(`Marked "${confirm.name}" as distinct.`);
-      }
-      setConfirm(null); setMergeSearch(""); setMergeResults([]); await load();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Action failed"); setBusy(false); }
-  };
-
-  const person = view?.person as Record<string, any> | undefined;
-
-  return (
-    <Modal open title={person?.display_name ?? "Person"} onClose={onClose}>
-      {loading && <LoadingState />}
-      {!loading && err && <ErrorState message={err} onRetry={() => void load()} />}
-      {!loading && person && (
-        <div className="flex flex-col gap-5">
-          <a href={`#/people/${personId}`} onClick={(e) => { e.preventDefault(); window.location.hash = `#/people/${personId}`; onClose(); }}
-            className="inline-flex w-fit items-center gap-1 rounded-[var(--radius-app)] border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand">
-            View full career profile →
-          </a>
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Photo</h3>
-            <div className="flex flex-wrap items-center gap-3">
-              {(view?.photos ?? []).map((p: any) => (
-                <div key={p.id} className="relative">
-                  {photoUrls[p.id]
-                    ? <img src={photoUrls[p.id]} alt="" className="h-20 w-20 rounded-full object-cover" />
-                    : <div className="h-20 w-20 rounded-full bg-muted" />}
-                  {canManage && <button type="button" aria-label="Remove photo"
-                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-xs text-muted-foreground hover:text-danger"
-                    onClick={() => void removePhoto(p.id)}>×</button>}
-                </div>
-              ))}
-              {canManage && (
-                <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-full border-2 border-dashed border-border text-center text-[11px] text-muted-foreground hover:border-brand hover:text-brand">
-                  {busy ? "…" : "+ Add photo"}
-                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={busy}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadPhoto(f); e.target.value = ""; }} />
-                </label>
-              )}
-            </div>
-          </section>
-          <section>
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase text-muted-foreground">Details</h3>
-              {canManage && (
-                <Button size="sm" variant="ghost" onClick={() => { setEditOpen((o) => !o); setErr(null); }}>
-                  {editOpen ? "Cancel" : "Edit details"}
-                </Button>
-              )}
-            </div>
-            {!editOpen ? (
-              <>
-                <Detail label="Name">{person.display_name}</Detail>
-                <Detail label="Status">{person.status}</Detail>
-                <Detail label="Roles">{(view?.person?.roles ?? []).map((r: string) => humanise(r)).join(", ") || "—"}</Detail>
-                <Detail label="Date of birth"><Unknown value={person.dob} /></Detail>
-                {person.is_junior && <Detail label="Junior"><Badge variant="warning">personal data protected</Badge></Detail>}
-                {person.protected_fields_hidden && (
-                  <p className="text-xs text-muted-foreground">Some personal fields are hidden by privacy protection.</p>
-                )}
-              </>
-            ) : (
-              <div className="flex flex-col gap-2 rounded-[var(--radius-app)] border border-border p-3">
-                <label className="flex flex-col gap-1 text-xs">Name
-                  <Input value={edName} onChange={(e) => setEdName(e.target.value)} placeholder="Display name" />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">Status
-                  <Select value={edStatus} onChange={(e) => setEdStatus(e.target.value)}>
-                    <option value="active">active</option>
-                    <option value="inactive">inactive</option>
-                  </Select>
-                </label>
-                {protectedDob ? (
-                  <p className="text-xs text-muted-foreground">Date of birth is privacy-protected and can't be edited here.</p>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-xs">Date of birth
-                      <Input type="date" value={edDob} onChange={(e) => setEdDob(e.target.value)} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs">Precision
-                      <Select value={edDobPrec} onChange={(e) => setEdDobPrec(e.target.value)} disabled={!edDob}>
-                        {["exact", "year", "month", "approx", "unknown"].map((p) => <option key={p} value={p}>{p}</option>)}
-                      </Select>
-                    </label>
-                  </div>
-                )}
-                <div className="mt-1 flex gap-2">
-                  <Button size="sm" onClick={() => void saveDetails()} disabled={busy || !edName.trim()}>Save details</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setEditOpen(false); setErr(null); void load(); }}>Cancel</Button>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Historical names</h3>
-            <ul className="space-y-1 text-sm">
-              {(view?.person?.names ?? []).map((n: any) => (
-                <li key={n.id} className="flex justify-between gap-3">
-                  <span>{n.name}</span><span className="text-muted-foreground">{humanise(n.name_type)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Club & team affiliations</h3>
-            {(view?.affiliations ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No recorded affiliations.</p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {(view?.affiliations ?? []).map((a: any) => (
-                  <li key={a.id} className="flex justify-between gap-3">
-                    <span>
-                      <span className="font-medium">{orgs.find((o) => o.id === a.organisation_id)?.name ?? "Unknown club"}</span>
-                      {a.role ? <span className="text-muted-foreground"> · {humanise(a.role)}</span> : null}
-                    </span>
-                    <span className="text-muted-foreground"><Unknown value={a.valid_from} /> – {a.valid_to ?? "present"}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {(view?.played_for_clubs ?? []).length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-muted-foreground">
-                  Played for (from match appearances, no recorded affiliation):
-                </p>
-                <ul className="mt-1 flex flex-wrap gap-1.5">
-                  {(view?.played_for_clubs ?? []).map((c: any) => (
-                    <li key={c.org_id} className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs">
-                      {c.club}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <section className="grid gap-3 sm:grid-cols-3">
-            <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Numbers</h3>
-              {attrChips("number", view?.numbers ?? [], (n) => String(n.number ?? "?"),
-                (n) => ({ organisation_id: n.organisation_id, number: n.number }))}
-              {canManage && <AttrAdder kind="number" workspaceId={workspaceId} personId={personId} orgs={orgs}
-                onDone={(m) => { onChanged(m); void load(); }} />}
-            </div>
-            <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Leadership</h3>
-              {attrChips("leadership", view?.leadership ?? [], (l) => humanise(l.role),
-                (l) => ({ organisation_id: l.organisation_id, role: l.role }))}
-              {canManage && <AttrAdder kind="leadership" workspaceId={workspaceId} personId={personId} orgs={orgs}
-                onDone={(m) => { onChanged(m); void load(); }} />}
-            </div>
-            <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Recognition</h3>
-              {attrChips("recognition", view?.recognition ?? [], (r) => r.title || humanise(r.recognition_type),
-                (r) => ({ recognition_type: r.recognition_type, title: r.title ?? undefined, organisation_id: r.organisation_id ?? undefined }))}
-              {canManage && <AttrAdder kind="recognition" workspaceId={workspaceId} personId={personId} orgs={orgs}
-                onDone={(m) => { onChanged(m); void load(); }} />}
-            </div>
-          </section>
-
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Source identities</h3>
-            <ul className="space-y-1 text-sm">
-              {(view?.person?.source_identities ?? []).map((s: any) => (
-                <li key={s.id} className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">{s.source_system}</span><span>{s.source_ref}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {canManage && (
-            <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Profile &amp; playing style</h3>
-              <div className="mb-2 grid gap-2 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs">Batting
-                  <Input value={batStyle} placeholder="e.g. Right Handed" onChange={(e) => setBatStyle(e.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1 text-xs">Bowling
-                  <Input value={bowlStyle} placeholder="e.g. Right Arm Pace" onChange={(e) => setBowlStyle(e.target.value)} />
-                </label>
-              </div>
-              <label className="flex flex-col gap-1 text-xs">Biography
-                <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-              </label>
-              <div className="mt-2"><Button size="sm" onClick={() => void saveBio()} disabled={busy}>Save profile</Button></div>
-            </section>
-          )}
-
-          <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Duplicates &amp; merging</h3>
-            {canManage && (
-              <div className="mb-3 rounded-[var(--radius-app)] border border-border p-2">
-                <p className="mb-1 text-xs text-muted-foreground">
-                  Entered more than once? Search for the other record and merge it into this one. Reversible.
-                </p>
-                <Input value={mergeSearch} onChange={(e) => setMergeSearch(e.target.value)}
-                  placeholder="Search a player to merge (name)…" className="h-8 text-sm" />
-                {mergeSearch.trim().length >= 2 && (
-                  <div className="mt-2">
-                    {searching && <p className="text-xs text-muted-foreground">Searching…</p>}
-                    {!searching && mergeResults.length === 0 && <p className="text-xs text-muted-foreground">No other records match.</p>}
-                    <ul className="space-y-1">
-                      {mergeResults.map((p) => (
-                        <li key={p.id} className="flex items-center justify-between gap-2 rounded-[var(--radius-app)] border border-border p-2 text-sm">
-                          <span className="min-w-0 truncate">{p.display_name}</span>
-                          <Button size="sm" variant="outline" className="shrink-0"
-                            onClick={() => setConfirm({ candidateId: p.id, name: p.display_name, kind: "merge" })}>
-                            <GitMerge className="h-4 w-4" aria-hidden /> Merge
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-            <p className="mb-2 text-xs text-muted-foreground">Suggested matches — a name match is never proof. Merges are reversible.</p>
-            {candidates.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No duplicate suggestions.</p>
-            ) : (
-              <ul className="space-y-2">
-                {candidates.map((c) => (
-                  <li key={c.person_id} className="flex items-center justify-between gap-2 rounded-[var(--radius-app)] border border-border p-2 text-sm">
-                    <div className="min-w-0">
-                      <div className="truncate">{c.display_name}</div>
-                      <div className="flex flex-wrap gap-1">
-                        <Badge variant={c.confidence === "strong" ? "warning" : c.confidence === "medium" ? "brand" : "muted"}>{c.confidence}</Badge>
-                        {c.evidence.map((ev) => <Badge key={ev} variant="outline">{humanise(ev)}</Badge>)}
-                      </div>
-                    </div>
-                    {canManage && (
-                      <div className="flex shrink-0 gap-1">
-                        <Button size="sm" variant="outline" onClick={() => setConfirm({ candidateId: c.person_id, name: c.display_name, kind: "merge" })}>
-                          <GitMerge className="h-4 w-4" aria-hidden /> Merge
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirm({ candidateId: c.person_id, name: c.display_name, kind: "distinct" })}>
-                          Distinct
-                        </Button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-      )}
-
-      {confirm && (
-        <ConfirmDialog open danger={confirm.kind === "merge"} busy={busy}
-          title={confirm.kind === "merge" ? "Confirm merge" : "Mark as distinct"}
-          confirmLabel={confirm.kind === "merge" ? "Merge" : "Mark distinct"}
-          description={confirm.kind === "merge"
-            ? <>Merge <b>{confirm.name}</b> into <b>{person?.display_name}</b>? Reversible — the merged record is preserved.</>
-            : <>Record that <b>{confirm.name}</b> and <b>{person?.display_name}</b> are definitely different people?</>}
-          onConfirm={() => void runConfirm()} onCancel={() => setConfirm(null)} />
-      )}
-    </Modal>
-  );
-}
 
 // ------------------------------------------------------------------ identity centre
 
@@ -979,7 +538,7 @@ function ImportBatchModal({ workspaceId, batchId, canManage, onClose, onMsg }: {
  * Numbers and Leadership require a club (organisation); Recognition is a free type. Add-only for now
  * (the backend has no delete endpoint for these).
  */
-function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
+export function AttrAdder({ kind, workspaceId, personId, orgs, onDone }: {
   kind: "number" | "leadership" | "recognition";
   workspaceId: string;
   personId: string;
