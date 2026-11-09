@@ -66,7 +66,7 @@ export function Records() {
       const [a, s, u, w, h] = await Promise.all([
         api.recordsAllTime(current.id, { club_mode: clubMode, organisation_id: org }),
         api.recordsSeasonal(current.id), api.recordsUpcoming(current.id, undefined, org),
-        api.recordsPartnershipsByWicket(current.id, org), api.recordsHonours(current.id),
+        api.recordsPartnershipsByWicket(current.id, org), api.recordsHonoraryMembers(current.id),
       ]);
       setAll(a);
       setSeasonal(s);
@@ -250,7 +250,11 @@ export function Records() {
           {honours.map((h, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="muted">{String(h.honour_type).replace(/_/g, " ")}</Badge>
-              <span className="font-medium">{String(h.title)}</span>
+              {h.person_id
+                ? <Link to={`/people/${String(h.person_id)}`} className="font-medium hover:text-brand hover:underline">{String(h.person ?? h.title)}</Link>
+                : <span className="font-medium">{String(h.title)}</span>}
+              {h.person && h.title && String(h.title) !== String(h.person)
+                ? <span className="text-muted-foreground">— {String(h.title)}</span> : null}
               {h.awarded_season ? <span className="text-xs text-muted-foreground">{String(h.awarded_season)}</span> : null}
             </div>
           ))}

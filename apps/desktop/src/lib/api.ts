@@ -2163,6 +2163,7 @@ export const api = {
               match_date: string | null }[]>(
       `/api/v1/workspaces/${w}/records/partnerships/by-wicket${qs({ organisation_id: organisationId })}`),
   recordsHonours: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honours`),
+  recordsHonoraryMembers: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honorary-members`),
   recordsBadges: (w: string, personId: string) =>
     request<{ calculated: { label: string; source: string; state: string }[];
               awarded: { label: string; source: string }[] }>(`/api/v1/workspaces/${w}/records/badges/${personId}`),
