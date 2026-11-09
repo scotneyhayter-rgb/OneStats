@@ -12,6 +12,7 @@ import { CaptaincyCompare } from "./features/statistics/CaptaincyCompare";
 import { Publishing } from "./features/publishing/Publishing";
 import { Scorecard } from "./features/scorecard/Scorecard";
 import { PeopleManagement } from "./features/people/PeopleManagement";
+import { PlayerManage } from "./features/people/PlayerManage";
 import { PlayerProfile } from "./features/people/PlayerProfile";
 import { BackendDown, Login, Setup } from "./features/auth/Auth";
 import { ChangePassword } from "./features/auth/ChangePassword";
@@ -78,6 +79,7 @@ function AuthedApp() {
         <Route path="/manage/members" element={<WorkspaceMembers />} />
         <Route path="/matches" element={<Scorecard />} />
         <Route path="/people" element={<PeopleManagement />} />
+        <Route path="/people/:personId/manage" element={<PlayerManage />} />
         <Route path="/people/:personId" element={<PlayerProfile />} />
         <Route path="/statistics" element={<Statistics />} />
         <Route path="/statistics/compare" element={<PlayerCompare />} />
