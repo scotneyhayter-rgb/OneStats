@@ -34,6 +34,10 @@ _VALUE_ERR_STATUS = {
     "winner_not_in_match": status.HTTP_409_CONFLICT,
     "toss_winner_not_in_match": status.HTTP_409_CONFLICT,
     "invalid_toss_decision": status.HTTP_400_BAD_REQUEST,
+    "invalid_official_role": status.HTTP_400_BAD_REQUEST,
+    "person_not_found": status.HTTP_404_NOT_FOUND,
+    "duplicate_official": status.HTTP_409_CONFLICT,
+    "official_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -359,6 +363,41 @@ def set_toss(workspace_id: UUID, match_id: UUID, body: TossSet, settings: Settin
             return _ids(matches.set_toss(
                 conn, workspace_id, str(ctx.user["id"]), match_id,
                 toss_winner_team_id=body.toss_winner_team_id, toss_decision=body.toss_decision))
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+class OfficialAdd(BaseModel):
+    person_id: UUID
+    role: str = Field(pattern="^(umpire|scorer|tv_umpire|reserve_umpire|referee|other)$")
+    sort_order: int | None = Field(default=None, ge=1)
+    notes: str | None = None
+
+
+@router.get("/{match_id}/officials")
+def list_officials(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> list[dict[str, Any]]:
+    """Umpires & scorers recorded for the match, each with the person's name."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return [_ids(r) for r in matches.list_officials(conn, match_id)]
+
+
+@router.post("/{match_id}/officials", status_code=status.HTTP_201_CREATED)
+def add_official(workspace_id: UUID, match_id: UUID, body: OfficialAdd, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return matches.add_official(conn, workspace_id, str(ctx.user["id"]), match_id,
+                                        person_id=body.person_id, role=body.role,
+                                        sort_order=body.sort_order, notes=body.notes)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
+@router.delete("/{match_id}/officials/{official_id}")
+def remove_official(workspace_id: UUID, match_id: UUID, official_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            matches.remove_official(conn, workspace_id, str(ctx.user["id"]), official_id)
+            return {"removed": str(official_id)}
         except ValueError as exc:
             raise _value_error(exc) from exc
 

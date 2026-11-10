@@ -1176,6 +1176,15 @@ export interface MatchTeam {
   wicketkeeper2_person_id: string | null;
   bonus_points: number | null;
 }
+export interface MatchOfficial {
+  id: string;
+  match_id: string;
+  person_id: string | null;
+  person: string | null;
+  role: string;
+  sort_order: number | null;
+  notes: string | null;
+}
 export interface Match {
   id: string;
   competition_id: string | null;
@@ -2209,6 +2218,12 @@ export const api = {
     request<MatchTeam>(`/api/v1/workspaces/${w}/matches/${id}/teams`, { method: "POST", body }),
   setMatchToss: (w: string, id: string, body: Record<string, unknown>) =>
     request<Match>(`/api/v1/workspaces/${w}/matches/${id}/toss`, { method: "POST", body }),
+  matchOfficials: (w: string, id: string) =>
+    request<MatchOfficial[]>(`/api/v1/workspaces/${w}/matches/${id}/officials`),
+  addMatchOfficial: (w: string, id: string, body: { person_id: string; role: string; sort_order?: number; notes?: string }) =>
+    request<{ official_id: string }>(`/api/v1/workspaces/${w}/matches/${id}/officials`, { method: "POST", body }),
+  removeMatchOfficial: (w: string, id: string, officialId: string) =>
+    request<{ removed: string }>(`/api/v1/workspaces/${w}/matches/${id}/officials/${officialId}`, { method: "DELETE" }),
   getMatchConditions: (w: string, id: string) =>
     request<ResolvedConditions>(`/api/v1/workspaces/${w}/matches/${id}/conditions`),
 
