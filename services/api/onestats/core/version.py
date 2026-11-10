@@ -25,8 +25,8 @@ SERVER_VERSION = "1.0.0-beta.5"
 API_VERSION = 1
 
 # --- Database schema the server code expects (keep in step with the Alembic head) ---
-DB_SCHEMA_HEAD = "0071_cricsheet_backfill"
-DB_SCHEMA_LEVEL = 71
+DB_SCHEMA_HEAD = "0072_match_officials"
+DB_SCHEMA_LEVEL = 72
 
 # --- Desktop client compatibility rules (explicit; never inferred) ---
 # A desktop older than MIN_DESKTOP_VERSION must update before it may operate.

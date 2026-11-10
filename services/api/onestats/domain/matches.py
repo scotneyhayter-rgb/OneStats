@@ -443,6 +443,62 @@ def set_team(
     return {"match_team_id": mt_id}
 
 
+# Match officials (umpires & scorers). Explicitly recorded, never inferred; a match may have none.
+OFFICIAL_ROLES = ("umpire", "scorer", "tv_umpire", "reserve_umpire", "referee", "other")
+
+
+def list_officials(conn: Connection, match_id: UUID) -> list[dict[str, Any]]:
+    """Officials recorded for a match (umpires, scorers, …), each with the person's current name.
+    Ordered umpires-then-scorers, by sort order then name."""
+    rows = conn.execute(
+        text("SELECT mo.id, mo.match_id, mo.person_id, mo.role, mo.sort_order, mo.notes, "
+             "p.display_name AS person "
+             "FROM match_official mo LEFT JOIN person p ON p.id = mo.person_id "
+             "WHERE mo.match_id = :m "
+             "ORDER BY CASE mo.role WHEN 'umpire' THEN 0 WHEN 'tv_umpire' THEN 1 WHEN 'reserve_umpire' THEN 2 "
+             "WHEN 'referee' THEN 3 WHEN 'scorer' THEN 4 ELSE 5 END, mo.sort_order NULLS LAST, p.display_name"),
+        {"m": match_id},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def add_official(conn: Connection, workspace_id: UUID, actor: str, match_id: UUID, *, person_id: UUID,
+                 role: str, sort_order: int | None = None, notes: str | None = None) -> dict[str, Any]:
+    """Record an umpire/scorer (or other official) for a match, linked to a canonical person."""
+    if role not in OFFICIAL_ROLES:
+        raise ValueError("invalid_official_role")
+    if get_match(conn, match_id) is None:
+        raise ValueError("match_not_found")
+    if conn.execute(text("SELECT 1 FROM person WHERE id = :p"), {"p": person_id}).first() is None:
+        raise ValueError("person_not_found")
+    dupe = conn.execute(
+        text("SELECT 1 FROM match_official WHERE match_id = :m AND person_id = :p AND role = :r"),
+        {"m": match_id, "p": person_id, "r": role},
+    ).first()
+    if dupe is not None:
+        raise ValueError("duplicate_official")
+    oid = conn.execute(
+        text("INSERT INTO match_official(workspace_id, match_id, person_id, role, sort_order, notes) "
+             "VALUES (:w, :m, :p, :r, :so, :n) RETURNING id"),
+        {"w": workspace_id, "m": match_id, "p": person_id, "r": role, "so": sort_order, "n": notes},
+    ).scalar_one()
+    audit.write_audit(conn, workspace_id, actor, "match.add_official", entity="match", entity_id=str(match_id),
+                      after={"person_id": str(person_id), "role": role})
+    return {"official_id": str(oid)}
+
+
+def remove_official(conn: Connection, workspace_id: UUID, actor: str, official_id: UUID) -> None:
+    """Remove a recorded match official (scoped to the workspace)."""
+    row = conn.execute(
+        text("DELETE FROM match_official WHERE id = :id AND workspace_id = :w RETURNING match_id"),
+        {"id": official_id, "w": workspace_id},
+    ).first()
+    if row is None:
+        raise ValueError("official_not_found")
+    audit.write_audit(conn, workspace_id, actor, "match.remove_official", entity="match",
+                      entity_id=str(row[0]), after={"removed": str(official_id)})
+
+
 def effective_conditions(conn: Connection, match_id: UUID) -> dict[str, Any]:
     """Resolve the playing conditions in force for a match (match → grade → season → competition)."""
     m = get_match(conn, match_id)

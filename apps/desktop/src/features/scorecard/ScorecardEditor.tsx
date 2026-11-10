@@ -19,7 +19,7 @@ import { Input, Textarea } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { ErrorState, LoadingState } from "../../components/states/States";
 import {
-  api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail, type MatchTeam,
+  api, ApiError, type Competition, type InningsTotals, type Innings, type MatchDetail, type MatchOfficial, type MatchTeam,
   type Person, type Team, type Venue, type Grade, type Season, type CompetitionDetail, type MatchFormat,
 } from "../../lib/api";
 import { useLayout } from "../../lib/layout";
@@ -700,7 +700,90 @@ function TossAndOfficialsSection({
           );
         })}
       </div>
+
+      <MatchOfficialsBlock workspaceId={workspaceId} matchId={matchId} canManage={canManage}
+        nameOf={nameOf} addName={addName} onError={onError} flash={flash} />
     </SectionCard>
+  );
+}
+
+const OFFICIAL_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: "umpire", label: "Umpire" },
+  { value: "scorer", label: "Scorer" },
+  { value: "tv_umpire", label: "TV umpire" },
+  { value: "reserve_umpire", label: "Reserve umpire" },
+  { value: "referee", label: "Match referee" },
+  { value: "other", label: "Other official" },
+];
+const officialRoleLabel = (role: string) => OFFICIAL_ROLE_OPTIONS.find((o) => o.value === role)?.label ?? role;
+
+function MatchOfficialsBlock({
+  workspaceId, matchId, canManage, nameOf, addName, onError, flash,
+}: {
+  workspaceId: string; matchId: string; canManage: boolean;
+  nameOf: (id: string | null) => string | null; addName: (p: Person) => void;
+  onError: (m: string) => void; flash: (m: string) => void;
+}) {
+  const [officials, setOfficials] = useState<MatchOfficial[]>([]);
+  const [role, setRole] = useState("umpire");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { setOfficials(await api.matchOfficials(workspaceId, matchId)); }
+    catch { setOfficials([]); }
+  }, [workspaceId, matchId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const add = async (personId: string | null) => {
+    if (!personId) return;
+    setBusy(true);
+    try {
+      await api.addMatchOfficial(workspaceId, matchId, { person_id: personId, role });
+      await load();
+      flash(`${officialRoleLabel(role)} added.`);
+    } catch (e) {
+      onError(e instanceof ApiError ? (e.message === "duplicate_official" ? "That person is already recorded in that role." : e.message) : "Could not add the official.");
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    try { await api.removeMatchOfficial(workspaceId, matchId, id); await load(); }
+    catch (e) { onError(e instanceof ApiError ? e.message : "Could not remove the official."); }
+  };
+
+  return (
+    <div className="mt-4 rounded-[var(--radius-app)] border border-border bg-muted/30 p-3">
+      <h4 className="mb-1 text-sm font-semibold">Umpires &amp; scorers</h4>
+      <p className="mb-2 text-xs text-muted-foreground">Recorded explicitly, linked to each person — a match with none simply has none.</p>
+      {officials.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No officials recorded.</p>
+      ) : (
+        <ul className="mb-2 flex flex-col gap-1 text-sm">
+          {officials.map((o) => (
+            <li key={o.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-app)] border border-border bg-card px-2 py-1">
+              <span><span className="text-muted-foreground">{officialRoleLabel(o.role)}:</span> {o.person ?? nameOf(o.person_id) ?? "Unknown"}</span>
+              {canManage && <button type="button" aria-label="Remove official" className="text-muted-foreground hover:text-danger" onClick={() => void remove(o.id)}>×</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canManage && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <Field label="Role">
+            <Select value={role} disabled={busy} onChange={(e) => setRole(e.target.value)} className="sm:w-40">
+              {OFFICIAL_ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </Field>
+          <div className="flex-1">
+            <Field label="Add person">
+              <PlayerSelect workspaceId={workspaceId} value={null} nameOf={nameOf} onPersonLoaded={addName}
+                disabled={busy} aria-label="Add official" roleLabel={officialRoleLabel(role)}
+                onChange={(pid) => void add(pid)} />
+            </Field>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -183,6 +183,34 @@ def test_toss_recorded_explicitly_and_never_inferred(conn):
         matches.set_toss(conn, wid, ACTOR, mid, toss_decision="heads")
 
 
+def test_match_umpires_and_scorers_recorded(conn):
+    """Umpires & scorers are explicitly recorded against a match, linked to canonical people, ordered
+    umpires-before-scorers, with duplicate and invalid roles rejected and removal scoped to the match."""
+    wid = _ws(conn, "UMP SCORERS")
+    cid = _comp(conn, wid)
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    u1 = _person(conn, wid, "A Umpire")
+    u2 = _person(conn, wid, "B Umpire")
+    sc = _person(conn, wid, "C Scorer")
+    matches.add_official(conn, wid, ACTOR, mid, person_id=u1, role="umpire", sort_order=1)
+    matches.add_official(conn, wid, ACTOR, mid, person_id=u2, role="umpire", sort_order=2)
+    matches.add_official(conn, wid, ACTOR, mid, person_id=sc, role="scorer")
+
+    offs = matches.list_officials(conn, mid)
+    assert [o["role"] for o in offs] == ["umpire", "umpire", "scorer"]   # umpires before scorers
+    assert [o["person"] for o in offs] == ["A Umpire", "B Umpire", "C Scorer"]
+
+    with pytest.raises(ValueError, match="invalid_official_role"):
+        matches.add_official(conn, wid, ACTOR, mid, person_id=sc, role="captain")
+    with pytest.raises(ValueError, match="duplicate_official"):
+        matches.add_official(conn, wid, ACTOR, mid, person_id=u1, role="umpire")
+
+    matches.remove_official(conn, wid, ACTOR, offs[0]["id"])
+    assert len(matches.list_officials(conn, mid)) == 2
+    with pytest.raises(ValueError, match="official_not_found"):
+        matches.remove_official(conn, wid, ACTOR, offs[0]["id"])
+
+
 def test_match_officials_acting_captain_and_second_keeper(conn):
     wid = _ws(conn, "MATCH OFFICIALS")
     cid = _comp(conn, wid)
