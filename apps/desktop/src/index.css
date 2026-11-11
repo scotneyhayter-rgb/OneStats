@@ -131,3 +131,13 @@ body {
 .sidebar-scroll:hover::-webkit-scrollbar-thumb {
   background: var(--sidebar-muted);
 }
+
+/* Toast entrance — subtle slide-up + fade; disabled under reduced-motion. */
+@keyframes onestats-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-enter { animation: onestats-toast-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter { animation: none; }
+}

@@ -80,7 +80,7 @@ function Toaster({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: numbe
         const tone = TONE[t.kind];
         return (
           <div key={t.id} role="status" aria-live={tone.aria}
-            className={`pointer-events-auto flex items-start gap-2 rounded-[var(--radius-app)] border ${tone.border} bg-card p-3 text-sm shadow-lg`}>
+            className={`toast-enter pointer-events-auto flex items-start gap-2 rounded-[var(--radius-app)] border ${tone.border} bg-card p-3 text-sm shadow-lg`}>
             <tone.Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.text}`} aria-hidden />
             <span className="min-w-0 flex-1 break-words text-foreground">{t.message}</span>
             <button type="button" aria-label="Dismiss" className="shrink-0 text-muted-foreground hover:text-foreground"
