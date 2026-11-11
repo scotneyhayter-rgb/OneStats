@@ -61,6 +61,8 @@ export function Statistics() {
   const [venue, setVenue] = useState("");
   const [format, setFormat] = useState("");
   const [formats, setFormats] = useState<string[]>([]);
+  const [seasonLabel, setSeasonLabel] = useState("");       // cross-competition year filter
+  const [seasonLabels, setSeasonLabels] = useState<string[]>([]);
   const [minThreshold, setMinThreshold] = useState("");
   const [minInnings, setMinInnings] = useState("");   // user-adjustable qualification (batting/bowling)
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export function Statistics() {
   useEffect(() => {
     if (current) api.listCompetitions(current.id).then(setCompetitions).catch(() => {});
     if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
+    if (current) api.statsUsedSeasons(current.id).then(setSeasonLabels).catch(() => setSeasonLabels([]));
     if (current) api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
     if (current) api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
     if (current) api.listVenues(current.id).then(setVenues).catch(() => setVenues([]));
@@ -171,6 +174,7 @@ export function Statistics() {
       grade_id: gradeId || undefined, team_id: teamId || undefined, season_id: seasonId || undefined,
       opposition_organisation_id: oppositionOrgId || undefined, venue_id: venueId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined,
+      season_label: seasonLabel || undefined,
     };
     if (minThreshold) {
       if (report === "batting") q.min_runs = Number(minThreshold);
@@ -179,7 +183,7 @@ export function Statistics() {
     }
     if (minInnings && (report === "batting" || report === "bowling")) q.min_innings = Number(minInnings);
     return q;
-  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, venueId, seasonId, split, venue, format, minThreshold, minInnings, report]);
+  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, venueId, seasonId, seasonLabel, split, venue, format, minThreshold, minInnings, report]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -245,7 +249,7 @@ export function Statistics() {
 
   const clearAll = () => {
     setCompetitionId(""); setGradeId(""); setSeasonId(""); setTeamId("");
-    setOppositionOrgId(""); setVenueId(""); setSplit(""); setVenue(""); setFormat("");
+    setOppositionOrgId(""); setVenueId(""); setSplit(""); setVenue(""); setFormat(""); setSeasonLabel("");
     setMinInnings(""); setMinThreshold("");   // club scope is the master default, left intact
   };
   // Active filters, shown as removable chips so a filtered report is never mistaken for all-time.
@@ -260,6 +264,7 @@ export function Statistics() {
     split && { label: SPLITS.find((s) => s.value === split)?.label ?? split, clear: () => setSplit("") },
     venue && { label: venue === "home" ? "Home only" : "Away only", clear: () => setVenue("") },
     format && { label: `Format: ${format}`, clear: () => setFormat("") },
+    seasonLabel && { label: `Season: ${seasonLabel}`, clear: () => setSeasonLabel("") },
     minInnings && (report === "batting" || report === "bowling") && { label: `Min innings: ${minInnings}`, clear: () => setMinInnings("") },
     minThreshold && { label: `${report === "batting" ? "Min runs" : report === "bowling" ? "Min wickets" : "Min eligible"}: ${minThreshold}`, clear: () => setMinThreshold("") },
   ].filter(Boolean) as { label: string; clear: () => void }[];
@@ -412,6 +417,15 @@ export function Statistics() {
                 <Select value={format} onChange={(e) => setFormat(e.target.value)} className="w-44">
                   <option value="">All formats</option>
                   {formats.map((fmt) => <option key={fmt} value={fmt}>{fmt}</option>)}
+                </Select>
+              </label>
+            )}
+            {seasonLabels.length > 0 && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Season (year)</span>
+                <Select value={seasonLabel} onChange={(e) => setSeasonLabel(e.target.value)} className="w-32">
+                  <option value="">All years</option>
+                  {seasonLabels.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </label>
             )}

@@ -11,7 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
+import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -67,20 +67,21 @@ export function ReportCatalogue() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
-  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [seasonLabels, setSeasonLabels] = useState<string[]>([]);
   const [primaryClub, setPrimaryClub] = useState<{ organisation_id?: string; name?: string }>({});
   const [competitionId, setCompetitionId] = useState("");
   const [organisationId, setOrganisationId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [venueId, setVenueId] = useState("");
   const [gradeId, setGradeId] = useState("");
-  const [seasonId, setSeasonId] = useState("");
+  const [seasonLabel, setSeasonLabel] = useState("");
 
   useEffect(() => {
     if (!current) return;
     api.statsCatalogue(current.id).then(setCat).catch((e) =>
       setError(e instanceof ApiError ? e.message : "Could not load the report catalogue."));
     api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
+    api.statsUsedSeasons(current.id).then(setSeasonLabels).catch(() => setSeasonLabels([]));
     api.listCompetitions(current.id).then(setCompetitions).catch(() => setCompetitions([]));
     api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
     api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
@@ -90,16 +91,17 @@ export function ReportCatalogue() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
 
-  // Grades and seasons belong to a competition — load them when one is picked, and clear the picks.
+  // Grades belong to a competition — load them when one is picked, and clear the pick. (Season is a
+  // workspace-wide year filter, not competition-dependent.)
   useEffect(() => {
     if (current && competitionId) {
       api.getCompetition(current.id, competitionId)
-        .then((c) => { setGrades(c.grades ?? []); setSeasons(c.seasons ?? []); })
-        .catch(() => { setGrades([]); setSeasons([]); });
+        .then((c) => setGrades(c.grades ?? []))
+        .catch(() => setGrades([]));
     } else {
-      setGrades([]); setSeasons([]);
+      setGrades([]);
     }
-    setGradeId(""); setSeasonId("");
+    setGradeId("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, competitionId]);
 
@@ -122,12 +124,12 @@ export function ReportCatalogue() {
       team_id: s("team") && teamId ? teamId : undefined,
       competition_id: s("competition") && competitionId ? competitionId : undefined,
       grade_id: s("grade") && gradeId ? gradeId : undefined,
-      season_id: s("season") && seasonId ? seasonId : undefined,
+      season_label: s("season") && seasonLabel ? seasonLabel : undefined,
       venue_id: s("venue") && venueId ? venueId : undefined,
       split: s("split") && split ? split : undefined,
       format: s("format") && format ? format : undefined,
     };
-  }, [organisationId, teamId, competitionId, gradeId, seasonId, venueId, split, format]);
+  }, [organisationId, teamId, competitionId, gradeId, seasonLabel, venueId, split, format]);
 
   const loadReport = useCallback(async (r: CatalogueReport) => {
     if (!current) return;
@@ -143,7 +145,7 @@ export function ReportCatalogue() {
   const openReport = useCallback((r: CatalogueReport) => {
     if (r.id === "capt_compare") { window.location.hash = "#/statistics/captaincy-compare"; return; }
     // Reset scope, defaulting the club to the workspace's primary club where the report supports it.
-    setSplit(""); setFormat(""); setCompetitionId(""); setTeamId(""); setVenueId(""); setGradeId(""); setSeasonId("");
+    setSplit(""); setFormat(""); setCompetitionId(""); setTeamId(""); setVenueId(""); setGradeId(""); setSeasonLabel("");
     setOrganisationId(r.filters.includes("organisation") ? (primaryClub.organisation_id ?? "") : "");
     setData(null);
     setOpen(r);
@@ -161,7 +163,7 @@ export function ReportCatalogue() {
   useEffect(() => {
     if (open) void loadReport(open);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open?.id, organisationId, teamId, competitionId, gradeId, seasonId, venueId, split, format]);
+  }, [open?.id, organisationId, teamId, competitionId, gradeId, seasonLabel, venueId, split, format]);
   useEffect(() => {
     if (open) reportRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, [open?.id]);
@@ -332,12 +334,12 @@ export function ReportCatalogue() {
                   </Select>
                 </label>
               )}
-              {open.filters.includes("season") && seasons.length > 0 && (
+              {open.filters.includes("season") && seasonLabels.length > 0 && (
                 <label className="flex flex-col gap-1">
-                  <span className="text-muted-foreground">Season</span>
-                  <Select value={seasonId} onChange={(e) => setSeasonId(e.target.value)} className="w-32">
-                    <option value="">All seasons</option>
-                    {seasons.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  <span className="text-muted-foreground">Season (year)</span>
+                  <Select value={seasonLabel} onChange={(e) => setSeasonLabel(e.target.value)} className="w-32">
+                    <option value="">All years</option>
+                    {seasonLabels.map((s) => <option key={s} value={s}>{s}</option>)}
                   </Select>
                 </label>
               )}
@@ -374,7 +376,7 @@ export function ReportCatalogue() {
                 teamId && open.filters.includes("team") && { label: `Team: ${teams.find((t) => t.id === teamId)?.name ?? "—"}`, clear: () => setTeamId("") },
                 competitionId && open.filters.includes("competition") && { label: `Comp: ${competitions.find((c) => c.id === competitionId)?.name ?? "—"}`, clear: () => setCompetitionId("") },
                 gradeId && open.filters.includes("grade") && { label: `Grade: ${grades.find((g) => g.id === gradeId)?.name ?? "—"}`, clear: () => setGradeId("") },
-                seasonId && open.filters.includes("season") && { label: `Season: ${seasons.find((s) => s.id === seasonId)?.label ?? "—"}`, clear: () => setSeasonId("") },
+                seasonLabel && open.filters.includes("season") && { label: `Season: ${seasonLabel}`, clear: () => setSeasonLabel("") },
                 venueId && open.filters.includes("venue") && { label: `Ground: ${venues.find((v) => v.id === venueId)?.name ?? "—"}`, clear: () => setVenueId("") },
                 split && open.filters.includes("split") && { label: SPLITS.find((s) => s.value === split)?.label ?? split, clear: () => setSplit("") },
                 format && open.filters.includes("format") && { label: `Format: ${format}`, clear: () => setFormat("") },
