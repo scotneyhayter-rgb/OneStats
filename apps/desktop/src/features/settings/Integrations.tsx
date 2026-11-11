@@ -23,6 +23,7 @@ import {
   type IntegrationProvider,
 } from "../../lib/api";
 import { NoWorkspace, useManage } from "../manage/_shared";
+import { useToast } from "../../lib/toast";
 
 export function Integrations() {
   const { workspaceId, canManage } = useManage();
@@ -31,7 +32,7 @@ export function Integrations() {
   const [auditLog, setAuditLog] = useState<IntegrationAuditEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -59,8 +60,8 @@ export function Integrations() {
   }
 
   const act = async (fn: () => Promise<unknown>, msg: string) => {
-    setBusy(true); setError(null); setFlash(null);
-    try { await fn(); setFlash(msg); await load(); }
+    setBusy(true); setError(null);
+    try { await fn(); toast.success(msg); await load(); }
     catch (e) { setError(e instanceof ApiError ? e.message : "Action failed."); }
     finally { setBusy(false); }
   };
@@ -71,7 +72,6 @@ export function Integrations() {
     <AppShell title="API & Integrations" subtitle="Connect external data providers for this workspace">
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
-        {flash && <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-sm text-success">{flash}</p>}
 
         <p className="flex items-start gap-2 rounded-[var(--radius-app)] border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

@@ -9,6 +9,7 @@
 import { CheckCircle2, PlayCircle, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
+import { useToast } from "../../lib/toast";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -39,7 +40,7 @@ export function AutoSync() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -58,8 +59,8 @@ export function AutoSync() {
   if (!workspaceId) return <NoWorkspace />;
 
   const act = async (fn: () => Promise<unknown>, msg: string) => {
-    setBusy(true); setError(null); setFlash(null);
-    try { await fn(); setFlash(msg); await load(); }
+    setBusy(true); setError(null);
+    try { await fn(); toast.success(msg); await load(); }
     catch (e) { setError(e instanceof ApiError ? e.message : "Action failed."); }
     finally { setBusy(false); }
   };
@@ -87,7 +88,6 @@ export function AutoSync() {
     <AppShell title="AutoSync" subtitle="Automatic match discovery and synchronisation">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
-        {flash && <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-sm text-success">{flash}</p>}
 
         {/* dashboard */}
         <Card><CardContent className="flex flex-col gap-3">

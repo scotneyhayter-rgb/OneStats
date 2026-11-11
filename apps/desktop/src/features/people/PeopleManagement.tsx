@@ -18,13 +18,14 @@ import {
   type PersonMerge,
 } from "../../lib/api";
 import { Field, NoWorkspace, humanise, useManage } from "../manage/_shared";
+import { useToast } from "../../lib/toast";
 
 const ROLES = ["player", "umpire", "scorer", "coach", "administrator", "selector", "captain", "official", "other"];
 
 export function PeopleManagement() {
   const { workspaceId, canManage } = useManage();
   const [tab, setTab] = useState<"directory" | "identity" | "import">("directory");
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   if (!workspaceId) {
     return (
@@ -45,19 +46,14 @@ export function PeopleManagement() {
 
   return (
     <AppShell title="People" subtitle="Players, officials and identity management">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       <div className="mb-4 inline-flex gap-1 rounded-[var(--radius-app)] border border-border p-1">
         {tabBtn("directory", "Directory")}
         {tabBtn("identity", "Identity Resolution")}
         {tabBtn("import", "Cricket Statz Import")}
       </div>
-      {tab === "directory" && <Directory workspaceId={workspaceId} canManage={canManage} onMsg={setMsg} />}
-      {tab === "identity" && <IdentityCentre workspaceId={workspaceId} canManage={canManage} onMsg={setMsg} />}
-      {tab === "import" && <ImportReview workspaceId={workspaceId} canManage={canManage} onMsg={setMsg} />}
+      {tab === "directory" && <Directory workspaceId={workspaceId} canManage={canManage} onMsg={toast.success} />}
+      {tab === "identity" && <IdentityCentre workspaceId={workspaceId} canManage={canManage} onMsg={toast.success} />}
+      {tab === "import" && <ImportReview workspaceId={workspaceId} canManage={canManage} onMsg={toast.success} />}
     </AppShell>
   );
 }

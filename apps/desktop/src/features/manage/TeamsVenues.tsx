@@ -18,13 +18,14 @@ import {
 } from "../../lib/api";
 import { yearSpan } from "../../lib/utils";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
+import { useToast } from "../../lib/toast";
 
 const PROGRAMS = ["seniors", "juniors", "womens", "girls", "all_abilities", "veterans", "custom"];
 
 export function TeamsVenues() {
   const { workspaceId, canManage } = useManage();
   const [tab, setTab] = useState<"teams" | "venues">("teams");
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   if (!workspaceId) {
     return (
@@ -36,11 +37,6 @@ export function TeamsVenues() {
 
   return (
     <AppShell title="Teams & Venues" subtitle="Teams, cricket programs and grounds">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       <div className="mb-4 inline-flex gap-1 rounded-[var(--radius-app)] border border-border p-1">
         <button
           className={tab === "teams" ? "rounded-[var(--radius-app)] bg-muted px-3 py-1 text-sm" : "px-3 py-1 text-sm text-muted-foreground"}
@@ -56,9 +52,9 @@ export function TeamsVenues() {
         </button>
       </div>
       {tab === "teams" ? (
-        <TeamsTab workspaceId={workspaceId} canManage={canManage} onMsg={setMsg} />
+        <TeamsTab workspaceId={workspaceId} canManage={canManage} onMsg={toast.success} />
       ) : (
-        <VenuesTab workspaceId={workspaceId} canManage={canManage} onMsg={setMsg} />
+        <VenuesTab workspaceId={workspaceId} canManage={canManage} onMsg={toast.success} />
       )}
     </AppShell>
   );
