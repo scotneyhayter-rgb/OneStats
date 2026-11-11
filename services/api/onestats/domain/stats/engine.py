@@ -35,6 +35,12 @@ def _where(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         if filters.get(key):
             clauses.append(f"{col} = :{key}")
             params[key] = filters[key]
+    # Season filter by YEAR (label) rather than a single competition's season row: "2019/20" across every
+    # competition. Lets the Statistics screen and Report Catalogue filter by year without first choosing a
+    # competition. Scoped to the workspace via :w.
+    if filters.get("season_label"):
+        clauses.append("c.season_id IN (SELECT id FROM season WHERE workspace_id = :w AND label = :season_label)")
+        params["season_label"] = filters["season_label"]
     # Club (organisation) filter: any of that club's teams. The engine scopes by team, so a club means
     # "played for one of this organisation's teams" — across its grades.
     if filters.get("organisation_id"):

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const H = vi.hoisted(() => ({
-  statsCatalogue: vi.fn(), statsReport: vi.fn(), statsUsedFormats: vi.fn(),
+  statsCatalogue: vi.fn(), statsReport: vi.fn(), statsUsedFormats: vi.fn(), statsUsedSeasons: vi.fn(),
   listCompetitions: vi.fn(), listOrganisations: vi.fn(), listTeams: vi.fn(), listVenues: vi.fn(),
   statsPrimaryClub: vi.fn(), getCompetition: vi.fn(),
 }));
@@ -39,6 +39,7 @@ const CAT = {
 function setup() {
   H.statsCatalogue.mockResolvedValue(CAT);
   H.statsUsedFormats.mockResolvedValue([]);
+  H.statsUsedSeasons.mockResolvedValue(["2020/21", "2019/20"]);
   H.listCompetitions.mockResolvedValue([]);
   H.listOrganisations.mockResolvedValue([{ id: "o1", name: "Rhymney Moyston CC" }, { id: "o2", name: "Ararat CC" }]);
   H.listTeams.mockResolvedValue([]);

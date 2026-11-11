@@ -2173,6 +2173,7 @@ export const api = {
       `/api/v1/workspaces/${w}/records/partnerships/by-wicket${qs({ organisation_id: organisationId })}`),
   recordsHonours: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honours`),
   recordsHonoraryMembers: (w: string) => request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/records/honorary-members`),
+  statsUsedSeasons: (w: string) => request<string[]>(`/api/v1/workspaces/${w}/stats/seasons`),
   recordsBadges: (w: string, personId: string) =>
     request<{ calculated: { label: string; source: string; state: string }[];
               awarded: { label: string; source: string }[] }>(`/api/v1/workspaces/${w}/records/badges/${personId}`),

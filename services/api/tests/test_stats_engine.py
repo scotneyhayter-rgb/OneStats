@@ -302,6 +302,33 @@ def test_club_organisation_filter(conn):
     assert str(x["bowler"]) in away_bowl                                 # away bowler under the away club
 
 
+def test_season_label_filter_scopes_by_year(conn):
+    """The 'Season (year)' filter scopes stats to a season label (e.g. 2019/20), so a year's figures are
+    isolated — the filter the Statistics screen and Report Catalogue use to filter by year."""
+    wid = _ws(conn, "SEASON YEAR")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    s1 = competitions.create_season(conn, wid, ACTOR, cid, label="2019/20")
+    s2 = competitions.create_season(conn, wid, ACTOR, cid, label="2020/21")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    bat = _p(conn, wid, "Year Bat")
+
+    def _match(season_id, runs):
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=cid, season_id=season_id)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=bat, batting_position=1,
+                             runs=runs, balls_faced=50, dismissal_type="not_out")
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    _match(s1, 100)
+    _match(s2, 40)
+    by = lambda f: {r["subject_id"]: r for r in engine.batting_leaders(conn, f)}[str(bat)]
+    assert by(_f(wid))["runs"] == 140                          # all years combined
+    assert by(_f(wid, season_label="2019/20"))["runs"] == 100  # scoped to one year
+    assert by(_f(wid, season_label="2020/21"))["runs"] == 40
+
+
 def test_run_out_reconciliation(conn):
     wid = _ws(conn, "ENG RECON")
     x = _build(conn, wid)
