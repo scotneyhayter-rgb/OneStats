@@ -17,6 +17,7 @@ import {
   type Team,
 } from "../../lib/api";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
+import { useToast } from "../../lib/toast";
 
 export function Competitions() {
   const { workspaceId, canManage } = useManage();
@@ -27,7 +28,7 @@ export function Competitions() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -61,11 +62,6 @@ export function Competitions() {
 
   return (
     <AppShell title="Competitions" subtitle="Competitions, divisions, grades and seasons">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       <ClassificationsPanel workspaceId={workspaceId} canManage={canManage} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Input placeholder="Search competitions..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
@@ -107,7 +103,7 @@ export function Competitions() {
           onClose={() => setShowCreate(false)}
           onCreated={(name) => {
             setShowCreate(false);
-            setMsg(`Created competition "${name}".`);
+            toast.success(`Created competition "${name}".`);
             void load();
           }}
         />
@@ -119,8 +115,8 @@ export function Competitions() {
           canManage={canManage}
           orgName={orgName}
           onClose={() => setDetail(null)}
-          onChanged={(m) => { setMsg(m); void load(); }}
-          onDeleted={(m) => { setMsg(m); setDetail(null); void load(); }}
+          onChanged={(m) => { toast.success(m); void load(); }}
+          onDeleted={(m) => { toast.success(m); setDetail(null); void load(); }}
         />
       )}
     </AppShell>

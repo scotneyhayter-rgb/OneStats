@@ -13,6 +13,7 @@ import { Input } from "../../components/ui/input";
 import { ApiError, api, type WorkspaceMember } from "../../lib/api";
 import { can, roleLabel } from "../../lib/permissions";
 import { NoWorkspace, useManage } from "../manage/_shared";
+import { useToast } from "../../lib/toast";
 
 /** Workspace roles an admin can assign here. `super_admin` is a platform flag, never a workspace role. */
 const ASSIGNABLE_ROLES = ["workspace_admin", "researcher", "scorecard_entry", "reviewer", "viewer"];
@@ -31,7 +32,7 @@ export function WorkspaceMembers() {
   const canAdmin = can(user, workspace, "user.admin");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
   const [newUser, setNewUser] = useState("");
   const [newRole, setNewRole] = useState(ASSIGNABLE_ROLES[0]);
   const [addRole, setAddRole] = useState<Record<string, string>>({});
@@ -54,8 +55,8 @@ export function WorkspaceMembers() {
   }
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true); setError(null); setMsg(null);
-    try { await fn(); setMsg(ok); await load(); }
+    setBusy(true); setError(null);
+    try { await fn(); toast.success(ok); await load(); }
     catch (e) { setError(e instanceof ApiError ? e.message : "Action failed."); }
     finally { setBusy(false); }
   };
@@ -65,7 +66,6 @@ export function WorkspaceMembers() {
     <AppShell title="Members" subtitle="Workspace roles and access">
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {error && <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
-        {msg && <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-sm text-success">{msg}</p>}
 
         <Card><CardContent className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Add a member</h3>

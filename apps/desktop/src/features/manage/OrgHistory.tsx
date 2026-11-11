@@ -16,6 +16,7 @@ import {
   type OrgTimeline,
 } from "../../lib/api";
 import { Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
+import { useToast } from "../../lib/toast";
 
 const REL_TYPES = [
   "merger",
@@ -40,7 +41,7 @@ export function OrgHistory() {
   const [showCreate, setShowCreate] = useState(false);
   const [confirmVoid, setConfirmVoid] = useState<OrgRelationship | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   const orgName = useCallback((id: string) => orgs.find((o) => o.id === id)?.name ?? id.slice(0, 8), [orgs]);
 
@@ -87,7 +88,7 @@ export function OrgHistory() {
     setBusy(true);
     try {
       await api.voidRelationship(workspaceId, confirmVoid.id);
-      setMsg("Relationship reversed (voided). It is preserved and can be restored.");
+      toast.success("Relationship reversed (voided). It is preserved and can be restored.");
       setConfirmVoid(null);
       await load();
     } catch (e) {
@@ -101,7 +102,7 @@ export function OrgHistory() {
     setBusy(true);
     try {
       await api.restoreRelationship(workspaceId, id);
-      setMsg("Relationship restored.");
+      toast.success("Relationship restored.");
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to restore");
@@ -112,11 +113,6 @@ export function OrgHistory() {
 
   return (
     <AppShell title="Organisation History" subtitle="Timeline, relationships and provenance">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Select value={orgId} onChange={(e) => setOrgId(e.target.value)} className="max-w-sm">
           {orgs.map((o) => (
@@ -238,7 +234,7 @@ export function OrgHistory() {
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            setMsg("Relationship recorded.");
+            toast.success("Relationship recorded.");
             void load();
           }}
         />
