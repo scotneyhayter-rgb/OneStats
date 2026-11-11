@@ -17,6 +17,7 @@ import {
 } from "../../lib/api";
 import { compressImage, yearSpan } from "../../lib/utils";
 import { Detail, Field, NoWorkspace, Unknown, humanise, useManage } from "./_shared";
+import { useToast } from "../../lib/toast";
 
 /**
  * A club's logo, or a neutral building icon when it has none. Fetches the image as an authenticated
@@ -127,7 +128,7 @@ export function Organisations() {
   const [includeMerged, setIncludeMerged] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -161,11 +162,6 @@ export function Organisations() {
 
   return (
     <AppShell title="Organisations" subtitle="Clubs, associations and historical organisations">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search by name..."
@@ -234,7 +230,7 @@ export function Organisations() {
           canManage={canManage}
           onClose={() => setSelected(null)}
           onChanged={(m) => {
-            setMsg(m);
+            toast.success(m);
             void load();
           }}
         />
@@ -245,7 +241,7 @@ export function Organisations() {
           onClose={() => setShowCreate(false)}
           onCreated={(name) => {
             setShowCreate(false);
-            setMsg(`Created "${name}".`);
+            toast.success(`Created "${name}".`);
             void load();
           }}
         />
