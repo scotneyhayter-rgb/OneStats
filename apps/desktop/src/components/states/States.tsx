@@ -62,3 +62,25 @@ export function ErrorState({
     </div>
   );
 }
+
+/** A table-shaped loading placeholder — a calmer, more "finished" load than a bare spinner for data
+ * grids (leaderboards, reports, directories). Rows/cols are approximate; it only needs to feel right. */
+export function TableSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: number }) {
+  return (
+    <div role="status" aria-live="polite" aria-label="Loading"
+      className="overflow-hidden rounded-[var(--radius-app)] border border-border">
+      <div className="flex gap-3 border-b border-border bg-muted/40 px-3 py-2">
+        {Array.from({ length: cols }).map((_, i) => (
+          <div key={i} className={`h-3 animate-pulse rounded bg-muted ${i === 0 ? "w-8" : "flex-1"}`} />
+        ))}
+      </div>
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="flex items-center gap-3 border-b border-border/60 px-3 py-2 last:border-0">
+          {Array.from({ length: cols }).map((_, c) => (
+            <div key={c} className={`h-3 animate-pulse rounded bg-muted/70 ${c === 0 ? "w-8" : "flex-1"}`} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}

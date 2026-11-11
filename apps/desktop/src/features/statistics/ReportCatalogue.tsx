@@ -6,6 +6,7 @@
 import { Download, FileText, Search, Star, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
+import { TableSkeleton } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -400,7 +401,7 @@ export function ReportCatalogue() {
                 {open.limitations && <span className="block">Note: {open.limitations}</span>}
               </p>
             )}
-            {!data ? <p className="text-xs text-muted-foreground">Loading…</p> :
+            {!data ? <TableSkeleton rows={8} cols={6} /> :
               data.rows.length === 0 ? <p className="text-xs text-muted-foreground">No data for this report yet.</p> :
               <div className="max-h-[32rem] overflow-auto rounded-[var(--radius-app)] border border-border">
                 <table className="w-full border-collapse text-sm">
