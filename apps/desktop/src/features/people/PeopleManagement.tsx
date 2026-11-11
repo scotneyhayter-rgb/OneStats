@@ -1,7 +1,7 @@
 import { GitMerge, Plus, Undo2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
-import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
+import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -109,7 +109,7 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
         {canManage && <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" aria-hidden /> New person</Button>}
       </div>
 
-      {loading && <LoadingState label="Loading people..." />}
+      {loading && <TableSkeleton rows={8} cols={4} />}
       {!loading && error && <ErrorState message={error} onRetry={() => void load()} />}
       {!loading && !error && filtered.length === 0 && (
         <EmptyState icon={<Users className="h-8 w-8" aria-hidden />} title="No people"

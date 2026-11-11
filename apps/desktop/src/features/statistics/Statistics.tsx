@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { TableSkeleton } from "../../components/states/States";
 import { Modal } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
@@ -475,6 +476,7 @@ export function Statistics() {
           )}
 
           <h3 className="text-sm font-semibold">{data?.title ?? "Report"}</h3>
+          {busy && !data && <TableSkeleton rows={10} cols={8} />}
           {data && data.rows.length === 0 && (
             <p className="text-xs text-muted-foreground">No approved data for these filters yet.</p>
           )}
