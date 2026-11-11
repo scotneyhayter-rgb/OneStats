@@ -13,17 +13,19 @@ import { Modal } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { useToast } from "../../lib/toast";
-import { api, ApiError, type Competition, type Grade, type Organisation, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
+import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
-const REPORTS = [
-  { key: "batting", label: "Batting" },
-  { key: "bowling", label: "Bowling" },
-  { key: "fielding", label: "Fielding & WK" },
-  { key: "captaincy", label: "Captaincy" },
-  { key: "participation", label: "Appearances" },
-  { key: "teams", label: "Teams" },
+// Each genre tab maps to one or more Report Catalogue categories, so opening a tab lists every report
+// in that genre (not just the default leaderboard). `cats` are the catalogue category labels to gather.
+const REPORTS: { key: string; label: string; cats: string[] }[] = [
+  { key: "batting", label: "Batting", cats: ["Batting"] },
+  { key: "bowling", label: "Bowling", cats: ["Bowling"] },
+  { key: "fielding", label: "Fielding & WK", cats: ["Fielding", "Wicketkeeping"] },
+  { key: "captaincy", label: "Captaincy", cats: ["Captaincy"] },
+  { key: "participation", label: "Appearances", cats: ["Player Participation"] },
+  { key: "teams", label: "Teams", cats: ["Teams"] },
 ];
 
 const SPLITS = [
@@ -42,7 +44,9 @@ function fmt(value: unknown, col: StatColumn): string {
 
 export function Statistics() {
   const { current } = useWorkspace();
-  const [report, setReport] = useState("batting");
+  const [report, setReport] = useState("batting");   // the active genre tab
+  const [cat, setCat] = useState<Catalogue | null>(null);
+  const [reportId, setReportId] = useState("");        // the specific report within the genre
   const [data, setData] = useState<StatReport | null>(null);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [competitionId, setCompetitionId] = useState("");
@@ -86,6 +90,7 @@ export function Statistics() {
     if (current) api.listCompetitions(current.id).then(setCompetitions).catch(() => {});
     if (current) api.statsUsedFormats(current.id).then(setFormats).catch(() => setFormats([]));
     if (current) api.statsUsedSeasons(current.id).then(setSeasonLabels).catch(() => setSeasonLabels([]));
+    if (current) api.statsCatalogue(current.id).then(setCat).catch(() => setCat(null));
     if (current) api.listOrganisations(current.id).then(setOrganisations).catch(() => setOrganisations([]));
     if (current) api.listTeams(current.id).then(setTeams).catch(() => setTeams([]));
     if (current) api.listVenues(current.id).then(setVenues).catch(() => setVenues([]));
@@ -127,7 +132,12 @@ export function Statistics() {
     const s = saved.find((x) => x.id === id);
     if (!s) return;
     const cfg = (s.config ?? {}) as Record<string, string | number>;
-    setReport(s.report);
+    // s.report may be a genre key (older saves) or a specific report id (newer saves). Restore the
+    // specific report and switch the genre tab to the one that contains it.
+    const savedCategory = (cat?.categories ?? []).find((c) => c.reports.some((rr) => rr.id === s.report))?.category;
+    const genre = REPORTS.find((g) => g.key === s.report || (savedCategory && g.cats.includes(savedCategory)))?.key;
+    setReport(genre ?? "batting");
+    setReportId((cat?.categories ?? []).some((c) => c.reports.some((rr) => rr.id === s.report)) ? s.report : "");
     setCompetitionId(String(cfg.competition_id ?? ""));
     setOrganisationId(String(cfg.organisation_id ?? ""));
     setTeamId(String(cfg.team_id ?? ""));
@@ -155,7 +165,7 @@ export function Statistics() {
     }
     if (minInnings && (report === "batting" || report === "bowling")) config.min_innings = Number(minInnings);
     try {
-      await api.statsSaveReport(current.id, { name: name.trim(), report, config });
+      await api.statsSaveReport(current.id, { name: name.trim(), report: reportId || report, config });
       setSaveOpen(false); setSaveName("");
       toast.success("Report saved.");
       loadSaved();
@@ -175,6 +185,20 @@ export function Statistics() {
       toast.error(e instanceof ApiError ? e.message : "Could not delete (only the owner may).");
     }
   };
+
+  // Every report in the active genre (from the catalogue), so the tab lists the whole genre, not one report.
+  const genreReports = useMemo<CatalogueReport[]>(() => {
+    const cats = REPORTS.find((r) => r.key === report)?.cats ?? [];
+    return (cat?.categories ?? [])
+      .filter((c) => cats.includes(c.category))
+      .flatMap((c) => c.reports)
+      .filter((r) => r.id !== "capt_compare");   // a compare tool, not a leaderboard
+  }, [cat, report]);
+  // Default to the genre's first report (its primary leaderboard) and keep the pick within the genre.
+  useEffect(() => {
+    if (genreReports.length === 0) return;
+    if (!genreReports.some((r) => r.id === reportId)) setReportId(genreReports[0].id);
+  }, [genreReports, reportId]);
 
   const query = useMemo(() => {
     const q: Record<string, string | number | undefined> = {
@@ -202,14 +226,14 @@ export function Statistics() {
     setBusy(true);
     setError(null);
     try {
-      const d = await api.statsReport(current.id, report, query);
+      const d = await api.statsReport(current.id, reportId || report, query);
       if (seq === reqSeq.current) setData(d);
     } catch (e) {
       if (seq === reqSeq.current) setError(e instanceof ApiError ? e.message : "Could not load the report.");
     } finally {
       if (seq === reqSeq.current) setBusy(false);
     }
-  }, [current, report, query]);
+  }, [current, report, reportId, query]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -217,7 +241,7 @@ export function Statistics() {
   const exportPdf = async () => {
     if (!current) return;
     try {
-      openBlobUrl(await api.statsReportPdfUrl(current.id, report, query), `${report}.pdf`);
+      openBlobUrl(await api.statsReportPdfUrl(current.id, reportId || report, query), `${reportId || report}.pdf`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "PDF export failed.");
     }
@@ -309,6 +333,20 @@ export function Statistics() {
             </button>
           ))}
         </div>
+
+        {genreReports.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-muted-foreground">{REPORTS.find((r) => r.key === report)?.label} reports:</span>
+            {genreReports.map((r) => (
+              <button key={r.id} type="button" title={r.description}
+                onClick={() => { setReportId(r.id); setSortKey(null); }}
+                className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                  (reportId || genreReports[0]?.id) === r.id ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground hover:border-brand/60"}`}>
+                {r.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         <Card><CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-2 text-xs">
