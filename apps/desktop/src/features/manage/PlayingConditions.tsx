@@ -15,6 +15,7 @@ import {
   type ResolvedConditions,
 } from "../../lib/api";
 import { Field, NoWorkspace, useManage } from "./_shared";
+import { useToast } from "../../lib/toast";
 
 const NUMERIC_FIELDS = ["overs_limit", "max_players", "balls_per_over", "innings_per_side"] as const;
 const FIELD_LABELS: Record<string, string> = {
@@ -36,7 +37,7 @@ export function PlayingConditions() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolved, setResolved] = useState<ResolvedConditions | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   // configure form
   const [scope, setScope] = useState("competition");
@@ -134,7 +135,7 @@ export function PlayingConditions() {
         }
       }
       await api.setConditions(workspaceId, body);
-      setMsg(`Saved ${scope} playing conditions.`);
+      toast.success(`Saved ${scope} playing conditions.`);
       setForm({});
       await resolve();
     } catch (e) {
@@ -146,11 +147,6 @@ export function PlayingConditions() {
 
   return (
     <AppShell title="Playing Conditions" subtitle="Historical rules by competition, season, grade and match">
-      {msg && (
-        <div className="mb-4 rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">
-          {msg}
-        </div>
-      )}
       {comps.length === 0 ? (
         <ErrorState message="Create a competition first — playing conditions attach to competitions, seasons and grades." />
       ) : (

@@ -37,6 +37,7 @@ import {
   type SeasonCompletenessRow,
 } from "../../lib/api";
 import { can } from "../../lib/permissions";
+import { useToast } from "../../lib/toast";
 import { NoWorkspace, useManage } from "../manage/_shared";
 
 type Tab = "internet" | "overview" | "seasons" | "sources" | "newspapers" | "timeline" | "gaps" | "review" | "dataquality" | "projects" | "tasks";
@@ -89,7 +90,7 @@ export function ResearchCentre() {
   const [gapsTotal, setGapsTotal] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
+  const toast = useToast();
 
   const loadFor = useCallback(async (which: Tab) => {
     if (!workspaceId) return;
@@ -124,10 +125,9 @@ export function ResearchCentre() {
   const act = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true);
     setError(null);
-    setFlash(null);
     try {
       await fn();
-      setFlash(msg);
+      toast.success(msg);
       await loadFor(tab);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Action failed.");
@@ -139,10 +139,9 @@ export function ResearchCentre() {
   const uploadFile = async (sourceId: string, file: File) => {
     setBusy(true);
     setError(null);
-    setFlash(null);
     try {
       const r = await api.researchUploadSourceFile(workspaceId, sourceId, file);
-      setFlash(r.duplicate_of
+      toast.success(r.duplicate_of
         ? "Document uploaded — identical content already exists on another source."
         : "Document uploaded.");
       await loadFor("sources");
@@ -156,7 +155,7 @@ export function ResearchCentre() {
   const navItem = (key: Tab, label: string, icon: React.ReactNode, badge?: number) => (
     <button
       type="button"
-      onClick={() => { setTab(key); setError(null); setFlash(null); }}
+      onClick={() => { setTab(key); setError(null); }}
       aria-current={tab === key ? "page" : undefined}
       className={`flex w-full items-center gap-2 rounded-[var(--radius-app)] border px-3 py-2 text-left text-sm transition-colors ${
         tab === key
@@ -179,9 +178,6 @@ export function ResearchCentre() {
         {error && (
           <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>
         )}
-        {flash && (
-          <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-sm text-success">{flash}</p>
-        )}
 
         {/* Hero — workspace identity + the primary action, always one click away */}
         <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-border bg-gradient-to-br from-brand/10 to-transparent p-4">
@@ -198,7 +194,7 @@ export function ResearchCentre() {
               {activeJobs} running
             </Badge>
           )}
-          <Button className="gap-1.5" onClick={() => { setTab("internet"); setError(null); setFlash(null); }}>
+          <Button className="gap-1.5" onClick={() => { setTab("internet"); setError(null); }}>
             <Globe className="h-4 w-4" aria-hidden /> Search the Internet
           </Button>
         </div>
@@ -278,7 +274,7 @@ export function ResearchCentre() {
           return (
           <>
             <DashboardLauncher workspaceId={workspaceId}
-              onStarted={() => { setTab("internet"); setFlash("Research started — follow it in Discover Records."); }}
+              onStarted={() => { setTab("internet"); toast.success("Research started — follow it in Discover Records."); }}
               onError={(m) => setError(m)} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {metric("Verified matches", dash.verified, "success", () => setTab("review"))}
@@ -352,7 +348,7 @@ export function ResearchCentre() {
           <Card>
             <CardContent className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">Newspaper Search</h3>
-              <NewspaperSearch workspaceId={workspaceId} onSaved={(m) => setFlash(m)} />
+              <NewspaperSearch workspaceId={workspaceId} onSaved={(m) => toast.success(m)} />
             </CardContent>
           </Card>
         )}

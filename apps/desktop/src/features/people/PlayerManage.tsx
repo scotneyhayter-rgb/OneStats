@@ -19,6 +19,7 @@ import { Input, Textarea } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { ApiError, api, type Person, type PersonDuplicateCandidate } from "../../lib/api";
 import { Detail, NoWorkspace, Unknown, humanise, useManage } from "../manage/_shared";
+import { useToast } from "../../lib/toast";
 import { AttrAdder } from "./PeopleManagement";
 
 const AFFILIATION_ROLES = ["player", "captain", "coach", "umpire", "scorer", "administrator", "selector", "official", "member", "other"];
@@ -27,13 +28,13 @@ export function PlayerManage() {
   const { workspaceId, canManage } = useManage();
   const { personId = "" } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [view, setView] = useState<Record<string, any> | null>(null);
   const [candidates, setCandidates] = useState<PersonDuplicateCandidate[]>([]);
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [batStyle, setBatStyle] = useState("");
   const [bowlStyle, setBowlStyle] = useState("");
@@ -56,7 +57,7 @@ export function PlayerManage() {
   const [affFrom, setAffFrom] = useState("");
   const [affTo, setAffTo] = useState("");
 
-  const onChanged = (m: string) => setMsg(m);
+  const onChanged = (m: string) => toast.success(m);
 
   const load = useCallback(async () => {
     if (!workspaceId || !personId) return;
@@ -235,7 +236,6 @@ export function PlayerManage() {
             View full career profile →
           </a>
         </div>
-        {msg && <div className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-4 py-2 text-sm text-success">{msg}</div>}
         {err && <div className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-4 py-2 text-sm text-danger">{err}</div>}
 
         {loading && <LoadingState />}
