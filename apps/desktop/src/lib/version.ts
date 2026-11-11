@@ -3,5 +3,5 @@
  * version (`src-tauri/tauri.conf.json`) and `package.json`. Bump all three together on a release; record
  * the change in docs/RELEASE_NOTES.md.
  */
-export const APP_VERSION = "1.0.0-beta.5";
+export const APP_VERSION = "1.0.0-beta.6";
 export const PHASE = "Phase 17 — Release";

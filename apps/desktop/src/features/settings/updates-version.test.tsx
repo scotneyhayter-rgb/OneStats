@@ -21,13 +21,13 @@ const { MockApiError } = vi.hoisted(() => {
 
 const api = vi.hoisted(() => ({
   capability: vi.fn(async () => ({
-    server_version: "1.0.0-beta.5", api_version: 1, channel: "stable",
+    server_version: "1.0.0-beta.6", api_version: 1, channel: "stable",
     database: { current_head: "0058_update_system", current_level: 58, expected_head: "0058_update_system", expected_level: 58, up_to_date: true, migration_pending: false },
     min_desktop_version: "1.0.0-beta.1", max_desktop_version: null, min_server_for_desktop: "1.0.0-beta.1",
     maintenance: { mode: false, message: null },
   })),
-  updatesCompatibility: vi.fn(async () => ({ status: "ok", can_operate: true, required_action: "none", message: "Compatible.", server_version: "1.0.0-beta.5", api_version: 1 })),
-  systemUpdateCheck: vi.fn(async () => ({ configured: false, manifest_url: null as string | null, channel: "stable", server_version: "1.0.0-beta.5", note: "No update service is configured on this server." as string | null })),
+  updatesCompatibility: vi.fn(async () => ({ status: "ok", can_operate: true, required_action: "none", message: "Compatible.", server_version: "1.0.0-beta.6", api_version: 1 })),
+  systemUpdateCheck: vi.fn(async () => ({ configured: false, manifest_url: null as string | null, channel: "stable", server_version: "1.0.0-beta.6", note: "No update service is configured on this server." as string | null })),
 }));
 vi.mock("../../lib/api", () => ({ api, ApiError: MockApiError }));
 vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { is_super_admin: false, username: "u" } }) }));
@@ -56,14 +56,14 @@ describe("UpdatesVersion", () => {
   it("shows the installed versions and a no-service status after checking", async () => {
     render(<UpdatesVersion />);
     await waitFor(() => expect(api.capability).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getAllByText("1.0.0-beta.5").length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(screen.getAllByText("1.0.0-beta.6").length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(screen.getByText(/No update service is configured/i)).toBeTruthy());
   });
 
   it("surfaces a compatibility warning when the client is too old", async () => {
     api.updatesCompatibility.mockResolvedValueOnce({
       status: "desktop_too_old", can_operate: false, required_action: "update_desktop",
-      message: "This OneStats app is older than the minimum supported version.", server_version: "1.0.0-beta.5", api_version: 1,
+      message: "This OneStats app is older than the minimum supported version.", server_version: "1.0.0-beta.6", api_version: 1,
     });
     render(<UpdatesVersion />);
     await waitFor(() => expect(screen.getByText(/older than the minimum supported version/i)).toBeTruthy());
@@ -86,11 +86,11 @@ describe("UpdatesVersion", () => {
 
   it("drives the Tauri updater when a release service is configured and an update is available", async () => {
     tauri.inApp = true;
-    api.systemUpdateCheck.mockResolvedValue({ configured: true, manifest_url: "https://example/latest.json", channel: "stable", server_version: "1.0.0-beta.5", note: null });
+    api.systemUpdateCheck.mockResolvedValue({ configured: true, manifest_url: "https://example/latest.json", channel: "stable", server_version: "1.0.0-beta.6", note: null });
     const downloadAndInstall = vi.fn(async () => undefined);
-    updater.check.mockResolvedValue({ version: "1.0.0-beta.6", downloadAndInstall });
+    updater.check.mockResolvedValue({ version: "1.0.0-beta.7", downloadAndInstall });
     render(<UpdatesVersion />);
-    await waitFor(() => expect(screen.getByText(/Version 1\.0\.0-beta\.6 is available/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Version 1\.0\.0-beta\.7 is available/i)).toBeTruthy());
 
     await userEvent.click(screen.getByRole("button", { name: /install & restart/i }));
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalled());
@@ -99,7 +99,7 @@ describe("UpdatesVersion", () => {
 
   it("reports up to date when a service is configured but no newer release exists", async () => {
     tauri.inApp = true;
-    api.systemUpdateCheck.mockResolvedValue({ configured: true, manifest_url: "https://example/latest.json", channel: "stable", server_version: "1.0.0-beta.5", note: null });
+    api.systemUpdateCheck.mockResolvedValue({ configured: true, manifest_url: "https://example/latest.json", channel: "stable", server_version: "1.0.0-beta.6", note: null });
     updater.check.mockResolvedValue(null);
     render(<UpdatesVersion />);
     await waitFor(() => expect(screen.getByText(/OneStats is up to date/i)).toBeTruthy());
