@@ -4,6 +4,22 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.6 — 2026-11-11
+
+Umpires & scorers, a by-year stats filter, and a professional-polish pass.
+
+**Changed since beta.5:**
+- Scorecards can now record **umpires and scorers** (plus TV/reserve umpires and a match referee), each
+  linked to a person — in the scorecard editor's Toss / Captains section.
+- Statistics and the Report Catalogue gained a **Season (year)** filter that scopes figures to a year
+  (e.g. 2019/20) across all competitions, without first choosing a competition.
+- **UX polish:** one consistent, auto-dismissing **toast** system replaces the old inline banners (and the
+  two native browser pop-ups are gone); data grids show **table skeletons** while loading; and buttons and
+  toasts have subtle, reduced-motion-aware **micro-interactions**.
+
+> Installed manually, like beta.5 (self-update is not enabled). Installing runs the new database
+> migration automatically; the minimum-supported-desktop floor stays at `1.0.0-beta.1`.
+
 ## 1.0.0-beta.5 — 2026-11-10
 
 Research, statistics, venues, honours and a redesigned player screen.

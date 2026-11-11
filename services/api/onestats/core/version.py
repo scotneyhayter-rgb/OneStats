@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 # --- Server identity ---
-SERVER_VERSION = "1.0.0-beta.5"
+SERVER_VERSION = "1.0.0-beta.6"
 API_VERSION = 1
 
 # --- Database schema the server code expects (keep in step with the Alembic head) ---
