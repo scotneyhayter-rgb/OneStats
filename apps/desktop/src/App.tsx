@@ -40,6 +40,7 @@ import { Records } from "./features/records/Records";
 import { ClubBrandingSync } from "./features/ClubBrandingSync";
 import { useAuth } from "./lib/auth";
 import { LayoutProvider } from "./lib/layout";
+import { ToastProvider } from "./lib/toast";
 import { WorkspaceProvider } from "./lib/workspace-context";
 
 function NotFound() {
@@ -54,6 +55,7 @@ function AuthedApp() {
   return (
     <LayoutProvider>
       <WorkspaceProvider>
+        <ToastProvider>
         <ClubBrandingSync />
         <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -93,6 +95,7 @@ function AuthedApp() {
         <Route path="/admin/system-updates" element={<SystemUpdates />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </ToastProvider>
       </WorkspaceProvider>
     </LayoutProvider>
   );

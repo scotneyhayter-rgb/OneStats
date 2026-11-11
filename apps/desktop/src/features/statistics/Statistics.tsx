@@ -8,7 +8,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { Modal } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
+import { useToast } from "../../lib/toast";
 import { api, ApiError, type Competition, type Grade, type Organisation, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -71,6 +74,9 @@ export function Statistics() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Awaited<ReturnType<typeof api.statsSavedList>>>([]);
   const [selectedSaved, setSelectedSaved] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const toast = useToast();
 
   const loadSaved = useCallback(() => {
     if (current) api.statsSavedList(current.id).then(setSaved).catch(() => {});
@@ -134,13 +140,11 @@ export function Statistics() {
     setMinInnings(String(cfg.min_innings ?? ""));
   };
 
-  const saveCurrent = async () => {
-    if (!current) return;
-    const name = window.prompt("Save this report as:");
-    if (!name) return;
+  const saveCurrent = async (name: string) => {
+    if (!current || !name.trim()) return;
     const config: Record<string, unknown> = { competition_id: competitionId || undefined,
       organisation_id: organisationId || undefined, grade_id: gradeId || undefined,
-      team_id: teamId || undefined, season_id: seasonId || undefined,
+      team_id: teamId || undefined, season_id: seasonId || undefined, season_label: seasonLabel || undefined,
       opposition_organisation_id: oppositionOrgId || undefined, venue_id: venueId || undefined,
       split: split || undefined, venue: venue || undefined, format: format || undefined };
     if (minThreshold) {
@@ -150,10 +154,12 @@ export function Statistics() {
     }
     if (minInnings && (report === "batting" || report === "bowling")) config.min_innings = Number(minInnings);
     try {
-      await api.statsSaveReport(current.id, { name, report, config });
+      await api.statsSaveReport(current.id, { name: name.trim(), report, config });
+      setSaveOpen(false); setSaveName("");
+      toast.success("Report saved.");
       loadSaved();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not save the report.");
+      toast.error(e instanceof ApiError ? e.message : "Could not save the report.");
     }
   };
 
@@ -162,9 +168,10 @@ export function Statistics() {
     try {
       await api.statsDeleteSaved(current.id, selectedSaved);
       setSelectedSaved("");
+      toast.success("Saved report deleted.");
       loadSaved();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not delete (only the owner may).");
+      toast.error(e instanceof ApiError ? e.message : "Could not delete (only the owner may).");
     }
   };
 
@@ -311,7 +318,7 @@ export function Statistics() {
                 {saved.map((s) => <option key={s.id} value={s.id}>{s.name}{s.shared ? " (shared)" : ""}</option>)}
               </Select>
             </label>
-            <Button size="sm" variant="outline" onClick={() => void saveCurrent()}>
+            <Button size="sm" variant="outline" onClick={() => { setSaveName(""); setSaveOpen(true); }}>
               <Save className="h-4 w-4" aria-hidden /> Save
             </Button>
             {selectedSaved && (
@@ -504,6 +511,21 @@ export function Statistics() {
           </p>
         </CardContent></Card>
       </div>
+      {saveOpen && (
+        <Modal open title="Save report" onClose={() => setSaveOpen(false)} footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setSaveOpen(false)}>Cancel</Button>
+            <Button size="sm" disabled={!saveName.trim()} onClick={() => void saveCurrent(saveName)}>Save</Button>
+          </>
+        }>
+          <label className="flex flex-col gap-1 text-sm">Report name
+            <Input value={saveName} autoFocus placeholder="e.g. RMCC leading run scorers"
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && saveName.trim()) void saveCurrent(saveName); }} />
+          </label>
+          <p className="mt-2 text-xs text-muted-foreground">Saves the current report with all its filters so you can reopen it later.</p>
+        </Modal>
+      )}
     </AppShell>
   );
 }

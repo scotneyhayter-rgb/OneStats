@@ -18,6 +18,7 @@ import { Select } from "../../components/ui/select";
 import { ResearchThisButton } from "../research/ResearchThisButton";
 import { api, ApiError, type PlayerAnalysis, type PlayerFullProfile } from "../../lib/api";
 import { formatDate, useDateStyle } from "../../lib/dates";
+import { useToast } from "../../lib/toast";
 import { openBlobUrl } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
@@ -114,6 +115,7 @@ export function PlayerProfile() {
   const { personId } = useParams();
   const { current } = useWorkspace();
   const navigate = useNavigate();
+  const toast = useToast();
   const dateStyle = useDateStyle();   // re-render when the date-format preference changes
   const [full, setFull] = useState<PlayerFullProfile | null>(null);
   const [name, setName] = useState<string>("Player");
@@ -232,11 +234,11 @@ export function PlayerProfile() {
         filters: clubFilter ? { organisation_id: clubFilter } : {},
       });
       setError(null);
-      window.alert(clubFilter
-        ? `Published ${name}'s profile for ${clubName ?? "the selected club"} — only this club's statistics are shown. It's live; open Preview under Website Publishing to view or download it.`
-        : `Published ${name}'s whole-career profile (all clubs). It's live; open Preview under Website Publishing to view or download it.`);
+      toast.success(clubFilter
+        ? `Published ${name}'s profile for ${clubName ?? "the selected club"} — only this club's stats are shown. Open Preview under Website Publishing to view or download it.`
+        : `Published ${name}'s whole-career profile (all clubs). Open Preview under Website Publishing to view or download it.`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not publish this profile (admins only).");
+      toast.error(e instanceof ApiError ? e.message : "Could not publish this profile (admins only).");
     }
   };
 
