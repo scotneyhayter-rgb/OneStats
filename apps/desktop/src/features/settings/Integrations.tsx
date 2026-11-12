@@ -14,6 +14,7 @@ import { EmptyState } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { ConfirmDialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import {
   api,
@@ -109,6 +110,7 @@ function ProviderCard({ provider, credential, busy, workspaceId, act }: {
 }) {
   const [adding, setAdding] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [revoking, setRevoking] = useState(false);
   const configured = credential && credential.status === "active";
 
   const statusBadge = () => {
@@ -163,11 +165,23 @@ function ProviderCard({ provider, credential, busy, workspaceId, act }: {
             <Button size="sm" variant="outline" disabled={busy} onClick={() => setRotating((r) => !r)}>
               <KeyRound className="h-4 w-4" aria-hidden /> Rotate secret
             </Button>
-            <Button size="sm" variant="outline" disabled={busy}
-              onClick={() => { if (confirm(`Revoke the ${provider.name} credential? The stored secret will be destroyed.`)) void act(() => api.integrationRevoke(workspaceId, credential.id), "Credential revoked."); }}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setRevoking(true)}>
               <Trash2 className="h-4 w-4" aria-hidden /> Revoke
             </Button>
           </div>
+          <ConfirmDialog
+            open={revoking}
+            title={`Revoke ${provider.name} credential`}
+            description={`The stored secret will be permanently destroyed and this integration will stop working. This cannot be undone.`}
+            confirmLabel="Revoke credential"
+            danger
+            busy={busy}
+            onCancel={() => setRevoking(false)}
+            onConfirm={async () => {
+              await act(() => api.integrationRevoke(workspaceId, credential.id), "Credential revoked.");
+              setRevoking(false);
+            }}
+          />
           {rotating && (
             <CredentialForm provider={provider} secretsOnly busy={busy} submitLabel="Replace secret"
               onCancel={() => setRotating(false)}
