@@ -1,8 +1,9 @@
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "./button";
 
-/** Lightweight modal (no portal dependency) with an overlay; used for forms and confirmations. */
+/** Lightweight modal (no portal dependency) with an overlay; used for forms and confirmations.
+ *  Closes on Escape and moves focus into the dialog when opened. */
 export function Modal({
   open,
   title,
@@ -16,15 +17,33 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    // Move focus into the dialog so keyboard users land inside it and Escape works immediately.
+    dialogRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 flex w-full max-w-lg flex-col rounded-[var(--radius-app)] border border-border bg-card shadow-lg"
+        className="relative z-10 flex w-full max-w-lg flex-col rounded-[var(--radius-app)] border border-border bg-card shadow-lg outline-none"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">{title}</h2>
