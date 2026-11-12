@@ -513,7 +513,14 @@ export function Statistics() {
             </div>
           )}
 
-          <h3 className="text-sm font-semibold">{data?.title ?? "Report"}</h3>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-semibold">{data?.title ?? "Report"}</h3>
+            {data && data.rows.length > 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {data.rows.length} {data.rows.length === 1 ? "row" : "rows"}
+              </span>
+            )}
+          </div>
           {busy && !data && <TableSkeleton rows={10} cols={8} />}
           {data && data.rows.length === 0 && (
             <p className="text-xs text-muted-foreground">No approved data for these filters yet.</p>
@@ -524,8 +531,13 @@ export function Statistics() {
                 <thead className="sticky top-0 bg-brand text-white">
                   <tr>
                     {data.columns.map((c) => (
-                      <th key={c.key} onClick={() => toggleSort(c.key)}
-                        className={`cursor-pointer whitespace-nowrap px-2 py-1.5 font-semibold ${c.align === "right" ? "text-right" : "text-left"}`}>
+                      <th key={c.key} scope="col"
+                        aria-sort={sortKey === c.key ? (sortDir === 1 ? "ascending" : "descending") : "none"}
+                        tabIndex={0} role="columnheader"
+                        onClick={() => toggleSort(c.key)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort(c.key); } }}
+                        title={`Sort by ${c.label}`}
+                        className={`cursor-pointer whitespace-nowrap px-2 py-1.5 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${c.align === "right" ? "text-right" : "text-left"}`}>
                         {c.label}{sortKey === c.key ? (sortDir === 1 ? " ▲" : " ▼") : ""}
                       </th>
                     ))}
