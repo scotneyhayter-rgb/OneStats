@@ -2,8 +2,12 @@ import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "./button";
 
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 /** Lightweight modal (no portal dependency) with an overlay; used for forms and confirmations.
- *  Closes on Escape and moves focus into the dialog when opened. */
+ *  Closes on Escape, keeps Tab focus inside the dialog while open, and restores focus to the
+ *  element that opened it on close. */
 export function Modal({
   open,
   title,
@@ -21,16 +25,45 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return;
+    // Remember what was focused so we can hand focus back when the dialog closes.
+    const restoreTo = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+          (el) => el.offsetParent !== null || el === dialog,
+        );
+        if (items.length === 0) {
+          e.preventDefault();
+          dialog.focus();
+          return;
+        }
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && (active === first || active === dialog)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener("keydown", onKey);
     // Move focus into the dialog so keyboard users land inside it and Escape works immediately.
     dialogRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Return focus to the control that opened the dialog, if it is still around.
+      if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
