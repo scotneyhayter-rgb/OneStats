@@ -61,6 +61,8 @@ export function ReportCatalogue() {
   const [format, setFormat] = useState("");
   const [formats, setFormats] = useState<string[]>([]);
   const [data, setData] = useState<StatReport | null>(null);
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [error, setError] = useState<string | null>(null);
   // Scope filters an opened report honours (the engine applies them identically to the Statistics screen).
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -149,6 +151,7 @@ export function ReportCatalogue() {
     setSplit(""); setFormat(""); setCompetitionId(""); setTeamId(""); setVenueId(""); setGradeId(""); setSeasonLabel("");
     setOrganisationId(r.filters.includes("organisation") ? (primaryClub.organisation_id ?? "") : "");
     setData(null);
+    setSortKey(null); setSortDir(-1);
     setOpen(r);
     setRecent((prev) => {
       const next = [r.id, ...prev.filter((x) => x !== r.id)];
@@ -158,6 +161,26 @@ export function ReportCatalogue() {
   }, [primaryClub]);
 
   const closeReport = useCallback(() => { setOpen(null); setData(null); }, []);
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
+    else { setSortKey(key); setSortDir(-1); }
+  };
+
+  const rows = useMemo(() => {
+    if (!data) return [];
+    if (!sortKey) return data.rows;
+    const r = [...data.rows];
+    r.sort((a, b) => {
+      const av = a[sortKey] as number | string | null;
+      const bv = b[sortKey] as number | string | null;
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
+      return String(av).localeCompare(String(bv)) * sortDir;
+    });
+    return r;
+  }, [data, sortKey, sortDir]);
 
   // Reload whenever the opened report or any of its scope filters change.
   const reportRef = useRef<HTMLDivElement>(null);
@@ -290,6 +313,11 @@ export function ReportCatalogue() {
               <Button size="sm" variant="outline" onClick={closeReport}>← All reports</Button>
               <h3 className="text-sm font-semibold">{open.name}</h3>
               <Badge variant="muted">{open.category}</Badge>
+              {data && data.rows.length > 0 && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {data.rows.length} {data.rows.length === 1 ? "row" : "rows"}
+                </span>
+              )}
               <div className="ml-auto flex items-center gap-2">
                 {open.pdf && <Button size="sm" variant="outline" onClick={() => void exportUrl("pdf")}><Download className="h-4 w-4" aria-hidden /> PDF</Button>}
                 {open.csv && <Button size="sm" variant="outline" onClick={() => void exportUrl("csv")}><Download className="h-4 w-4" aria-hidden /> CSV</Button>}
@@ -407,11 +435,18 @@ export function ReportCatalogue() {
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 bg-brand text-white">
                     <tr>{data.columns.map((col) => (
-                      <th key={col.key} className={`whitespace-nowrap px-2 py-1.5 font-semibold ${col.align === "right" ? "text-right" : "text-left"}`}>{col.label}</th>
+                      <th key={col.key} scope="col" role="columnheader" tabIndex={0}
+                        aria-sort={sortKey === col.key ? (sortDir === 1 ? "ascending" : "descending") : "none"}
+                        onClick={() => toggleSort(col.key)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort(col.key); } }}
+                        title={`Sort by ${col.label}`}
+                        className={`cursor-pointer whitespace-nowrap px-2 py-1.5 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${col.align === "right" ? "text-right" : "text-left"}`}>
+                        {col.label}{sortKey === col.key ? (sortDir === 1 ? " ▲" : " ▼") : ""}
+                      </th>
                     ))}</tr>
                   </thead>
                   <tbody>
-                    {data.rows.map((r, i) => (
+                    {rows.map((r, i) => (
                       <tr key={i} className={i % 2 ? "bg-muted/30" : ""}>
                         {data.columns.map((col) => (
                           <td key={col.key} className={`whitespace-nowrap px-2 py-1 tabular-nums ${col.align === "right" ? "text-right" : "text-left"}`}>
