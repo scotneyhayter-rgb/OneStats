@@ -3,7 +3,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const H = vi.hoisted(() => ({ statsCatalogue: vi.fn(), publicationsList: vi.fn(), publicationCreate: vi.fn() }));
+const H = vi.hoisted(() => ({
+  statsCatalogue: vi.fn(), publicationsList: vi.fn(), publicationCreate: vi.fn(),
+  publicationSettingsGet: vi.fn(), publicationSettingsSet: vi.fn(), publicationSiteZipUrl: vi.fn(),
+}));
 vi.mock("../../lib/workspace-context", () => ({ useWorkspace: () => ({ current: { id: "w1", name: "RMCC" } }) }));
 vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 vi.mock("../../lib/permissions", () => ({ canManage: () => true }));
@@ -24,12 +27,16 @@ describe("Publishing", () => {
       { id: "p1", kind: "report", report_id: "bat_most_runs", person_id: null, title: "Leading Run Scorers",
         slug: "abc123", status: "published", stale: false, public_path: "/api/v1/public/r/abc123" }]);
     H.publicationCreate.mockResolvedValue({ id: "p2", kind: "report", slug: "def456", status: "published", title: "Most Runs" });
+    H.publicationSettingsGet.mockResolvedValue({ public_base_url: null });
 
     render(<Publishing />);
     await waitFor(() => expect(screen.getByText("Leading Run Scorers")).toBeTruthy());
     // with no public hosting address configured, the panel no longer offers the internal relative path
     // as a "URL" — it tells the user to download and host it instead.
     expect(screen.getByText(/Not publicly hosted yet/i)).toBeTruthy();
+    // the "Go live" tools are present: whole-site export button + the public address field
+    expect(screen.getByRole("button", { name: /Export entire site/i })).toBeTruthy();
+    expect(screen.getByPlaceholderText(/github\.io/i)).toBeTruthy();
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "bat_most_runs" } });
     // after a report is selected the Publish button is enabled

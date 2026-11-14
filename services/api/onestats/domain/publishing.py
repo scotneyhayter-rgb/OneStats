@@ -395,6 +395,32 @@ def list_publications(conn: Connection, workspace_id: UUID) -> list[dict[str, An
     return [{k: (str(v) if isinstance(v, UUID) else v) for k, v in dict(r).items()} for r in rows]
 
 
+def get_public_base_url(conn: Connection, workspace_id: UUID) -> str | None:
+    """The public web address this workspace's published site is hosted at (e.g. a GitHub Pages URL),
+    or None when nothing is hosted yet (the download-and-upload default)."""
+    return conn.execute(
+        text("SELECT public_base_url FROM workspace WHERE id = :w"), {"w": workspace_id}
+    ).scalar_one_or_none()
+
+
+def set_public_base_url(conn: Connection, workspace_id: UUID, actor: str, url: str | None) -> str | None:
+    """Store the public hosting address for this workspace. An empty value clears it (back to 'not hosted
+    yet'). A non-empty value must be an absolute http(s) URL; the trailing slash is normalised away so the
+    stored value joins cleanly with ``/r/<slug>.html`` paths. Display/address only — never changes what is
+    served, which stays the cached, approved-only snapshots."""
+    cleaned = (url or "").strip().rstrip("/")
+    if cleaned and not cleaned.startswith(("http://", "https://")):
+        raise ValueError("invalid_base_url")
+    value = cleaned or None
+    before = get_public_base_url(conn, workspace_id)
+    conn.execute(text("UPDATE workspace SET public_base_url = :u WHERE id = :w"),
+                 {"u": value, "w": workspace_id})
+    audit.write_audit(conn, workspace_id, actor, "publication.set_base_url", entity="workspace",
+                      entity_id=str(workspace_id), before={"public_base_url": before},
+                      after={"public_base_url": value})
+    return value
+
+
 def get_public(conn: Connection, slug: str) -> dict[str, Any] | None:
     """Resolve a published snapshot by slug with NO workspace context (public, offline-capable). Returns
     None for unknown / unpublished / revoked slugs (so unpublish/revoke make the URL stop resolving)."""
@@ -500,3 +526,56 @@ def static_export(conn: Connection, workspace_id: UUID, pub_id: UUID) -> dict[st
     snap = row["snapshot"] if isinstance(row["snapshot"], dict) else json.loads(row["snapshot"])
     return {f"{row['slug']}.json": json.dumps({"title": row["title"], **snap}, indent=2, default=str),
             f"{row['slug']}.html": row["snapshot_html"] or ""}
+
+
+_SITE_README = """OneStats — public records site
+================================
+
+These files are your club's published reports and player profiles, already rendered and branded. They
+are static: they need no server and never touch your database. Upload the WHOLE folder (keep the r/ and
+p/ sub-folders and the .nojekyll file) to any static web host.
+
+GitHub Pages
+------------
+1. Create a repository (e.g. "<club>-stats") on GitHub.
+2. Upload every file in this folder, keeping the folder structure.
+3. In the repository: Settings -> Pages -> Deploy from a branch -> main -> / (root) -> Save.
+4. After a minute your site is live at  https://<your-username>.github.io/<repository>/
+5. Back in OneStats -> Website Publishing, paste that address into "Public site address" and Save.
+   The copyable public URL for each report then appears and can be linked from your club website.
+
+When your statistics change, click "Refresh all" in OneStats, export this folder again, and re-upload it.
+Only approved, public, non-private data is ever included.
+"""
+
+
+def site_export(conn: Connection, workspace_id: UUID) -> dict[str, str]:
+    """The ENTIRE published site for a workspace as a set of static files laid out for a static host
+    (e.g. GitHub Pages): a branded index page that links to every published report and profile, each
+    report/profile's self-contained HTML page and JSON feed under ``r/`` and ``p/``, a ``.nojekyll`` marker
+    (so hosts serve the files as-is) and a README with upload steps. Published items only; approved,
+    non-private data only (the snapshots already enforce this)."""
+    ws = conn.execute(text("SELECT name FROM workspace WHERE id = :w"), {"w": workspace_id}).mappings().first()
+    brand = branding.get_branding(conn, workspace_id) or {}
+    rows = conn.execute(
+        text("SELECT kind, slug, title, snapshot, snapshot_html FROM publication "
+             "WHERE workspace_id = :w AND status = 'published' ORDER BY kind, title"),
+        {"w": workspace_id},
+    ).mappings().all()
+
+    files: dict[str, str] = {".nojekyll": "", "README.txt": _SITE_README}
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        folder = "p" if r["kind"] == "player_profile" else "r"
+        snap = r["snapshot"] if isinstance(r["snapshot"], dict) else json.loads(r["snapshot"])
+        files[f"{folder}/{r['slug']}.html"] = r["snapshot_html"] or ""
+        files[f"{folder}/{r['slug']}.json"] = json.dumps({"title": r["title"], **snap}, indent=2, default=str)
+        items.append({"title": r["title"], "kind": r["kind"], "path": f"{folder}/{r['slug']}.html"})
+
+    portal = {
+        "club": (ws or {}).get("name") or "OneStats",
+        "primary": brand.get("primary_colour") or "#0b5e3b",
+        "items": items,
+    }
+    files["index.html"] = render_portal_html(portal)
+    return files

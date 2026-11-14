@@ -26,14 +26,18 @@ export function Publishing() {
   const [pubs, setPubs] = useState<Publication[]>([]);
   const [reportId, setReportId] = useState("");
   const [title, setTitle] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [baseSaved, setBaseSaved] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!current) return;
     try {
-      const [c, p] = await Promise.all([api.statsCatalogue(current.id), api.publicationsList(current.id)]);
-      setCat(c); setPubs(p);
+      const [c, p, s] = await Promise.all([
+        api.statsCatalogue(current.id), api.publicationsList(current.id), api.publicationSettingsGet(current.id),
+      ]);
+      setCat(c); setPubs(p); setBaseUrl(s.public_base_url ?? ""); setBaseSaved(s.public_base_url ?? null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load publishing.");
     }
@@ -62,6 +66,24 @@ export function Publishing() {
   }, [load]);
 
   const copy = (text: string) => { try { void navigator.clipboard.writeText(text); setMsg("Copied."); } catch { /* clipboard unavailable */ } };
+
+  const saveBase = useCallback(async () => {
+    if (!current) return;
+    await act(() => api.publicationSettingsSet(current.id, baseUrl.trim() || null), "Public site address saved.");
+  }, [current, baseUrl, act]);
+
+  const exportSite = useCallback(async () => {
+    if (!current) return;
+    try {
+      const url = await api.publicationSiteZipUrl(current.id);
+      const a = document.createElement("a");
+      a.href = url; a.download = "onestats-public-site.zip"; a.click();
+      URL.revokeObjectURL(url);
+      setMsg("Whole-site .zip downloaded — unzip it and upload the contents to your host (e.g. GitHub Pages).");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Site export failed.");
+    }
+  }, [current]);
 
   const download = useCallback(async (p: Publication) => {
     if (!current) return;
@@ -98,6 +120,30 @@ export function Publishing() {
             onClick={() => window.open(api.publicPreviewUrl(`/api/v1/public/club/${current.id}`), "_blank")}>
             Open portal
           </Button>
+        </CardContent></Card>
+
+        <Card><CardContent className="flex flex-col gap-3">
+          <h3 className="text-sm font-semibold">Go live on the web</h3>
+          <p className="text-xs text-muted-foreground">
+            Export your whole public site as one bundle and upload it to a free static host such as GitHub Pages.
+            It serves cached, approved-only snapshots — never your database — and stays live even when this
+            computer is off. Set the address below once your site is up so each report shows its live link.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs">Public site address
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://yourname.github.io/club-stats" />
+            </label>
+            <Button size="sm" variant="outline" onClick={() => void saveBase()}>Save address</Button>
+            <Button size="sm" onClick={() => void exportSite()}><Download className="h-4 w-4" aria-hidden /> Export entire site (.zip)</Button>
+          </div>
+          <ol className="flex list-decimal flex-col gap-0.5 pl-5 text-xs text-muted-foreground">
+            <li>Click <b>Export entire site</b> and unzip the download.</li>
+            <li>Create a GitHub repository and upload everything, keeping the <code>r/</code> and <code>p/</code> folders and the <code>.nojekyll</code> file.</li>
+            <li>In the repository: <b>Settings → Pages → Deploy from a branch → main → / (root)</b>.</li>
+            <li>Your site goes live at <code>https://&lt;username&gt;.github.io/&lt;repo&gt;/</code> — paste that above and <b>Save address</b>.</li>
+            <li>When stats change: <b>Refresh all</b>, export again, and re-upload.</li>
+          </ol>
+          {baseSaved && <p className="text-xs text-success">Public address set — live links appear below. Hosted at <code className="rounded bg-muted/40 px-1.5 py-0.5">{baseSaved}</code></p>}
         </CardContent></Card>
 
         <Card><CardContent className="flex flex-col gap-3">

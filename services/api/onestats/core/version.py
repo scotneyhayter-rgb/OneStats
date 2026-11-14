@@ -25,8 +25,8 @@ SERVER_VERSION = "1.0.0-beta.6"
 API_VERSION = 1
 
 # --- Database schema the server code expects (keep in step with the Alembic head) ---
-DB_SCHEMA_HEAD = "0072_match_officials"
-DB_SCHEMA_LEVEL = 72
+DB_SCHEMA_HEAD = "0073_workspace_public_base_url"
+DB_SCHEMA_LEVEL = 73
 
 # --- Desktop client compatibility rules (explicit; never inferred) ---
 # A desktop older than MIN_DESKTOP_VERSION must update before it may operate.
