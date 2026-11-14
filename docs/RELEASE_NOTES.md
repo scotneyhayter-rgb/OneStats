@@ -4,6 +4,27 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.7 — 2026-11-15
+
+Live publishing to a static host, richer stats navigation, affiliation clean-up, and more polish.
+
+**Changed since beta.6:**
+- **Website Publishing can now go live on the web.** A new *Go live* panel exports your whole public
+  site as one bundle (every published report and profile, a branded index, and the right folder layout)
+  ready to drop onto a free static host such as **GitHub Pages**; set your site's address and each report
+  shows a copyable live URL. Public pages serve approved, branded snapshots only — never the database.
+- **Statistics genre tabs** (Batting, Bowling, …) now list **every report in that genre**, not just one
+  leaderboard, each with the full filter bar and PDF export.
+- **Stats tables** (Statistics and the Report Catalogue) show a **row count** and have **sortable,
+  keyboard-accessible column headers** with screen-reader announcements.
+- **Affiliations can be removed** — a recorded club/team membership entered in error can be deleted from
+  Player Manage (membership only; match records and statistics are untouched).
+- **More polish:** the remaining inline banners became toasts, the last native browser pop-up is gone, and
+  dialogs now close on Escape, trap focus, and restore focus when closed.
+
+> Installed manually, like beta.6 (self-update is not enabled). Installing runs the new database
+> migration automatically.
+
 ## 1.0.0-beta.6 — 2026-11-11
 
 Umpires & scorers, a by-year stats filter, and a professional-polish pass.
