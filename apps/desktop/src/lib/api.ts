@@ -285,6 +285,7 @@ export interface Publication {
   public_path?: string;
   public_url?: string | null;
   json_path?: string;
+  json_url?: string | null;
 }
 export interface AskAnswer {
   question: string;
@@ -2143,6 +2144,18 @@ export const api = {
     request<{ refreshed: number }>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
   publicationExport: (w: string, id: string) =>
     request<{ files: Record<string, string> }>(`/api/v1/workspaces/${w}/publications/${id}/export`),
+  publicationSettingsGet: (w: string) =>
+    request<{ public_base_url: string | null }>(`/api/v1/workspaces/${w}/publications/settings`),
+  publicationSettingsSet: (w: string, publicBaseUrl: string | null) =>
+    request<{ public_base_url: string | null }>(`/api/v1/workspaces/${w}/publications/settings`, { method: "PUT", body: { public_base_url: publicBaseUrl } }),
+  publicationSiteZipUrl: async (w: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/publications/site.zip`, { headers });
+    if (!resp.ok) throw new ApiError(`Site export failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
   publicPreviewUrl: (path: string) => `${getApiBase()}${path}`,
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),

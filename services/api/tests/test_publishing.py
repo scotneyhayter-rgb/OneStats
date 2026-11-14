@@ -225,6 +225,41 @@ def test_publish_profile_rejects_unknown_club(seeded, conn):
                                       person_id=seeded["p"], filters={"organisation_id": str(uuid.uuid4())})
 
 
+def test_public_base_url_validation_and_storage(seeded, conn):
+    wid = seeded["wid"]
+    assert publishing.get_public_base_url(conn, wid) is None
+    with pytest.raises(ValueError, match="invalid_base_url"):
+        publishing.set_public_base_url(conn, wid, ACTOR, "ftp://nope")
+    # a valid https address is stored with the trailing slash normalised away
+    assert publishing.set_public_base_url(conn, wid, ACTOR, "https://rmcc.github.io/stats/") == "https://rmcc.github.io/stats"
+    assert publishing.get_public_base_url(conn, wid) == "https://rmcc.github.io/stats"
+    assert publishing.set_public_base_url(conn, wid, ACTOR, "   ") is None   # blank clears it
+
+
+def test_site_export_whole_site(seeded, conn):
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Leading Run Scorers",
+                                        report_id="bat_most_runs")
+    files = publishing.site_export(conn, wid)
+    # the bundle carries the static-host markers and each published report under r/
+    assert ".nojekyll" in files and "index.html" in files and "README.txt" in files
+    assert f"r/{pub['slug']}.html" in files and f"r/{pub['slug']}.json" in files
+    assert "Star Player" in files[f"r/{pub['slug']}.html"]
+    # the index links to the report by its relative static path and carries the club name
+    assert f"r/{pub['slug']}.html" in files["index.html"] and "PUB" in files["index.html"]
+    assert json.loads(files[f"r/{pub['slug']}.json"])["title"] == "Leading Run Scorers"
+
+
+def test_public_urls_static_layout():
+    from onestats.api.v1 import publications as papi
+    rows = [{"kind": "report", "slug": "abc"}, {"kind": "player_profile", "slug": "xyz"}]
+    out = papi._public_urls(TS, "https://host/site/", rows)
+    assert out[0]["public_url"] == "https://host/site/r/abc.html" and out[0]["json_url"] == "https://host/site/r/abc.json"
+    assert out[1]["public_url"] == "https://host/site/p/xyz.html"
+    # no configured host → no live URL (download-and-upload only)
+    assert papi._public_urls(TS, None, [{"kind": "report", "slug": "abc"}])[0]["public_url"] is None
+
+
 def test_isolation_admin_cannot_see_other_workspace(seeded, conn):
     wid = seeded["wid"]
     pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="R", report_id="bat_most_runs")

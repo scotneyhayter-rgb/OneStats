@@ -5,10 +5,12 @@ files for existing website hosting. Public serving is the separate unauthenticat
 """
 from __future__ import annotations
 
+import io
+import zipfile
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
@@ -26,6 +28,7 @@ _ERRORS = {
     "person_required": status.HTTP_400_BAD_REQUEST,
     "unknown_organisation": status.HTTP_400_BAD_REQUEST,
     "invalid_status": status.HTTP_400_BAD_REQUEST,
+    "invalid_base_url": status.HTTP_400_BAD_REQUEST,
     "publication_not_found": status.HTTP_404_NOT_FOUND,
 }
 
@@ -53,20 +56,66 @@ class StatusBody(BaseModel):
     status: str = Field(pattern="^(published|unpublished|revoked)$")
 
 
-def _public_urls(settings, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    base = settings.public_base_url
+class SettingsBody(BaseModel):
+    public_base_url: str | None = None
+
+
+def _public_urls(settings, base: str | None, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # The workspace's own hosting address (set in Website Publishing) wins; fall back to the server-level
+    # default. `public_path` is the in-app preview route (served by this backend); `public_url` points at
+    # the static files on the public host, matching the whole-site export layout (r/<slug>.html, p/...).
+    host = base or settings.public_base_url
     for r in rows:
-        path = ("p/" if r["kind"] == "player_profile" else "r/") + r["slug"]
-        r["public_path"] = f"/api/v1/public/{path}"
+        folder = "p" if r["kind"] == "player_profile" else "r"
+        r["public_path"] = f"/api/v1/public/{folder}/{r['slug']}"
         r["json_path"] = f"/api/v1/public/r/{r['slug']}.json"
-        r["public_url"] = f"{base.rstrip('/')}{r['public_path']}" if base else None
+        if host:
+            root = host.rstrip("/")
+            r["public_url"] = f"{root}/{folder}/{r['slug']}.html"
+            r["json_url"] = f"{root}/{folder}/{r['slug']}.json"
+        else:
+            r["public_url"] = None
+            r["json_url"] = None
     return rows
 
 
 @router.get("")
 def list_publications(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return _public_urls(settings, publishing.list_publications(conn, workspace_id))
+        base = publishing.get_public_base_url(conn, workspace_id)
+        return _public_urls(settings, base, publishing.list_publications(conn, workspace_id))
+
+
+@router.get("/settings")
+def get_settings_(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return {"public_base_url": publishing.get_public_base_url(conn, workspace_id)}
+
+
+@router.put("/settings")
+def set_settings_(workspace_id: UUID, body: SettingsBody, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            value = publishing.set_public_base_url(conn, workspace_id, str(ctx.user["id"]), body.public_base_url)
+        except ValueError as exc:
+            raise _err(exc) from exc
+        return {"public_base_url": value}
+
+
+@router.get("/site.zip")
+def site_zip(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> Response:
+    """The entire published site as a downloadable .zip, laid out for a static host (GitHub Pages et al.)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        files = publishing.site_export(conn, workspace_id)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="onestats-public-site.zip"'},
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -78,8 +127,9 @@ def create_publication(workspace_id: UUID, body: PublishBody, settings: Settings
                                                 person_id=body.person_id, filters=body.filters)
         except ValueError as exc:
             raise _err(exc) from exc
-        return _public_urls(settings, [{k: (str(v) if isinstance(v, UUID) else v) for k, v in row.items()
-                                        if k in ("id", "kind", "slug", "status", "title")}])[0]
+        base = publishing.get_public_base_url(conn, workspace_id)
+        return _public_urls(settings, base, [{k: (str(v) if isinstance(v, UUID) else v) for k, v in row.items()
+                                              if k in ("id", "kind", "slug", "status", "title")}])[0]
 
 
 @router.post("/refresh")
