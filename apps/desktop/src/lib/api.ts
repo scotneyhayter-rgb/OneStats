@@ -1817,6 +1817,8 @@ export const api = {
     request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/affiliations${qs(opts)}`),
   createAffiliation: (w: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/affiliations`, { method: "POST", body }),
+  deleteAffiliation: (w: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/affiliations/${id}`, { method: "DELETE" }),
 
   // identity resolution
   identityCandidates: (w: string, person_id: string) =>

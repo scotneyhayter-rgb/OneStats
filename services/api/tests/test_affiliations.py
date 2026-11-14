@@ -120,6 +120,29 @@ def test_extensible_role_needs_no_migration(conn):
     assert affiliations.get_affiliation(conn, aid)["role"] == "groundskeeper"
 
 
+def test_delete_affiliation_removes_only_that_row(conn):
+    wid = _ws(conn, "AFF WS2c")
+    p = _person(conn, wid, "Mislinked Person")
+    club_a, club_b = _org(conn, wid, "Club A"), _org(conn, wid, "Club B")
+    a1 = affiliations.create_affiliation(conn, wid, ACTOR, person_id=p, organisation_id=club_a, role="player")
+    a2 = affiliations.create_affiliation(conn, wid, ACTOR, person_id=p, organisation_id=club_b, role="player")
+    # remove the erroneous one; the other survives
+    removed = affiliations.delete_affiliation(conn, wid, ACTOR, a1)
+    assert str(removed["organisation_id"]) == str(club_a)
+    assert affiliations.get_affiliation(conn, a1) is None
+    assert affiliations.get_affiliation(conn, a2) is not None
+    remaining = affiliations.list_affiliations(conn, person_id=p)
+    assert len(remaining) == 1 and str(remaining[0]["organisation_id"]) == str(club_b)
+    # it is audited as a deletion
+    assert conn.execute(
+        text("SELECT 1 FROM audit_log WHERE action = 'person_affiliation.delete' AND entity_id = :e"),
+        {"e": str(a1)},
+    ).first() is not None
+    # removing an unknown affiliation is a clean error
+    with pytest.raises(ValueError, match="affiliation_not_found"):
+        affiliations.delete_affiliation(conn, wid, ACTOR, uuid.uuid4())
+
+
 # ---------------------------------------------- Rhymney / Moyston reference case
 
 

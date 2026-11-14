@@ -140,6 +140,15 @@ def correct_affiliation(workspace_id: UUID, affiliation_id: UUID, body: Affiliat
             raise _value_error(exc) from exc
 
 
+@router.delete("/{affiliation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_affiliation(workspace_id: UUID, affiliation_id: UUID, settings: SettingsDep, ctx: AffCtx) -> None:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            affiliations.delete_affiliation(conn, workspace_id, str(ctx.user["id"]), affiliation_id)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+
+
 @router.post("/{affiliation_id}/verification")
 def set_verification(workspace_id: UUID, affiliation_id: UUID, body: VerificationSet, settings: SettingsDep, ctx: AffCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
