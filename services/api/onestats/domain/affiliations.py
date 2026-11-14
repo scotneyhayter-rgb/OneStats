@@ -185,6 +185,20 @@ def set_verification(
     return after
 
 
+def delete_affiliation(conn: Connection, workspace_id: UUID, actor: str, affiliation_id: UUID) -> dict[str, Any]:
+    """Remove a recorded affiliation outright (e.g. one entered in error, such as a membership that
+    predates the person). Affiliation is membership, not match participation, so this never touches
+    match records or statistics — it only deletes the membership row. Audited (the removed row is kept
+    in the audit trail as ``before``)."""
+    before = get_affiliation(conn, affiliation_id)
+    if before is None:
+        raise ValueError("affiliation_not_found")
+    conn.execute(text("DELETE FROM person_affiliation WHERE id = :id"), {"id": affiliation_id})
+    audit.write_audit(conn, workspace_id, actor, "person_affiliation.delete", entity="person_affiliation",
+                      entity_id=str(affiliation_id), before=before)
+    return before
+
+
 def person_career(conn: Connection, person_id: UUID) -> list[dict[str, Any]]:
     """All affiliations for a person, chronologically (unknown-dated first), across every
     organisation — attribution preserved per distinct organisation."""

@@ -6,7 +6,7 @@
  * ability to affiliate a player to a club directly from the clubs card. All editing, photos, merging,
  * numbers/leadership/recognition and the "played for" list carry over unchanged.
  */
-import { ArrowLeft, GitMerge } from "lucide-react";
+import { ArrowLeft, GitMerge, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { compressImage } from "../../lib/utils";
@@ -56,6 +56,7 @@ export function PlayerManage() {
   const [affRole, setAffRole] = useState("player");
   const [affFrom, setAffFrom] = useState("");
   const [affTo, setAffTo] = useState("");
+  const [affToRemove, setAffToRemove] = useState<{ id: string; label: string } | null>(null);
 
   const onChanged = (m: string) => toast.success(m);
 
@@ -151,6 +152,17 @@ export function PlayerManage() {
       setAffOrg(""); setAffRole("player"); setAffFrom(""); setAffTo("");
       onChanged("Affiliation added."); await load();
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not add the affiliation."); }
+    finally { setBusy(false); }
+  };
+
+  const removeAffiliation = async () => {
+    if (!affToRemove) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.deleteAffiliation(workspaceId, affToRemove.id);
+      setAffToRemove(null);
+      onChanged("Affiliation removed."); await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove the affiliation."); }
     finally { setBusy(false); }
   };
 
@@ -313,12 +325,23 @@ export function PlayerManage() {
                   ) : (
                     <ul className="space-y-1 text-sm">
                       {(view?.affiliations ?? []).map((a: any) => (
-                        <li key={a.id} className="flex justify-between gap-3">
+                        <li key={a.id} className="flex items-center justify-between gap-3">
                           <span>
                             <span className="font-medium">{clubName(a.organisation_id)}</span>
                             {a.role ? <span className="text-muted-foreground"> · {humanise(a.role)}</span> : null}
                           </span>
-                          <span className="text-muted-foreground"><Unknown value={a.valid_from} /> – {a.valid_to ?? "present"}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-muted-foreground"><Unknown value={a.valid_from} /> – {a.valid_to ?? "present"}</span>
+                            {canManage && (
+                              <button type="button" disabled={busy}
+                                aria-label={`Remove ${clubName(a.organisation_id)} affiliation`}
+                                title="Remove this affiliation"
+                                onClick={() => setAffToRemove({ id: a.id, label: `${clubName(a.organisation_id)}${a.role ? " · " + humanise(a.role) : ""}` })}
+                                className="rounded-[var(--radius-app)] p-1 text-muted-foreground hover:bg-muted hover:text-danger disabled:opacity-50">
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            )}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -527,6 +550,13 @@ export function PlayerManage() {
             ? <>Merge <b>{confirm.name}</b> into <b>{person?.display_name}</b>? Reversible — the merged record is preserved.</>
             : <>Record that <b>{confirm.name}</b> and <b>{person?.display_name}</b> are definitely different people?</>}
           onConfirm={() => void runConfirm()} onCancel={() => setConfirm(null)} />
+      )}
+      {affToRemove && (
+        <ConfirmDialog open danger busy={busy}
+          title="Remove affiliation"
+          confirmLabel="Remove affiliation"
+          description={<>Remove the affiliation <b>{affToRemove.label}</b> from <b>{person?.display_name}</b>? This only deletes the recorded membership — it does not change any match records or statistics. You can add it again later.</>}
+          onConfirm={() => void removeAffiliation()} onCancel={() => setAffToRemove(null)} />
       )}
     </AppShell>
   );
