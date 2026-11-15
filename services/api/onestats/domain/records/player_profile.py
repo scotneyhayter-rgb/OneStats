@@ -151,7 +151,14 @@ def match_history(conn: Connection, workspace_id: UUID, person_id: UUID, *, limi
             "  (SELECT metrics FROM match_stat_contribution x WHERE x.match_id = m.id AND x.calculator='player_fielding' "
             "     AND x.subject_id = ANY(CAST(:ids AS uuid[])) LIMIT 1) AS field, "
             "  EXISTS (SELECT 1 FROM match_stat_contribution x WHERE x.match_id = m.id AND x.calculator='player_captaincy' "
-            "     AND x.subject_id = ANY(CAST(:ids AS uuid[]))) AS captained "
+            "     AND x.subject_id = ANY(CAST(:ids AS uuid[]))) AS captained, "
+            "  (SELECT metrics->>'result' FROM match_stat_contribution x WHERE x.match_id = m.id "
+            "     AND x.calculator='player_appearance' AND x.subject_id = ANY(CAST(:ids AS uuid[])) LIMIT 1) AS result, "
+            "  (SELECT name FROM venue WHERE id = m.venue_id) AS ground, "
+            "  (SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
+            "     JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> "
+            "     (SELECT team_id FROM match_stat_contribution x2 WHERE x2.match_id = m.id "
+            "        AND x2.subject_id = ANY(CAST(:ids AS uuid[])) AND x2.team_id IS NOT NULL LIMIT 1) LIMIT 1) AS opposition "
             "FROM match m WHERE m.workspace_id = :w AND m.id IN ("
             "   SELECT DISTINCT match_id FROM match_stat_contribution WHERE workspace_id = :w "
             "     AND subject_id = ANY(CAST(:ids AS uuid[]))) "
@@ -171,7 +178,8 @@ def match_history(conn: Connection, workspace_id: UUID, person_id: UUID, *, limi
             "runs": bat.get("runs"), "balls": bat.get("balls"), "out": bool(bat.get("dismissed")) if bat else None,
             "wickets": bowl.get("wickets"), "runs_conceded": bowl.get("runs"),
             "catches": field.get("catches"), "stumpings": field.get("stumpings"), "run_outs": field.get("run_outs"),
-            "captained": bool(r["captained"]),
+            "captained": bool(r["captained"]), "result": r["result"],
+            "ground": r["ground"], "opposition": r["opposition"],
         })
     return out
 
