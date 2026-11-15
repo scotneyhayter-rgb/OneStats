@@ -212,6 +212,7 @@ def test_profile_publish_scoped_to_one_club_excludes_other_clubs_and_shows_badge
                                            person_id=p, filters={"organisation_id": str(rhymney_org)})
     ss = _snap(conn, scoped["id"])
     assert ss["career"]["batting"]["runs"] == 100          # the other club's 50 is excluded
+    assert ss["analysis"] is None                          # deep analysis is whole-career only, not club-scoped
     assert ss["scope_club"]                                 # labelled with the club it is published for
     assert ss["seasons"] == [] and ss["records"] == []     # not club-scoped -> omitted, never leaked
     assert "badges" in ss                                  # badges carried into the published export
@@ -346,3 +347,16 @@ def test_delete_publication_removes_it_entirely(seeded, conn):
     set_workspace(conn, wid)
     with pytest.raises(ValueError, match="publication_not_found"):
         publishing.delete_publication(conn, wid, ACTOR, pub["id"])
+
+
+def test_profile_includes_deep_analysis_tabs_whole_career(seeded, conn):
+    """A whole-career profile carries the CricketStatz-style deep tabs — Best performances, Splits and
+    the rest — built from the analysis engine, embedded in the snapshot."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile",
+                                        title="Star Player", person_id=seeded["p"])
+    html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
+                        {"i": pub["id"]}).scalar_one()
+    assert "data-target='t_best'" in html and "data-target='t_splits'" in html
+    snap = _snap(conn, pub["id"])
+    assert snap["analysis"] is not None and snap["analysis"]["best_batting"]

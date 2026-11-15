@@ -99,9 +99,11 @@ def _bowl_agg(rows: list[dict[str, Any]]) -> dict[str, Any]:
     runs = sum(r["runs"] or 0 for r in rows if r["runs"] is not None)
     wkts = sum(r["wickets"] or 0 for r in rows if r["wickets"] is not None)
     maidens = sum(r["maidens"] or 0 for r in rows)
-    best = max(((r["wickets"] or 0, -(r["runs"] if r["runs"] is not None else 10 ** 6), r) for r in rows),
-              default=None)
-    bbi = f"{best[2]['wickets']}-{best[2]['runs']}" if best and best[2].get("wickets") else None
+    # Best bowling in the group: most wickets, then fewest runs. Use a key function so ties never fall
+    # through to comparing the row dicts themselves (which is unorderable).
+    best = max(rows, default=None,
+               key=lambda r: ((r["wickets"] or 0), -(r["runs"] if r["runs"] is not None else 10 ** 6)))
+    bbi = f"{best['wickets']}-{best['runs']}" if best and best.get("wickets") else None
     return {"matches": matches, "overs": _overs(balls), "maidens": maidens, "runs": runs, "wickets": wkts,
             "average": round(runs / wkts, 2) if wkts else None,
             "economy": round(runs / (balls / 6), 2) if balls else None,
