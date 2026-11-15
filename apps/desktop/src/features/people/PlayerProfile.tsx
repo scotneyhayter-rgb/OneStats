@@ -40,6 +40,27 @@ function num(v: unknown, dp?: number): string {
   return String(v);
 }
 
+/** Keep only the highest milestone reached in each ladder — e.g. just "2500 career runs", not every
+ * 100 / 500 / 1000 below it — while keeping count badges ("8× Five-Wicket Innings", "1× Hat-trick") as
+ * the distinct achievements they are. Mirrors the published export (_collapse_badge_ladders) so the
+ * in-app header badges read the same as the exported profile. */
+export function collapseBadgeLadders<T extends { label: string; category?: string; state?: string }>(calculated: T[]): T[] {
+  const best = new Map<string, { n: number; badge: T }>();
+  const order: string[] = [];
+  const counts: T[] = [];
+  for (const badge of calculated) {
+    const label = badge.label ?? "";
+    if (label.includes("×")) { counts.push(badge); continue; }   // a count badge — not a ladder, keep every one
+    const cat = badge.category || label;
+    const m = label.match(/^\s*(\d+)/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    const cur = best.get(cat);
+    if (!cur) { order.push(cat); best.set(cat, { n, badge }); }
+    else if (n > cur.n) best.set(cat, { n, badge });
+  }
+  return [...order.map((c) => best.get(c)!.badge), ...counts];
+}
+
 /** Title-case a code/label for display: "all_rounder" -> "All Rounder", "bowler" -> "Bowler". */
 function titleCase(s: string | null | undefined): string {
   return (s ?? "").split(/[_\s]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
@@ -486,9 +507,10 @@ export function PlayerProfile() {
 
               {(full?.badges.calculated.length ?? 0) > 0 && (
                 <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
-                  {full!.badges.calculated.slice(0, 12).map((b, i) => (
+                  {collapseBadgeLadders(full!.badges.calculated).map((b, i) => (
                     <Badge key={i} variant={b.state === "achieved_confirmed" ? "success" : "warning"}>
                       <Award className="mr-1 h-3 w-3" aria-hidden />{b.label}
+                      {b.state?.includes("known_minimum") ? " ≥" : ""}
                     </Badge>
                   ))}
                 </div>
