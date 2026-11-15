@@ -191,7 +191,7 @@ export interface PlayerFullProfile {
   };
   milestones: { metrics: Record<string, { label: string; total: number; known_minimum: boolean;
     milestones: { threshold: number; state: string }[]; next: { threshold: number; to_go: number } | null }> };
-  badges: { calculated: { label: string; source: string; state: string }[];
+  badges: { calculated: { label: string; category: string; source: string; state: string }[];
     awarded: { label: string; source: string; status?: string }[] };
   honours: Record<string, unknown>[];
 }

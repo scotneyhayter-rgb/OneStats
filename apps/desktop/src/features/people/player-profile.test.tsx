@@ -16,7 +16,23 @@ vi.mock("../../components/layout/AppShell", () => ({
   AppShell: ({ children }: { children: import("react").ReactNode }) => <div>{children}</div>,
 }));
 
-import { PlayerProfile } from "./PlayerProfile";
+import { PlayerProfile, collapseBadgeLadders } from "./PlayerProfile";
+
+describe("collapseBadgeLadders", () => {
+  it("keeps only the highest milestone per ladder, but every count badge", () => {
+    const out = collapseBadgeLadders([
+      { label: "100 career runs", category: "runs", state: "achieved_confirmed" },
+      { label: "500 career runs", category: "runs", state: "achieved_confirmed" },
+      { label: "10 career wickets", category: "wickets", state: "achieved_confirmed" },
+      { label: "50 career wickets", category: "wickets", state: "achieved_confirmed" },
+      { label: "8× Five-Wicket Innings", category: "bowling", state: "achieved_confirmed" },
+      { label: "1× Hat-trick", category: "bowling", state: "achieved_confirmed" },
+    ]);
+    expect(out.map((b) => b.label)).toEqual([
+      "500 career runs", "50 career wickets", "8× Five-Wicket Innings", "1× Hat-trick",
+    ]);
+  });
+});
 
 const FULL = {
   person_id: "p1",
