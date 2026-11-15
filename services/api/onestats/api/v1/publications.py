@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import publishing
+from onestats.domain import publishing, publishing_github
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/publications", tags=["publishing"])
 
@@ -29,6 +29,8 @@ _ERRORS = {
     "unknown_organisation": status.HTTP_400_BAD_REQUEST,
     "invalid_status": status.HTTP_400_BAD_REQUEST,
     "invalid_base_url": status.HTTP_400_BAD_REQUEST,
+    "invalid_repo": status.HTTP_400_BAD_REQUEST,
+    "github_not_configured": status.HTTP_400_BAD_REQUEST,
     "publication_not_found": status.HTTP_404_NOT_FOUND,
 }
 
@@ -41,7 +43,11 @@ def _engine(settings):
 
 
 def _err(exc: ValueError) -> HTTPException:
-    return HTTPException(_ERRORS.get(str(exc), status.HTTP_400_BAD_REQUEST), str(exc))
+    msg = str(exc)
+    if msg.startswith("github_push_failed"):
+        # an error from GitHub's API (bad token, repo gone, rate limit, …) — surface it as a bad gateway
+        return HTTPException(status.HTTP_502_BAD_GATEWAY, msg)
+    return HTTPException(_ERRORS.get(msg, status.HTTP_400_BAD_REQUEST), msg)
 
 
 class PublishBody(BaseModel):
@@ -58,6 +64,12 @@ class StatusBody(BaseModel):
 
 class SettingsBody(BaseModel):
     public_base_url: str | None = None
+
+
+class GithubBody(BaseModel):
+    repo: str | None = None
+    branch: str | None = None
+    token: str | None = None  # only applied when explicitly present in the request body
 
 
 def _public_urls(settings, base: str | None, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -116,6 +128,36 @@ def site_zip(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> Respo
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="onestats-public-site.zip"'},
     )
+
+
+@router.get("/github")
+def github_get(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    """The GitHub connection for display — the token is never returned, only whether one is stored."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return publishing_github.get_settings(conn, workspace_id)
+
+
+@router.put("/github")
+def github_set(workspace_id: UUID, body: GithubBody, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            # only touch the stored token when the client actually sent the field (so saving the repo
+            # alone never wipes the secret, and the client need not round-trip it)
+            return publishing_github.set_settings(
+                conn, workspace_id, str(ctx.user["id"]), repo=body.repo, branch=body.branch,
+                token=body.token, token_provided="token" in body.model_fields_set)
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
+@router.post("/github/publish")
+def github_publish(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    """Push the whole published site to the configured GitHub repository as a single commit."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            return publishing_github.publish_to_github(conn, workspace_id, str(ctx.user["id"]))
+        except ValueError as exc:
+            raise _err(exc) from exc
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
