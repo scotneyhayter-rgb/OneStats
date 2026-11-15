@@ -282,6 +282,39 @@ def _chart_distribution(freq: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
+def _chart_by_season(seasons: list[dict[str, Any]], field: str, aria: str) -> str:
+    """A column per season (chronological) for one measure — runs or wickets. Single brand hue, the peak
+    season directly labelled, sparse season ticks, per-bar tooltips. Self-contained SVG."""
+    rows = [s for s in sorted(seasons, key=lambda s: str(s.get("label") or "")) if s.get(field) is not None]
+    if len(rows) < 2 or not any(int(s.get(field) or 0) for s in rows):
+        return ""
+    w, h, ml, mr, mt, mb = 760, 170, 14, 10, 18, 28
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(rows)
+    maxv = max(int(s.get(field) or 0) for s in rows) or 1
+    peak = max(range(n), key=lambda j: int(rows[j].get(field) or 0))
+    step = pw / n
+    bw = step * 0.66
+    tick = max(1, round(n / 8))
+    parts = [(f"<svg class='chart' viewBox='0 0 {w} {h}' role='img' preserveAspectRatio='xMidYMid meet' "
+              f"aria-label='{escape(aria)}'>")]
+    parts.append(f"<line class='grid' x1='{ml}' y1='{mt + ph}' x2='{w - mr}' y2='{mt + ph}'/>")
+    for i, s in enumerate(rows):
+        v = int(s.get(field) or 0)
+        cx = ml + (i + 0.5) * step
+        bh = (v / maxv) * ph
+        y = mt + ph - bh
+        lbl = escape(str(s.get("label") or ""))
+        parts.append(f"<rect class='bar' x='{cx - bw / 2:.1f}' y='{y:.1f}' width='{bw:.1f}' height='{bh:.1f}' "
+                     f"rx='2'><title>{lbl}: {v}</title></rect>")
+        if i == peak:
+            parts.append(f"<text class='val' x='{cx:.1f}' y='{y - 4:.1f}' text-anchor='middle'>{v}</text>")
+        if i % tick == 0 or i == n - 1:
+            parts.append(f"<text x='{cx:.1f}' y='{h - 9}' text-anchor='middle'>{lbl}</text>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 _PROFILE_CSS = (
     # Surface tokens — the club's selected theme (light / dark / system) swaps these; the brand colour
     # is used for the hero, tables and accents in every theme.
@@ -508,9 +541,18 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
                     _num(s.get("matches")), _num(s.get("runs")), _num(s.get("batting_average"), 2),
                     _num(s.get("wickets")), _num(s.get("bowling_average"), 2), _num(s.get("catches")))) + "</tr>"
                 for s in seasons]
-        tabs.append(("seasons", "Seasons", _table(
+        charts: list[str] = []
+        runs_c = _chart_by_season(seasons, "runs", "Runs by season")
+        if runs_c:
+            charts.append("<h3 class='sub'>Runs by season</h3>" + runs_c)
+        wkts_c = _chart_by_season(seasons, "wickets", "Wickets by season")
+        if wkts_c:
+            charts.append("<h3 class='sub'>Wickets by season</h3>" + wkts_c)
+        table = _table(
             [("Season", ""), ("M", "r"), ("Runs", "r"), ("Bat avg", "r"), ("Wkts", "r"),
-             ("Bowl avg", "r"), ("Ct", "r")], rows)))
+             ("Bowl avg", "r"), ("Ct", "r")], rows)
+        tabs.append(("seasons", "Seasons", "".join(charts)
+                     + ("<h3 class='sub'>Season by season</h3>" if charts else "") + table))
 
     # ---- Grand Finals ----
     if int(gf.get("appearances", 0) or 0) > 0:
