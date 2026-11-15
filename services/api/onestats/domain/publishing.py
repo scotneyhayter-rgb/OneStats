@@ -309,7 +309,11 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
         ov.append(f"<div class='scope'><b>Statistics for {escape(str(snap['scope_club']))} only.</b> "
                   "Figures from any other club are not included.</div>")
     bdg = snap.get("badges") or {}
-    chips = [f"<span class='badge hon'>{escape(str(x.get('label') or ''))}</span>" for x in (bdg.get("awarded") or [])]
+    # Honour-grade recognitions (Life Member, honorary member, …) and recorded honours are the most
+    # prestigious, so they lead as filled badges; calculated statistical milestones follow.
+    chips = [f"<span class='badge hon'>{escape(str(r.get('label') or ''))}</span>"
+             for r in (det.get("recognition") or [])]
+    chips += [f"<span class='badge hon'>{escape(str(x.get('label') or ''))}</span>" for x in (bdg.get("awarded") or [])]
     chips += [f"<span class='badge'>{escape(str(x.get('label') or ''))}"
               + (" ≥" if "known_minimum" in str(x.get("state") or "") else "") + "</span>"
               for x in (bdg.get("calculated") or [])]
