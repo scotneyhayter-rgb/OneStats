@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 from datetime import UTC, datetime
 from html import escape
@@ -133,6 +134,30 @@ def _club_crests(conn: Connection, settings: Settings | None, workspace_id: UUID
     return out
 
 
+def _collapse_badge_ladders(calculated: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """For the published badge row, keep only the highest milestone reached in each ladder — e.g. just
+    '5000 career runs', not every 100 / 500 / 1000 / 2500 below it. Count badges ('2× Century',
+    '4× Five-Wicket Innings', '1× Hat-trick') are distinct achievements rather than a ladder, so each is
+    kept. Order: one top badge per ladder category (first-seen order), then the count badges."""
+    best: dict[str, tuple[int, dict[str, Any]]] = {}
+    order: list[str] = []
+    others: list[dict[str, Any]] = []
+    for badge in calculated:
+        label = str(badge.get("label") or "")
+        if "×" in label:                       # a count badge — not a ladder, keep every one
+            others.append(badge)
+            continue
+        cat = str(badge.get("category") or label)
+        m = re.match(r"\s*(\d+)", label)
+        n = int(m.group(1)) if m else 0
+        if cat not in best:
+            order.append(cat)
+            best[cat] = (n, badge)
+        elif n > best[cat][0]:
+            best[cat] = (n, badge)
+    return [best[c][1] for c in order] + others
+
+
 def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, brand: dict[str, Any],
                       filters: dict[str, Any] | None = None, settings: Settings | None = None) -> dict[str, Any]:
     # public career view strips internal / non-public / DOB / junior data (deliverable 12a/29.4a)
@@ -161,7 +186,8 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
         seasons, records = [], []
         clubs = [c for c in clubs if c["club"] == scope_club]  # don't list other clubs on a club profile
     b = prof.get("badges") or {}
-    badges = {"calculated": [{"label": x.get("label"), "state": x.get("state")} for x in (b.get("calculated") or [])],
+    collapsed = _collapse_badge_ladders(b.get("calculated") or [])
+    badges = {"calculated": [{"label": x.get("label"), "state": x.get("state")} for x in collapsed],
               "awarded": [{"label": x.get("label")} for x in (b.get("awarded") or [])]}
     quals = [("Public profile — approved statistics only; personal contact details and "
               "dates of birth are never published.")]
@@ -805,7 +831,9 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
     primary = escape(str(brand.get("primary") or "#0b5e3b"))
     accent = escape(str(brand.get("accent") or brand.get("secondary") or brand.get("primary") or "#0b5e3b"))
     club = escape(str(brand.get("club") or "OneStats"))
-    logo = brand.get("logo")
+    # Club crest for the hero: the workspace branding logo, else the player's primary club's own crest —
+    # so an uploaded club logo shows even when no workspace-wide branding logo is set.
+    logo = brand.get("logo") or next((cl.get("crest") for cl in (snap.get("clubs") or []) if cl.get("crest")), None)
     det = snap.get("detail") or {}
     c = snap.get("career") or {}
     bat, bowl, field = c.get("batting") or {}, c.get("bowling") or {}, c.get("fielding") or {}

@@ -335,6 +335,22 @@ def test_profile_recognition_becomes_an_honour_badge():
     assert "hon-badge" in html and html.count("Life Member") >= 2
 
 
+def test_published_badges_collapse_to_the_highest_in_each_ladder():
+    """The published badge row keeps only the top milestone reached in each ladder (one 'career runs',
+    one 'career wickets', …), while count badges (N× Century / Five-Wicket Innings / Hat-trick) are each
+    distinct achievements and all kept."""
+    cal = [
+        {"label": "100 career runs", "category": "runs"}, {"label": "1000 career runs", "category": "runs"},
+        {"label": "5000 career runs", "category": "runs"}, {"label": "50 career wickets", "category": "wickets"},
+        {"label": "300 career wickets", "category": "wickets"}, {"label": "25 matches played", "category": "matches"},
+        {"label": "300 matches played", "category": "matches"}, {"label": "2× Century", "category": "batting"},
+        {"label": "4× Five-Wicket Innings", "category": "bowling"}, {"label": "1× Hat-trick", "category": "bowling"},
+    ]
+    out = [b["label"] for b in publishing._collapse_badge_ladders(cal)]
+    assert out == ["5000 career runs", "300 career wickets", "300 matches played",
+                   "2× Century", "4× Five-Wicket Innings", "1× Hat-trick"]
+
+
 def test_delete_publication_removes_it_entirely(seeded, conn):
     """Delete permanently removes a publication (row + snapshot) — unlike unpublish/revoke, which keep the
     record. It leaves the manage list and its public slug stops resolving; deleting again is not-found."""
