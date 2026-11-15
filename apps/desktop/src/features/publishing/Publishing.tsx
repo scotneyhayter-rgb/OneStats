@@ -5,12 +5,13 @@
  * External URL field). Publish / unpublish / revoke, auto-staleness after approved-stat changes, refresh,
  * and club branding. Admin only.
  */
-import { Copy, Download, RefreshCw, Upload } from "lucide-react";
+import { Copy, Download, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
+import { ConfirmDialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type GithubConnection, type Publication, type ReportCatalogue } from "../../lib/api";
@@ -33,6 +34,7 @@ export function Publishing() {
   const [ghBranch, setGhBranch] = useState("main");
   const [ghToken, setGhToken] = useState("");
   const [ghBusy, setGhBusy] = useState(false);
+  const [toRemove, setToRemove] = useState<Publication | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -257,6 +259,7 @@ export function Publishing() {
                       : <Button size="sm" variant="ghost" onClick={() => void act(() => api.publicationSetStatus(current.id, p.id, "published"), "Re-published.")}>Publish</Button>}
                     {p.status === "published" && <Button size="sm" variant="ghost" onClick={() => void act(() => api.publicationSetStatus(current.id, p.id, "unpublished"), "Unpublished.")}>Unpublish</Button>}
                     {p.status !== "revoked" && <Button size="sm" variant="ghost" onClick={() => void act(() => api.publicationSetStatus(current.id, p.id, "revoked"), "Revoked — the URL no longer resolves.")}>Revoke</Button>}
+                    <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => setToRemove(p)} aria-label={`Remove ${p.title}`} title="Permanently remove this published item"><Trash2 className="h-4 w-4" aria-hidden /> Remove</Button>
                   </div>
                 </div>
               ))}
@@ -264,6 +267,16 @@ export function Publishing() {
           <p className="text-xs text-muted-foreground">To show a profile or report on your club website, use <b>Download</b> to get a self-contained HTML + JSON page, upload it to your site's hosting, then paste that page's web address into the site's link / &ldquo;Stats URL&rdquo; field. A copyable public URL only appears here once a public hosting address is configured; the Preview link opens the page on this computer only. Public serving never exposes the database.</p>
         </CardContent></Card>
       </div>
+
+      <ConfirmDialog
+        open={toRemove !== null}
+        title="Remove this published item?"
+        description={`“${toRemove?.title ?? ""}” will be permanently removed from publishing and its public URL will stop resolving.${toRemove?.public_url ? " If your site is on a static host (e.g. GitHub Pages), re-publish or re-export to drop the file there too." : ""} This cannot be undone.`}
+        confirmLabel="Remove"
+        danger
+        onCancel={() => setToRemove(null)}
+        onConfirm={() => { const p = toRemove; setToRemove(null); if (p) void act(() => api.publicationDelete(current.id, p.id), "Removed from publishing."); }}
+      />
     </AppShell>
   );
 }

@@ -330,3 +330,19 @@ def test_profile_recognition_becomes_an_honour_badge():
     }
     html = publishing._render_profile_page(snap, "Honoured Player", "", "slug")
     assert "badge hon" in html and "Life Member" in html
+
+
+def test_delete_publication_removes_it_entirely(seeded, conn):
+    """Delete permanently removes a publication (row + snapshot) — unlike unpublish/revoke, which keep the
+    record. It leaves the manage list and its public slug stops resolving; deleting again is not-found."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Gone Soon", report_id="bat_most_runs")
+    slug = pub["slug"]
+    assert any(str(p["id"]) == str(pub["id"]) for p in publishing.list_publications(conn, wid))
+    publishing.delete_publication(conn, wid, ACTOR, pub["id"])
+    assert all(str(p["id"]) != str(pub["id"]) for p in publishing.list_publications(conn, wid))
+    _no_context(conn)
+    assert publishing.get_public(conn, slug) is None
+    set_workspace(conn, wid)
+    with pytest.raises(ValueError, match="publication_not_found"):
+        publishing.delete_publication(conn, wid, ACTOR, pub["id"])

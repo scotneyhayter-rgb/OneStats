@@ -2161,6 +2161,8 @@ export const api = {
     request<{ refreshed: number }>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
   publicationExport: (w: string, id: string) =>
     request<{ files: Record<string, string> }>(`/api/v1/workspaces/${w}/publications/${id}/export`),
+  publicationDelete: (w: string, id: string) =>
+    request<void>(`/api/v1/workspaces/${w}/publications/${id}`, { method: "DELETE" }),
   publicationSettingsGet: (w: string) =>
     request<{ public_base_url: string | null }>(`/api/v1/workspaces/${w}/publications/settings`),
   publicationSettingsSet: (w: string, publicBaseUrl: string | null) =>

@@ -671,6 +671,22 @@ def set_status(conn: Connection, workspace_id: UUID, actor: str, pub_id: UUID, s
     return _row(conn, workspace_id, pub_id)
 
 
+def delete_publication(conn: Connection, workspace_id: UUID, actor: str, pub_id: UUID) -> dict[str, Any]:
+    """Permanently remove a publication (its row and stored snapshot). Unlike unpublish/revoke — which
+    keep the record but stop it serving — this deletes it entirely, so it leaves the manage list. The
+    public URL stops resolving at once; a file already on a static host is dropped on the next whole-site
+    publish/export (that mirror no longer includes it)."""
+    row = _row(conn, workspace_id, pub_id)
+    if row is None:
+        raise ValueError("publication_not_found")
+    conn.execute(text("DELETE FROM publication WHERE id = :id AND workspace_id = :w"),
+                 {"id": pub_id, "w": workspace_id})
+    audit.write_audit(conn, workspace_id, actor, "publication.delete", entity="publication",
+                      entity_id=str(pub_id),
+                      before={"kind": row["kind"], "slug": row["slug"], "title": row["title"]})
+    return {"id": str(pub_id), "deleted": True}
+
+
 def republish(conn: Connection, settings: Settings, workspace_id: UUID, actor: str, pub_id: UUID) -> dict[str, Any]:
     if _row(conn, workspace_id, pub_id) is None:
         raise ValueError("publication_not_found")
