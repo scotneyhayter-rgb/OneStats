@@ -191,9 +191,11 @@ def test_member_portal_includes_non_public_items(seeded, conn):
 
 
 def test_profile_publish_scoped_to_one_club_excludes_other_clubs_and_shows_badges(seeded, conn):
-    """A club-scoped published profile shows ONLY that club's statistics (a player's runs for other clubs
-    are excluded), omits the season-by-season/records sections that are not club-scoped (so nothing leaks),
-    labels the scope, and carries the player's badges. The whole-career profile counts every club."""
+    """A club-scoped published profile shows ONLY that club's statistics — a player's runs for other clubs
+    are excluded from the career figures AND from every report (season line, deep analysis, match list), so
+    a single-club profile carries the full reports for that club alone without ever leaking another club's
+    figures. All-time records held (workspace-wide) are the one section omitted. The scope is labelled and
+    the badges are carried. The whole-career profile counts every club."""
     d = seeded; wid = d["wid"]; p = d["p"]
     rhymney_org = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": d["home"]}).scalar_one()
     # the same player also turns out for another club and scores 50 there — must NOT appear on the Rhymney profile
@@ -207,14 +209,17 @@ def test_profile_publish_scoped_to_one_club_excludes_other_clubs_and_shows_badge
     assert not sa.get("scope_club")
     assert len(sa["seasons"]) >= 1
 
-    # scoped to Rhymney: only its 100, the un-scopable sections omitted, scope labelled, badges present
+    # scoped to Rhymney: every report present but restricted to its 100 — the other club's 50 appears nowhere
     scoped = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile", title="Star Player",
                                            person_id=p, filters={"organisation_id": str(rhymney_org)})
     ss = _snap(conn, scoped["id"])
     assert ss["career"]["batting"]["runs"] == 100          # the other club's 50 is excluded
-    assert ss["analysis"] is None                          # deep analysis is whole-career only, not club-scoped
     assert ss["scope_club"]                                 # labelled with the club it is published for
-    assert ss["seasons"] == [] and ss["records"] == []     # not club-scoped -> omitted, never leaked
+    assert ss["records"] == []                             # all-time records held are workspace-wide -> omitted
+    # the reports are now club-scoped rather than omitted, and reflect the 100 only (never the 50)
+    assert [i["runs"] for i in ss["analysis"]["scores"]["innings"]] == [100]
+    assert all(m["runs"] != 50 for m in ss["matches"]) and any(m["runs"] == 100 for m in ss["matches"])
+    assert len(ss["seasons"]) >= 1 and ss["seasons"][0]["runs"] == 100
     assert "badges" in ss                                  # badges carried into the published export
     html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"), {"i": scoped["id"]}).scalar_one()
     assert "only" in html.lower()                          # the "Statistics for … only" note is rendered

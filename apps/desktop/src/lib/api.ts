@@ -1780,12 +1780,12 @@ export const api = {
   // Phase 13 player profile (stats composed from the one engine)
   profileFull: (w: string, id: string, organisation_id?: string) =>
     request<PlayerFullProfile>(`/api/v1/workspaces/${w}/people/${id}/full-profile${organisation_id ? `?organisation_id=${organisation_id}` : ""}`),
-  profileSeasons: (w: string, id: string) =>
-    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/seasons`),
-  profileMatches: (w: string, id: string) =>
-    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/matches`),
-  profileAnalysis: (w: string, id: string) =>
-    request<PlayerAnalysis>(`/api/v1/workspaces/${w}/people/${id}/analysis`),
+  profileSeasons: (w: string, id: string, organisation_id?: string) =>
+    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/seasons${organisation_id ? `?organisation_id=${organisation_id}` : ""}`),
+  profileMatches: (w: string, id: string, organisation_id?: string) =>
+    request<Record<string, unknown>[]>(`/api/v1/workspaces/${w}/people/${id}/matches${organisation_id ? `?organisation_id=${organisation_id}` : ""}`),
+  profileAnalysis: (w: string, id: string, organisation_id?: string) =>
+    request<PlayerAnalysis>(`/api/v1/workspaces/${w}/people/${id}/analysis${organisation_id ? `?organisation_id=${organisation_id}` : ""}`),
   profilePdfUrl: async (w: string, id: string, organisation_id?: string): Promise<string> => {
     const headers: Record<string, string> = {};
     const t = getToken();

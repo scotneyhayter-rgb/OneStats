@@ -1,9 +1,22 @@
 """player_analysis pure-function tests (no database)."""
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from onestats.domain.records import player_analysis as pa
+
+
+def test_org_clause_adds_a_club_filter_only_when_an_organisation_is_given():
+    """The club filter is opt-in: no organisation → no SQL and no bound param (whole career); an
+    organisation → a filter on the given innings-side column plus a single :org parameter."""
+    params: dict = {}
+    assert pa._org_clause("i.batting_team_id", None, params) == ""
+    assert params == {}
+    oid = uuid.uuid4()
+    clause = pa._org_clause("i.bowling_team_id", oid, params)
+    assert "i.bowling_team_id IN (SELECT id FROM team WHERE organisation_id = :org)" in clause
+    assert params == {"org": oid}
 
 
 def test_bowl_agg_handles_tied_best_figures():
