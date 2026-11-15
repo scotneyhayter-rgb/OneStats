@@ -226,3 +226,28 @@ def test_grand_final_split_and_qualification(conn):
     # Captaincy win% report qualifies by min eligible (RMCC 20); with 4 matches none qualify but rows remain.
     wp = catalogue.report_rows(conn, wid, "capt_best_win_pct", f)["rows"]
     assert wp == [] or all("win_pct" in r for r in wp)
+
+
+def test_chronological_milestone_reports(conn):
+    """Centuries / half-centuries / five-fors / ten-wicket-match reports list each qualifying feat with
+    the right threshold and the chronological columns (player, score/figures, opposition, ground, season,
+    date)."""
+    d = _build(conn)
+    wid = d["wid"]
+    f = {"workspace_id": wid}
+
+    cent = catalogue.report_rows(conn, wid, "bat_centuries_chrono", f)
+    assert [c["key"] for c in cent["columns"]] == [
+        "rank", "player", "score", "opposition", "ground", "season", "match_date"]
+    assert any(r["player"] == "Big Hitter" and r["score"] == "120" for r in cent["rows"])
+    assert all(int(r["score"].rstrip("*")) >= 100 for r in cent["rows"])          # centuries only
+
+    fifties = catalogue.report_rows(conn, wid, "bat_fifties_chrono", f)["rows"]
+    assert any(r["player"] == "Big Hitter" and r["score"] == "95" for r in fifties)
+    assert all(50 <= int(r["score"].rstrip("*")) <= 99 for r in fifties)          # 50–99 only
+
+    fwi = catalogue.report_rows(conn, wid, "bowl_5wi_chrono", f)["rows"]
+    assert any(r["player"] == "Demon Bowler" and r["figures"].startswith("5-") for r in fwi)
+
+    twm = catalogue.report_rows(conn, wid, "bowl_10wm_chrono", f)["rows"]
+    assert twm == []                                                             # no 10-wicket match here
