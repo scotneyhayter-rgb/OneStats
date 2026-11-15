@@ -104,11 +104,12 @@ def _filters(workspace_id: UUID, saved: dict[str, Any]) -> dict[str, Any]:
 
 
 def _report_snapshot(conn: Connection, workspace_id: UUID, report_id: str, saved_filters: dict[str, Any],
-                     brand: dict[str, Any]) -> dict[str, Any]:
+                     brand: dict[str, Any], settings: Settings | None = None) -> dict[str, Any]:
     data = catalogue.report_rows(conn, workspace_id, report_id, _filters(workspace_id, saved_filters))
     entry = catalogue.CAT_BY_ID.get(report_id)
     quals = [n for n in ((entry.qualification if entry else None), (entry.limitations if entry else None)) if n]
     quals.append("Official statistics from approved scorecards only; unknown values are never treated as zero.")
+    brand = {**brand, "logo": _logo_data_uri(settings, workspace_id, brand.get("logo_ref"))}
     return {"kind": "report", "report_id": report_id, "report_name": data["title"],
             "columns": data["columns"], "rows": data["rows"], "qualifications": quals, "branding": brand}
 
@@ -830,65 +831,62 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
 
 
 def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
-    # Player profiles get the rich, tab-through page; reports keep the clean single-table page.
+    # Player profiles get the rich, tab-through page; reports get a branded single-table page. Both share
+    # the same theme-aware styling.
     if snap.get("kind") == "player_profile":
         return _render_profile_page(snap, title, public_base, slug)
+    return _render_report_page(snap, title, public_base, slug)
+
+
+def _render_report_page(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
+    """A branded, theme-aware published report page: a hero with the club crest and report title, then the
+    report table in the shared styling. Self-contained; approved public data only."""
     brand = snap.get("branding") or {}
     primary = escape(str(brand.get("primary") or "#0b5e3b"))
+    accent = escape(str(brand.get("accent") or brand.get("secondary") or brand.get("primary") or "#0b5e3b"))
     club = escape(str(brand.get("club") or "OneStats"))
+    logo = brand.get("logo")
+    theme = str(brand.get("theme") or "system")
+    theme_class = "theme-" + (theme if theme in ("light", "dark") else "system")
     gen = datetime.now(UTC).strftime("%d %b %Y")
-    body = []
-    if snap["kind"] == "report":
-        cols, rows = snap["columns"], snap["rows"]
-        head = "".join(f"<th style='text-align:{'right' if c['align'] == 'right' else 'left'}'>{escape(c['label'])}</th>" for c in cols)
-        trs = []
-        for r in rows:
-            tds = []
-            for c in cols:
-                v = r.get(c["key"])
-                s = "—" if v is None else (f"{v:.{c['decimals']}f}" if c["decimals"] is not None and isinstance(v, (int, float)) else ("Yes" if v is True else "No" if v is False else escape(str(v))))
-                tds.append(f"<td style='text-align:{'right' if c['align'] == 'right' else 'left'}'>{s}</td>")
-            trs.append("<tr>" + "".join(tds) + "</tr>")
-        body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table>")
-        if not rows:
-            body.append("<p class='muted'>No published data for this report yet.</p>")
-    for q in snap.get("qualifications", []):
-        body.append(f"<p class='muted'>{escape(q)}</p>")
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} — {club}</title>
-<style>
-:root{{--brand:{primary}}}
-body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;color:#17201c;background:#fff}}
-header{{border-bottom:3px solid var(--brand);padding:12px 20px}}
-header b{{color:var(--brand)}}
-main{{padding:16px 20px;max-width:1000px;margin:0 auto}}
-h1{{color:var(--brand);font-size:20px;margin:.2em 0}} h2{{color:var(--brand);margin:.2em 0}}
-h3{{color:var(--brand);font-size:15px;margin:1.1em 0 .4em;border-bottom:1px solid #e5eae7;padding-bottom:3px}}
-.style{{font-size:14px;color:#2c3a33;margin:.2em 0 .4em}}
-.bio{{font-size:14px;line-height:1.5;color:#2c3a33;white-space:pre-wrap}}
-ul{{font-size:14px;margin:.3em 0;padding-left:1.2em}} li{{margin:.15em 0}}
-td:not(:first-child),th:not(:first-child){{text-align:right}}
-table{{border-collapse:collapse;width:100%;font-size:14px;margin:.2em 0}}
-th{{background:var(--brand);color:#fff;padding:6px 8px}} td{{padding:5px 8px;border-bottom:1px solid #e5eae7}}
-tr:nth-child(even) td{{background:#f3f6f4}}
-.cards{{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}}
-.card{{border:1px solid #e5eae7;border-radius:8px;padding:8px 14px}} .card span{{display:block;font-size:12px;color:#5b665f}} .card b{{font-size:20px}}
-.badges{{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}}
-.badge{{background:#f3f6f4;border:1px solid #e5eae7;border-radius:999px;padding:3px 10px;font-size:12px;color:#2c3a33}}
-.badge-honour{{background:var(--brand);color:#fff;border-color:var(--brand)}}
-.scope{{font-size:13px;color:#2c3a33;margin:.3em 0}}
-.muted{{color:#5b665f;font-size:12px}} footer{{color:#8a938d;font-size:11px;padding:10px 20px;border-top:1px solid #e5eae7}}
-</style></head><body>
-<header><b>{club}</b></header>
-<main><h1>{escape(title)}</h1>{''.join(body)}</main>
-<footer>Published by OneStats · {gen}{(' · ' + escape(public_base) + '/r/' + escape(slug)) if public_base else ''}</footer>
-</body></html>"""
+
+    cols, rows = snap.get("columns") or [], snap.get("rows") or []
+    head = "".join(f"<th class='{'r' if c['align'] == 'right' else ''}'>{escape(c['label'])}</th>" for c in cols)
+    trs = []
+    for r in rows:
+        tds = []
+        for c in cols:
+            v = r.get(c["key"])
+            s = ("—" if v is None else (f"{v:.{c['decimals']}f}" if c["decimals"] is not None and isinstance(v, (int, float))
+                 else ("Yes" if v is True else "No" if v is False else escape(str(v)))))
+            tds.append(f"<td class='{'r' if c['align'] == 'right' else ''}'>{s}</td>")
+        trs.append("<tr>" + "".join(tds) + "</tr>")
+    table_html = (f"<div class='tbl'><table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table></div>"
+                  if rows else "<p class='muted'>No published data for this report yet.</p>")
+    notes = "".join(f"<p class='muted'>{escape(q)}</p>" for q in snap.get("qualifications", []))
+
+    crest = (f"<div class='avatar crest'><img src='{logo}' alt='{club} logo'></div>" if logo
+             else f"<div class='avatar mono'>{escape((brand.get('club') or 'R')[:1].upper())}</div>")
+    foot_link = (" · " + escape(public_base) + "/r/" + escape(slug)) if public_base else ""
+    rowcount = f"{len(rows)} row{'s' if len(rows) != 1 else ''} · {gen}"
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{escape(title)} — {club}</title>"
+        f"<style>:root{{--brand:{primary};--accent:{accent}}}</style>"
+        f"<style>{_PROFILE_CSS}</style></head><body class='{theme_class}'>"
+        f"<header class='hero'><div class='hero-in'>{crest}"
+        f"<div class='id'><div class='club'>{club}</div><h1>{escape(title)}</h1>"
+        f"<div class='meta'>{escape(rowcount)}</div></div></div></header>"
+        f"<main>{table_html}{notes}</main>"
+        f"<footer>Published by OneStats · {gen}{foot_link} · Approved statistics only — "
+        "unknown values are never shown as zero.</footer></body></html>")
 
 
 def _snapshot(conn: Connection, settings: Settings, workspace_id: UUID, row: dict[str, Any]) -> dict[str, Any]:
     brand = _branding(conn, workspace_id)
     if row["kind"] == "report":
-        snap = _report_snapshot(conn, workspace_id, row["report_id"], row.get("filters") or {}, brand)
+        snap = _report_snapshot(conn, workspace_id, row["report_id"], row.get("filters") or {}, brand, settings)
     else:
         snap = _profile_snapshot(conn, workspace_id, row["person_id"], brand, row.get("filters"), settings)
     snap["title"] = row["title"]
