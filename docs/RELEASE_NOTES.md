@@ -4,6 +4,26 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.9 — 2026-11-15
+
+Live publishing to GitHub in one click, a redesigned public player profile, and career hat-tricks.
+
+**Changed since beta.8:**
+- **One-click Publish to web.** Connect a GitHub repository once (owner/name + a fine-grained token,
+  stored on this computer only), then publish your whole public site with a single button — OneStats
+  commits the exported files straight to the repo and GitHub Pages redeploys. The manual zip export
+  stays as an alternative.
+- **Redesigned public player profile.** The published profile is now a professional, click-through page
+  (CricketStatz-style): a branded hero with the **player's photo** (public photos only) or club crest and
+  headline numbers, then tabs for Overview, Batting, Bowling, Fielding & WK, Captaincy, Seasons, Grand
+  Finals and Honours & Records. It uses **club logos** and follows your **selected theme** (light / dark /
+  system), is fully self-contained, and works offline. Approved public data only — never the database.
+- **Career hat-tricks.** The profile Bowling panel shows a **Hat-tricks** tile, and a **"N× Hat-trick"**
+  achievement badge appears once a hat-trick is recorded (counted, never inferred from wicket totals).
+
+> Installed manually, like beta.8 (self-update is not enabled). Installing runs the new database
+> migrations automatically.
+
 ## 1.0.0-beta.8 — 2026-11-15
 
 Scorecard hat-tricks and run-outs, plus a portal link fix.
