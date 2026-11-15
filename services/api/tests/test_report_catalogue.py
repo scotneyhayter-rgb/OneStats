@@ -251,3 +251,20 @@ def test_chronological_milestone_reports(conn):
 
     twm = catalogue.report_rows(conn, wid, "bowl_10wm_chrono", f)["rows"]
     assert twm == []                                                             # no 10-wicket match here
+
+
+def test_season_count_and_feat_reports(conn):
+    """Single-season count leaderboards (centuries / fifties / ducks) pick each player's BEST season; the
+    On This Day / century-in-each-innings / %-of-total reports open cleanly too."""
+    d = _build(conn)
+    wid = d["wid"]
+    f = {"workspace_id": wid}
+    cents = {r["player"]: r["count"] for r in catalogue.report_rows(conn, wid, "bat_centuries_in_season", f)["rows"]}
+    assert cents.get("Big Hitter") == 1                     # the lone 120 (season 1)
+    fifties = {r["player"]: r["count"] for r in catalogue.report_rows(conn, wid, "bat_fifties_in_season", f)["rows"]}
+    assert fifties.get("Big Hitter") == 1                   # 95 (the 120 is a century, 45/30 are not fifties)
+    ducks = {r["player"]: r["count"] for r in catalogue.report_rows(conn, wid, "bat_ducks_in_season", f)["rows"]}
+    assert ducks.get("Away Duck") == 3                      # three ducks in season 1 (best season)
+    for rid in ("bat_on_this_day", "bowl_on_this_day", "bat_century_each_innings",
+                "bat_pct_of_total", "field_catches_in_season"):
+        assert isinstance(catalogue.report_rows(conn, wid, rid, f)["rows"], list)
