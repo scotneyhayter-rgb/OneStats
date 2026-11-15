@@ -12,6 +12,7 @@ exposure is intended. Numbers always come from the one deterministic engine.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import secrets
@@ -24,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain import audit, branding, profiles
+from onestats.domain import audit, branding, logos, profiles
 from onestats.domain.records import player_profile
 from onestats.reports import catalogue
 
@@ -36,11 +37,39 @@ def _slug() -> str:
     return secrets.token_urlsafe(12)
 
 
+def _logo_data_uri(settings: Settings | None, workspace_id: UUID, logo_ref: str | None,
+                   *, thumb: bool = False) -> str | None:
+    """Read a stored logo/crest and return it as a self-contained ``data:`` URI (so a published page
+    carries its images and works offline, with no server). ``thumb`` uses the small PNG thumbnail — good
+    for the several club crests; the hero logo uses the original. Returns None when unavailable."""
+    if settings is None or not logo_ref:
+        return None
+    try:
+        path = logos.logo_path(settings, workspace_id, logo_ref)
+    except ValueError:
+        return None
+    if path is None:
+        return None
+    if thumb:
+        thumb_path = path.with_name(path.name + ".thumb.png")
+        if thumb_path.exists():
+            path = thumb_path
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    ext = path.suffix.lower().lstrip(".")
+    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "gif": "gif", "svg": "svg+xml"}.get(ext, "png")
+    return f"data:image/{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
 def _branding(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
     ws = conn.execute(text("SELECT name FROM workspace WHERE id = :w"), {"w": workspace_id}).mappings().first()
     b = branding.get_branding(conn, workspace_id) or {}
-    colours = (b.get("colours") or {}) if isinstance(b, dict) else {}
-    return {"club": (ws or {}).get("name") or "OneStats", "primary": colours.get("primary") or "#0b5e3b"}
+    return {"club": (ws or {}).get("name") or "OneStats",
+            "primary": b.get("primary_colour") or "#0b5e3b",
+            "secondary": b.get("secondary_colour"), "accent": b.get("accent_colour"),
+            "logo_ref": b.get("logo_ref")}
 
 
 def _filters(workspace_id: UUID, saved: dict[str, Any]) -> dict[str, Any]:
@@ -61,8 +90,27 @@ def _report_snapshot(conn: Connection, workspace_id: UUID, report_id: str, saved
             "columns": data["columns"], "rows": data["rows"], "qualifications": quals, "branding": brand}
 
 
+def _club_crests(conn: Connection, settings: Settings | None, workspace_id: UUID,
+                 clubs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The clubs a player represented, each with its own crest (embedded) when the organisation has one."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for c in clubs or []:
+        name = c.get("club")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ref = None
+        if c.get("org_id"):
+            ref = conn.execute(
+                text("SELECT logo_ref FROM organisation WHERE id = :o AND workspace_id = :w"),
+                {"o": c["org_id"], "w": workspace_id}).scalar_one_or_none()
+        out.append({"club": name, "crest": _logo_data_uri(settings, workspace_id, ref, thumb=True)})
+    return out
+
+
 def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, brand: dict[str, Any],
-                      filters: dict[str, Any] | None = None) -> dict[str, Any]:
+                      filters: dict[str, Any] | None = None, settings: Settings | None = None) -> dict[str, Any]:
     # public career view strips internal / non-public / DOB / junior data (deliverable 12a/29.4a)
     view = profiles.career_view(conn, person_id, public=True) or {}
     org_raw = (filters or {}).get("organisation_id")
@@ -82,10 +130,12 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
     scope_club = None
     seasons = prof.get("seasons") or []
     records = prof.get("records") or []
+    clubs = _club_crests(conn, settings, workspace_id, prof.get("clubs"))
     if org_id is not None:
         scope_club = next((c.get("club") for c in (prof.get("clubs") or [])
                            if str(c.get("org_id")) == str(org_id)), None)
         seasons, records = [], []
+        clubs = [c for c in clubs if c["club"] == scope_club]  # don't list other clubs on a club profile
     b = prof.get("badges") or {}
     badges = {"calculated": [{"label": x.get("label"), "state": x.get("state")} for x in (b.get("calculated") or [])],
               "awarded": [{"label": x.get("label")} for x in (b.get("awarded") or [])]}
@@ -93,9 +143,10 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
               "dates of birth are never published.")]
     if scope_club:
         quals.insert(0, f"Statistics shown for {scope_club} only — figures from other clubs are not included.")
+    brand = {**brand, "logo": _logo_data_uri(settings, workspace_id, brand.get("logo_ref"))}
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
             "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club,
-            "career": prof["career"], "seasons": seasons, "records": records,
+            "career": prof["career"], "seasons": seasons, "records": records, "clubs": clubs,
             "grand_finals": prof.get("grand_finals"), "badges": badges,
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
                          "season": h.get("awarded_season")} for h in prof["honours"]],
@@ -111,103 +162,219 @@ def _num(v: Any, dp: int = 0) -> str:
     return escape(str(v))
 
 
-def _render_profile_body(snap: dict[str, Any]) -> str:
-    """Full (privacy-safe) public career view: playing style, career tiles, batting/bowling/fielding
-    summaries, season-by-season, records held and service & honours. No DOB/contact/private data."""
+def _tiles(pairs: list[tuple[str, str]]) -> str:
+    """A responsive grid of stat tiles (label + big value). Values are already formatted/escaped."""
+    cells = "".join(f"<div class='tile'><span>{escape(lbl)}</span><b>{val}</b></div>" for lbl, val in pairs)
+    return f"<div class='tiles'>{cells}</div>"
+
+
+def _table(headers: list[tuple[str, str]], rows: list[str]) -> str:
+    """A branded, horizontally-scrollable table. ``headers`` is (label, align) where align is 'r' or ''.
+    ``rows`` are ready-made ``<tr>…</tr>`` strings."""
+    head = "".join(f"<th class='{'r' if a == 'r' else ''}'>{escape(h)}</th>" for h, a in headers)
+    return f"<div class='tbl'><table><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+
+
+_PROFILE_CSS = (
+    "*{box-sizing:border-box}html{scroll-behavior:smooth}"
+    "body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;margin:0;"
+    "color:#1a2420;background:#eef2f0;-webkit-font-smoothing:antialiased}"
+    ".hero{background:var(--brand);background:linear-gradient(135deg,var(--brand),"
+    "color-mix(in srgb,var(--brand) 70%,#000));color:#fff}"
+    ".hero-in{max-width:1040px;margin:0 auto;padding:26px 20px 22px;display:flex;align-items:center;"
+    "gap:22px;flex-wrap:wrap}"
+    ".crest{width:88px;height:88px;border-radius:50%;background:#fff;display:flex;align-items:center;"
+    "justify-content:center;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.28);flex:0 0 auto}"
+    ".crest img{width:100%;height:100%;object-fit:contain;padding:8px}"
+    ".id{flex:1 1 240px;min-width:200px}"
+    ".id .club{text-transform:uppercase;letter-spacing:.09em;font-size:12px;opacity:.85;font-weight:600}"
+    ".id h1{margin:.08em 0 .22em;font-size:30px;line-height:1.08;font-weight:800;letter-spacing:-.01em}"
+    ".chips{display:flex;gap:7px;flex-wrap:wrap;margin:.1em 0}"
+    ".chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:999px;"
+    "padding:3px 11px;font-size:12.5px;font-weight:500}"
+    ".hero .meta{font-size:12.5px;opacity:.9;margin-top:.5em}"
+    ".keys{display:flex;gap:10px;flex-wrap:wrap}"
+    ".key{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.24);border-radius:12px;"
+    "padding:10px 15px;text-align:center;min-width:74px}"
+    ".key span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.85}"
+    ".key b{font-size:23px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}"
+    ".tabs{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #dbe3df;display:flex;"
+    "gap:2px;overflow-x:auto;padding:0 10px;box-shadow:0 1px 5px rgba(0,0,0,.06)}"
+    ".tabs .tab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;color:#51605a;"
+    "font:inherit;font-size:14px;font-weight:600;padding:13px 14px;cursor:pointer;white-space:nowrap}"
+    ".tabs .tab:hover{color:var(--brand)}"
+    ".tabs .tab.on{color:var(--brand);border-bottom-color:var(--brand)}"
+    "main{max-width:1040px;margin:0 auto;padding:20px}"
+    ".panel{display:none}.panel.on{display:block;animation:fade .24s ease}"
+    "@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}"
+    "h3.sub{color:var(--brand);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;"
+    "margin:22px 0 9px;font-weight:700}"
+    ".tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px;margin:4px 0}"
+    ".tile{background:#fff;border:1px solid #e3e9e6;border-radius:12px;padding:12px 14px;"
+    "box-shadow:0 1px 2px rgba(0,0,0,.04)}"
+    ".tile span{display:block;font-size:11px;color:#64726b;text-transform:uppercase;letter-spacing:.04em;"
+    "margin-bottom:4px}"
+    ".tile b{font-size:23px;font-weight:800;color:#15201b;font-variant-numeric:tabular-nums}"
+    ".tbl{overflow-x:auto;border:1px solid #e3e9e6;border-radius:12px;margin:8px 0;background:#fff}"
+    "table{border-collapse:collapse;width:100%;font-size:13.5px}"
+    "th{background:var(--brand);color:#fff;padding:9px 12px;text-align:left;font-weight:600;white-space:nowrap}"
+    "td{padding:8px 12px;border-top:1px solid #eef2f0;font-variant-numeric:tabular-nums;white-space:nowrap}"
+    "th.r,td.r{text-align:right}tbody tr:nth-child(even){background:#f6f9f7}"
+    ".badges{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 6px}"
+    ".badge{background:#fff;border:1px solid #d9e2dd;border-radius:999px;padding:5px 13px;font-size:12.5px;"
+    "color:#2b3a33;font-weight:500}"
+    ".badge.hon{background:var(--brand);color:#fff;border-color:var(--brand)}"
+    ".clubs{display:flex;gap:12px;flex-wrap:wrap;margin:4px 0}"
+    ".clubrow{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #e3e9e6;"
+    "border-radius:12px;padding:7px 15px 7px 7px}"
+    ".clubrow img{width:34px;height:34px;object-fit:contain;border-radius:6px;background:#f2f5f3}"
+    ".clubrow .mono{width:34px;height:34px;border-radius:6px;background:var(--brand);color:#fff;display:flex;"
+    "align-items:center;justify-content:center;font-weight:800;font-size:15px}"
+    ".clubrow b{font-size:14px;font-weight:600}"
+    ".list{margin:6px 0;padding-left:1.1em;font-size:14px}.list li{margin:.3em 0}"
+    ".muted{color:#64726b;font-size:12.5px}"
+    ".scope{background:#f3f6f4;background:color-mix(in srgb,var(--brand) 8%,#fff);"
+    "border:1px solid #d9e2dd;border:1px solid color-mix(in srgb,var(--brand) 26%,#fff);border-radius:10px;"
+    "padding:10px 14px;font-size:13px;color:#2b3a33;margin:2px 0 14px}"
+    ".bio{font-size:14px;line-height:1.6;color:#2b3a33;white-space:pre-wrap;max-width:720px}"
+    "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:#8a938d;font-size:11.5px}"
+    "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
+)
+
+_PROFILE_JS = (
+    "(function(){var t=[].slice.call(document.querySelectorAll('.tab'));"
+    "var p=[].slice.call(document.querySelectorAll('.panel'));"
+    "function show(id){t.forEach(function(b){b.classList.toggle('on',b.dataset.target===id)});"
+    "p.forEach(function(s){s.classList.toggle('on',s.id===id)})}"
+    "t.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.target);"
+    "if(history.replaceState)history.replaceState(null,'','#'+b.dataset.target)})});"
+    "var h=location.hash.replace('#','');"
+    "show(h&&document.getElementById(h)?h:(t[0]&&t[0].dataset.target));})();"
+)
+
+
+def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Build the (id, label, html) for each profile tab that has data to show."""
     c = snap.get("career") or {}
     det = snap.get("detail") or {}
-    span = snap.get("span") or {}
-    bat, bowl, field = c.get("batting") or {}, c.get("bowling") or {}, c.get("fielding") or {}
-    # The page <h1> is the publication title (usually the player's name); only repeat it as a heading
-    # when the title differs, so the name isn't shown twice.
-    name = snap.get("person_name") or "Player"
-    parts: list[str] = [] if (snap.get("title") or "").strip() == name.strip() else [f"<h2>{escape(name)}</h2>"]
+    bat, bowl = c.get("batting") or {}, c.get("bowling") or {}
+    field, capt = c.get("fielding") or {}, c.get("captaincy") or {}
+    gf = snap.get("grand_finals") or {}
+    tabs: list[tuple[str, str, str]] = []
 
-    # Playing style + squad number (public, club-appropriate)
-    style_bits = []
-    if det.get("batting_style"):
-        style_bits.append("Bats: " + escape(str(det["batting_style"])))
-    if det.get("bowling_style"):
-        style_bits.append("Bowls: " + escape(str(det["bowling_style"])))
-    if det.get("is_wicketkeeper"):
-        style_bits.append("Wicketkeeper")
-    if det.get("numbers"):
-        style_bits.append("No. " + escape(", ".join(str(n) for n in det["numbers"])))
-    if style_bits:
-        parts.append("<p class='style'>" + " &nbsp;·&nbsp; ".join(style_bits) + "</p>")
-
-    # First / most-recent match
-    def _edge(e: dict[str, Any] | None) -> str | None:
-        if not e or not e.get("date"):
-            return None
-        opp = e.get("opposition")
-        return escape(str(e["date"])) + (f" v {escape(str(opp))}" if opp else "")
-    first, last = _edge(span.get("first")), _edge(span.get("last"))
-    if first or last:
-        s = []
-        if first:
-            s.append(f"<b>Debut:</b> {first}")
-        if last:
-            s.append(f"<b>Most recent:</b> {last}")
-        parts.append("<p class='muted'>" + " &nbsp;·&nbsp; ".join(s) + "</p>")
-
-    # Club-scope note (when published for a single club) and achievement/honour badges.
+    # ---- Overview ----
+    ov: list[str] = []
     if snap.get("scope_club"):
-        parts.append(f"<p class='scope'><b>Statistics for {escape(str(snap['scope_club']))} only.</b></p>")
+        ov.append(f"<div class='scope'><b>Statistics for {escape(str(snap['scope_club']))} only.</b> "
+                  "Figures from any other club are not included.</div>")
     bdg = snap.get("badges") or {}
-    chips = [f"<span class='badge badge-honour'>{escape(str(x.get('label') or ''))}</span>"
-             for x in (bdg.get("awarded") or [])]
+    chips = [f"<span class='badge hon'>{escape(str(x.get('label') or ''))}</span>" for x in (bdg.get("awarded") or [])]
     chips += [f"<span class='badge'>{escape(str(x.get('label') or ''))}"
-              + (" &ge;" if "known_minimum" in str(x.get("state") or "") else "") + "</span>"
+              + (" ≥" if "known_minimum" in str(x.get("state") or "") else "") + "</span>"
               for x in (bdg.get("calculated") or [])]
     if chips:
-        parts.append("<div class='badges'>" + "".join(chips) + "</div>")
+        ov.append("<div class='badges'>" + "".join(chips) + "</div>")
+    ov.append(_tiles([
+        ("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
+        ("Bat avg", _num(bat.get("average"), 2)), ("Highest", _hs(bat)),
+        ("Wickets", _num(bowl.get("wickets", 0))), ("Bowl avg", _num(bowl.get("average"), 2)),
+        ("Best bowling", _bb(bowl)), ("Catches", _num(field.get("catches", 0))),
+        ("Stumpings", _num(field.get("stumpings", 0))), ("Run-outs", _num(field.get("run_outs", 0)))]))
+    clubs = snap.get("clubs") or []
+    if clubs:
+        rows = []
+        for cl in clubs:
+            nm = escape(str(cl.get("club") or ""))
+            crest = cl.get("crest")
+            mark = (f"<img src='{crest}' alt=''>" if crest
+                    else f"<span class='mono'>{escape((cl.get('club') or '?')[:1].upper())}</span>")
+            rows.append(f"<div class='clubrow'>{mark}<b>{nm}</b></div>")
+        ov.append("<h3 class='sub'>Clubs</h3><div class='clubs'>" + "".join(rows) + "</div>")
+    if det.get("biography"):
+        ov.append(f"<h3 class='sub'>Biography</h3><p class='bio'>{escape(str(det['biography']))}</p>")
+    tabs.append(("overview", "Overview", "".join(ov)))
 
-    # Career tiles
-    tiles = [("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
-             ("Bat avg", _num(bat.get("average"), 2)), ("HS", _num(bat.get("highest_score"))),
-             ("Wickets", _num(bowl.get("wickets", 0))), ("Bowl avg", _num(bowl.get("average"), 2)),
-             ("Catches", _num(field.get("catches", 0))), ("Stumpings", _num(field.get("stumpings", 0))),
-             ("Run-outs", _num(field.get("run_outs", 0)))]
-    parts.append("<div class='cards'>" + "".join(
-        f"<div class='card'><span>{escape(lbl)}</span><b>{val}</b></div>" for lbl, val in tiles) + "</div>")
-
-    # Batting summary
+    # ---- Batting ----
     if int(bat.get("innings", 0) or 0) > 0:
-        parts.append("<h3>Batting</h3><table><thead><tr>"
-                     "<th>M</th><th>Inns</th><th>NO</th><th>Runs</th><th>HS</th><th>Avg</th>"
-                     "<th>50</th><th>100</th><th>SR</th></tr></thead><tbody><tr>"
-                     f"<td>{_num(bat.get('matches'))}</td><td>{_num(bat.get('innings'))}</td>"
-                     f"<td>{_num(bat.get('not_outs'))}</td><td>{_num(bat.get('runs'))}</td>"
-                     f"<td>{_num(bat.get('highest_score'))}</td><td>{_num(bat.get('average'), 2)}</td>"
-                     f"<td>{_num(bat.get('fifties'))}</td><td>{_num(bat.get('hundreds'))}</td>"
-                     f"<td>{_num(bat.get('strike_rate'), 1)}</td></tr></tbody></table>")
+        bt = _tiles([
+            ("Innings", _num(bat.get("innings"))), ("Not outs", _num(bat.get("not_outs"))),
+            ("Runs", _num(bat.get("runs"))), ("Highest", _hs(bat)), ("Average", _num(bat.get("average"), 2)),
+            ("Strike rate", _num(bat.get("strike_rate"), 1)), ("Fifties", _num(bat.get("fifties"))),
+            ("Hundreds", _num(bat.get("hundreds"))), ("Ducks", _num(bat.get("ducks"))),
+            ("Fours", _num(bat.get("fours"))), ("Sixes", _num(bat.get("sixes")))])
+        tbl = _table(
+            [("M", ""), ("Inns", "r"), ("NO", "r"), ("Runs", "r"), ("HS", "r"), ("Avg", "r"),
+             ("50", "r"), ("100", "r"), ("SR", "r")],
+            ["<tr><td>" + _num(bat.get("matches")) + "</td>"
+             + "".join(f"<td class='r'>{v}</td>" for v in (
+                 _num(bat.get("innings")), _num(bat.get("not_outs")), _num(bat.get("runs")), _hs(bat),
+                 _num(bat.get("average"), 2), _num(bat.get("fifties")), _num(bat.get("hundreds")),
+                 _num(bat.get("strike_rate"), 1))) + "</tr>"])
+        tabs.append(("batting", "Batting", bt + "<h3 class='sub'>Career</h3>" + tbl))
 
-    # Bowling summary
+    # ---- Bowling ----
     if int(bowl.get("innings", 0) or 0) > 0:
-        parts.append("<h3>Bowling</h3><table><thead><tr>"
-                     "<th>M</th><th>Overs</th><th>Mdns</th><th>Runs</th><th>Wkts</th><th>Avg</th>"
-                     "<th>Econ</th><th>5w</th></tr></thead><tbody><tr>"
-                     f"<td>{_num(bowl.get('matches'))}</td><td>{_num(bowl.get('overs'), 1)}</td>"
-                     f"<td>{_num(bowl.get('maidens'))}</td><td>{_num(bowl.get('runs'))}</td>"
-                     f"<td>{_num(bowl.get('wickets'))}</td><td>{_num(bowl.get('average'), 2)}</td>"
-                     f"<td>{_num(bowl.get('economy'), 2)}</td><td>{_num(bowl.get('five_wkt_innings'))}</td>"
-                     "</tr></tbody></table>")
+        bl = _tiles([
+            ("Innings", _num(bowl.get("innings"))), ("Overs", _num(bowl.get("overs"), 1)),
+            ("Maidens", _num(bowl.get("maidens"))), ("Runs", _num(bowl.get("runs"))),
+            ("Wickets", _num(bowl.get("wickets"))), ("Average", _num(bowl.get("average"), 2)),
+            ("Economy", _num(bowl.get("economy"), 2)), ("Strike rate", _num(bowl.get("strike_rate"), 1)),
+            ("Best bowling", _bb(bowl)), ("5 wkts", _num(bowl.get("five_wkt_innings"))),
+            ("Hat-tricks", _num(bowl.get("hat_tricks"))), ("Best (match)", _num(bowl.get("best_match_wickets")))])
+        tbl = _table(
+            [("M", ""), ("Overs", "r"), ("Mdns", "r"), ("Runs", "r"), ("Wkts", "r"), ("Avg", "r"),
+             ("Econ", "r"), ("SR", "r"), ("BB", "r"), ("5w", "r")],
+            ["<tr><td>" + _num(bowl.get("matches")) + "</td>"
+             + "".join(f"<td class='r'>{v}</td>" for v in (
+                 _num(bowl.get("overs"), 1), _num(bowl.get("maidens")), _num(bowl.get("runs")),
+                 _num(bowl.get("wickets")), _num(bowl.get("average"), 2), _num(bowl.get("economy"), 2),
+                 _num(bowl.get("strike_rate"), 1), _bb(bowl), _num(bowl.get("five_wkt_innings")))) + "</tr>"])
+        tabs.append(("bowling", "Bowling", bl + "<h3 class='sub'>Career</h3>" + tbl))
 
-    # Season-by-season
+    # ---- Fielding & keeping ----
+    if any(int(field.get(k, 0) or 0) > 0 for k in
+           ("catches", "stumpings", "run_outs", "run_out_assists", "keeper_dismissals")):
+        fl = _tiles([
+            ("Catches", _num(field.get("catches"))), ("Outfield", _num(field.get("field_catches"))),
+            ("Keeper catches", _num(field.get("keeper_catches"))), ("Stumpings", _num(field.get("stumpings"))),
+            ("Run-outs", _num(field.get("run_outs"))), ("Run-out assists", _num(field.get("run_out_assists"))),
+            ("Keeper dismissals", _num(field.get("keeper_dismissals")))])
+        tabs.append(("fielding", "Fielding & WK", fl))
+
+    # ---- Captaincy ----
+    if int(capt.get("captained", 0) or 0) > 0:
+        cp = int(capt.get("captained", 0) or 0)
+        won = int(capt.get("wins", 0) or 0)
+        win_pct = f"{(won * 100 / cp):.0f}%" if cp else "—"
+        tabs.append(("captaincy", "Captaincy", _tiles([
+            ("Captained", _num(capt.get("captained"))), ("Won", _num(capt.get("wins"))),
+            ("Lost", _num(capt.get("losses"))), ("Drawn", _num(capt.get("draws"))),
+            ("Tied", _num(capt.get("ties"))), ("Win %", win_pct),
+            ("GF captained", _num(capt.get("gf_captained"))), ("GF won", _num(capt.get("gf_wins")))])))
+
+    # ---- Seasons ----
     seasons = snap.get("seasons") or []
     if seasons:
-        rows = "".join(
-            f"<tr><td style='text-align:left'>{escape(str(s.get('label') or ''))}</td>"
-            f"<td>{_num(s.get('matches'))}</td><td>{_num(s.get('runs'))}</td>"
-            f"<td>{_num(s.get('batting_average'), 2)}</td><td>{_num(s.get('wickets'))}</td>"
-            f"<td>{_num(s.get('bowling_average'), 2)}</td><td>{_num(s.get('catches'))}</td></tr>"
-            for s in seasons)
-        parts.append("<h3>Season by season</h3><table><thead><tr>"
-                     "<th style='text-align:left'>Season</th><th>M</th><th>Runs</th><th>Bat avg</th>"
-                     f"<th>Wkts</th><th>Bowl avg</th><th>Ct</th></tr></thead><tbody>{rows}</tbody></table>")
+        rows = ["<tr><td>" + escape(str(s.get("label") or "")) + "</td>"
+                + "".join(f"<td class='r'>{v}</td>" for v in (
+                    _num(s.get("matches")), _num(s.get("runs")), _num(s.get("batting_average"), 2),
+                    _num(s.get("wickets")), _num(s.get("bowling_average"), 2), _num(s.get("catches")))) + "</tr>"
+                for s in seasons]
+        tabs.append(("seasons", "Seasons", _table(
+            [("Season", ""), ("M", "r"), ("Runs", "r"), ("Bat avg", "r"), ("Wkts", "r"),
+             ("Bowl avg", "r"), ("Ct", "r")], rows)))
 
-    # Records held
+    # ---- Grand Finals ----
+    if int(gf.get("appearances", 0) or 0) > 0:
+        gfb, gfw, gff = gf.get("batting") or {}, gf.get("bowling") or {}, gf.get("fielding") or {}
+        tabs.append(("grandfinals", "Grand Finals", _tiles([
+            ("Appearances", _num(gf.get("appearances"))), ("Premierships", _num(gf.get("premierships"))),
+            ("GF runs", _num(gfb.get("runs"))), ("GF bat avg", _num(gfb.get("average"), 2)),
+            ("GF wickets", _num(gfw.get("wickets"))), ("GF bowl avg", _num(gfw.get("average"), 2)),
+            ("GF catches", _num(gff.get("catches")))])))
+
+    # ---- Honours & records ----
+    hon: list[str] = []
     records = snap.get("records") or []
     if records:
         items = "".join(
@@ -215,33 +382,114 @@ def _render_profile_body(snap: dict[str, Any]) -> str:
             + (f" — <b>{_num(r.get('value'))}</b>" if r.get("value") is not None else "")
             + (" <span class='muted'>(tied)</span>" if r.get("tied") else "") + "</li>"
             for r in records)
-        parts.append(f"<h3>Records held</h3><ul>{items}</ul>")
-
-    # Service & honours (leadership roles, recognition, and recorded honours)
+        hon.append(f"<h3 class='sub'>Records held</h3><ul class='list'>{items}</ul>")
     service: list[str] = []
-    for r in (det.get("leadership") or []):
-        seasons_txt = ", ".join(escape(str(x)) for x in (r.get("seasons") or []))
-        service.append(f"<li>{escape(str(r.get('label') or ''))}"
-                       + (f" <span class='muted'>({seasons_txt})</span>" if seasons_txt else "") + "</li>")
-    for r in (det.get("recognition") or []):
+    for r in (det.get("leadership") or []) + (det.get("recognition") or []):
         seasons_txt = ", ".join(escape(str(x)) for x in (r.get("seasons") or []))
         service.append(f"<li>{escape(str(r.get('label') or ''))}"
                        + (f" <span class='muted'>({seasons_txt})</span>" if seasons_txt else "") + "</li>")
     for h in (snap.get("honours") or []):
-        bits = escape(str(h.get("title") or ""))
         extra = " · ".join(escape(str(x)) for x in (h.get("category"), h.get("season")) if x)
-        service.append(f"<li>{bits}" + (f" <span class='muted'>({extra})</span>" if extra else "") + "</li>")
+        service.append(f"<li>{escape(str(h.get('title') or ''))}"
+                       + (f" <span class='muted'>({extra})</span>" if extra else "") + "</li>")
     if service:
-        parts.append(f"<h3>Service &amp; honours</h3><ul>{''.join(service)}</ul>")
+        hon.append(f"<h3 class='sub'>Service &amp; honours</h3><ul class='list'>{''.join(service)}</ul>")
+    if hon:
+        tabs.append(("honours", "Honours & Records", "".join(hon)))
 
-    # Biography
-    if det.get("biography"):
-        parts.append(f"<h3>Biography</h3><p class='bio'>{escape(str(det['biography']))}</p>")
+    return tabs
 
-    return "".join(parts)
+
+def _hs(bat: dict[str, Any]) -> str:
+    """Highest score with a trailing * when it was not out (never fabricated when unknown)."""
+    hs = bat.get("highest_score")
+    if hs is None:
+        return "—"
+    return _num(hs) + ("*" if bat.get("highest_not_out") else "")
+
+
+def _bb(bowl: dict[str, Any]) -> str:
+    bb = bowl.get("best_bowling") or {}
+    if bb.get("wickets") is None:
+        return "—"
+    return f"{_num(bb.get('wickets'))}-{_num(bb.get('runs'))}"
+
+
+def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
+    """A professional, self-contained, tab-through public player profile (CricketStatz-style): a branded
+    hero with the club crest and headline numbers, then clickable tabs for batting, bowling, fielding,
+    captaincy, seasons, grand finals and honours. All CSS/JS and images are inlined, so it works offline
+    from the snapshot and never touches the database. No DOB/contact/private data is ever included."""
+    brand = snap.get("branding") or {}
+    primary = escape(str(brand.get("primary") or "#0b5e3b"))
+    accent = escape(str(brand.get("accent") or brand.get("secondary") or brand.get("primary") or "#0b5e3b"))
+    club = escape(str(brand.get("club") or "OneStats"))
+    logo = brand.get("logo")
+    det = snap.get("detail") or {}
+    c = snap.get("career") or {}
+    bat, bowl, field = c.get("batting") or {}, c.get("bowling") or {}, c.get("fielding") or {}
+    span = snap.get("span") or {}
+    name = escape(str(snap.get("person_name") or title or "Player"))
+
+    # hero style chips
+    chips = []
+    for label, key in (("Bats", "batting_style"), ("Bowls", "bowling_style")):
+        if det.get(key):
+            chips.append(f"<span class='chip'>{label} {escape(str(det[key]))}</span>")
+    if det.get("is_wicketkeeper"):
+        chips.append("<span class='chip'>Wicketkeeper</span>")
+    if det.get("numbers"):
+        chips.append("<span class='chip'>No. " + escape(", ".join(str(n) for n in det["numbers"])) + "</span>")
+    chips_html = f"<div class='chips'>{''.join(chips)}</div>" if chips else ""
+
+    def _edge(e: dict[str, Any] | None) -> str | None:
+        if not e or not e.get("date"):
+            return None
+        opp = e.get("opposition")
+        return escape(str(e["date"])) + (f" v {escape(str(opp))}" if opp else "")
+    first, last = _edge(span.get("first")), _edge(span.get("last"))
+    meta_bits = []
+    if first:
+        meta_bits.append(f"Debut {first}")
+    if last:
+        meta_bits.append(f"Most recent {last}")
+    meta_html = f"<div class='meta'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
+
+    key_cells = "".join(
+        f"<div class='key'><span>{escape(lbl)}</span><b>{val}</b></div>" for lbl, val in (
+            ("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
+            ("Wickets", _num(bowl.get("wickets", 0))), ("Catches", _num(field.get("catches", 0)))))
+    crest_html = (f"<div class='crest'><img src='{logo}' alt='{club} logo'></div>" if logo else "")
+
+    tabs = _profile_tabs(snap)
+    tabbar = "".join(
+        f"<button class='tab' data-target='t_{tid}'>{escape(lbl)}</button>" for tid, lbl, _ in tabs)
+    panels = "".join(
+        f"<section id='t_{tid}' class='panel'>{html}</section>" for tid, _, html in tabs)
+    notes = "".join(f"<p class='muted'>{escape(q)}</p>" for q in snap.get("qualifications", []))
+    gen = datetime.now(UTC).strftime("%d %b %Y")
+    foot_link = (" · " + escape(public_base) + "/p/" + escape(slug)) if public_base else ""
+
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{name} — {club}</title>"
+        f"<style>:root{{--brand:{primary};--accent:{accent}}}</style>"
+        f"<style>{_PROFILE_CSS}</style></head><body>"
+        f"<header class='hero'><div class='hero-in'>{crest_html}"
+        f"<div class='id'><div class='club'>{club}</div><h1>{name}</h1>{chips_html}{meta_html}</div>"
+        f"<div class='keys'>{key_cells}</div></div></header>"
+        f"<nav class='tabs' role='tablist'>{tabbar}</nav>"
+        f"<main>{panels}{('<div>' + notes + '</div>') if notes else ''}</main>"
+        f"<footer>Published by OneStats · {gen}{foot_link} · Approved statistics only — "
+        "unknown values are never shown as zero.</footer>"
+        f"<script>{_PROFILE_JS}</script></body></html>")
 
 
 def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
+    # Player profiles get the rich, tab-through page; reports keep the clean single-table page.
+    if snap.get("kind") == "player_profile":
+        return _render_profile_page(snap, title, public_base, slug)
     brand = snap.get("branding") or {}
     primary = escape(str(brand.get("primary") or "#0b5e3b"))
     club = escape(str(brand.get("club") or "OneStats"))
@@ -261,8 +509,6 @@ def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) 
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table>")
         if not rows:
             body.append("<p class='muted'>No published data for this report yet.</p>")
-    else:
-        body.append(_render_profile_body(snap))
     for q in snap.get("qualifications", []):
         body.append(f"<p class='muted'>{escape(q)}</p>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -301,7 +547,7 @@ def _snapshot(conn: Connection, settings: Settings, workspace_id: UUID, row: dic
     if row["kind"] == "report":
         snap = _report_snapshot(conn, workspace_id, row["report_id"], row.get("filters") or {}, brand)
     else:
-        snap = _profile_snapshot(conn, workspace_id, row["person_id"], brand, row.get("filters"))
+        snap = _profile_snapshot(conn, workspace_id, row["person_id"], brand, row.get("filters"), settings)
     snap["title"] = row["title"]
     snap["generated_at"] = datetime.now(UTC).isoformat()
     html = _render_html(snap, row["title"], settings.public_base_url or "", row["slug"])

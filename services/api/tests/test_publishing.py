@@ -268,3 +268,18 @@ def test_isolation_admin_cannot_see_other_workspace(seeded, conn):
     # but the public edge (no context) can still serve A's published snapshot (intended)
     _no_context(conn)
     assert publishing.get_public(conn, pub["slug"]) is not None
+
+
+def test_profile_html_is_a_tabbed_branded_page(seeded, conn):
+    """The published player profile is the rich, tab-through page: a branded hero and clickable
+    discipline tabs, fully self-contained (styles and script inlined, no external assets). The seeded
+    player has batting, so a Batting tab appears alongside Overview."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile",
+                                        title="Star Player", person_id=seeded["p"])
+    html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
+                        {"i": pub["id"]}).scalar_one()
+    assert "class='hero'" in html and "Star Player" in html
+    assert "class='tabs'" in html and "data-target='t_overview'" in html
+    assert "data-target='t_batting'" in html          # the seeded player batted -> a Batting tab
+    assert "<script>" in html and "<style>" in html   # self-contained: no external CSS/JS/images
