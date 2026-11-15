@@ -316,3 +316,17 @@ def test_profile_theme_class_follows_branding(seeded, conn):
     html2 = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
                          {"i": pub["id"]}).scalar_one()
     assert "theme-dark" in html2 and "#0b5e3b" in html2             # club theme + colour applied
+
+
+def test_profile_recognition_becomes_an_honour_badge():
+    """A recognition such as Life Member appears as a prominent honour badge on the published profile,
+    not only buried in the service list."""
+    snap = {
+        "kind": "player_profile", "person_name": "Honoured Player", "title": "Honoured Player",
+        "branding": {"club": "RMCC", "primary": "#0b5e3b"},
+        "detail": {"recognition": [{"label": "Life Member", "seasons": ["2016"]}], "leadership": [], "numbers": []},
+        "career": {"matches": 10, "batting": {}, "bowling": {}, "fielding": {}, "captaincy": {}},
+        "badges": {"calculated": [], "awarded": []}, "qualifications": [],
+    }
+    html = publishing._render_profile_page(snap, "Honoured Player", "", "slug")
+    assert "badge hon" in html and "Life Member" in html
