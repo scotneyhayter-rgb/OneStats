@@ -32,13 +32,13 @@ from onestats.domain.batting import BOWLER_CREDIT
 
 _COLS = (
     "id, workspace_id, innings_id, person_id, bowling_order, overs_text, legal_balls, maidens, "
-    "runs_conceded, wickets, wides, noballs, bowling_type_raw, notes, evidence, source_system, "
-    "source_ref, created_at, updated_at"
+    "runs_conceded, wickets, wides, noballs, hat_tricks, bowling_type_raw, notes, evidence, "
+    "source_system, source_ref, created_at, updated_at"
 )
 
 _SET_FIELDS = (
     "person_id", "bowling_order", "overs_text", "legal_balls", "maidens", "runs_conceded",
-    "wickets", "wides", "noballs", "bowling_type_raw", "notes", "evidence",
+    "wickets", "wides", "noballs", "hat_tricks", "bowling_type_raw", "notes", "evidence",
 )
 
 
@@ -120,8 +120,8 @@ def create_entry(
     person_id: UUID | None = None, bowling_order: int | None = None, overs_text: str | None = None,
     legal_balls: int | None = None, maidens: int | None = None, runs_conceded: int | None = None,
     wickets: int | None = None, wides: int | None = None, noballs: int | None = None,
-    bowling_type_raw: str | None = None, notes: str | None = None, evidence: str | None = None,
-    source_system: str | None = None, source_ref: str | None = None,
+    hat_tricks: int | None = None, bowling_type_raw: str | None = None, notes: str | None = None,
+    evidence: str | None = None, source_system: str | None = None, source_ref: str | None = None,
 ) -> UUID:
     if not _innings_exists(conn, innings_id):
         raise ValueError("innings_not_found")
@@ -148,15 +148,15 @@ def create_entry(
     entry_id = conn.execute(
         text(
             "INSERT INTO bowling_entry(workspace_id, innings_id, person_id, bowling_order, "
-            " overs_text, legal_balls, maidens, runs_conceded, wickets, wides, noballs, "
+            " overs_text, legal_balls, maidens, runs_conceded, wickets, wides, noballs, hat_tricks, "
             " bowling_type_raw, notes, evidence, source_system, source_ref) "
-            "VALUES (:w, :i, :p, :ord, :ot, :lb, :m, :rc, :wk, :wd, :nb, :bt, :notes, :ev, :ss, :sr) "
+            "VALUES (:w, :i, :p, :ord, :ot, :lb, :m, :rc, :wk, :wd, :nb, :ht, :bt, :notes, :ev, :ss, :sr) "
             "RETURNING id"
         ),
         {"w": workspace_id, "i": innings_id, "p": person_id, "ord": bowling_order, "ot": overs_text,
          "lb": legal_balls, "m": maidens, "rc": runs_conceded, "wk": wickets, "wd": wides,
-         "nb": noballs, "bt": bowling_type_raw, "notes": notes, "ev": evidence, "ss": source_system,
-         "sr": source_ref},
+         "nb": noballs, "ht": hat_tricks, "bt": bowling_type_raw, "notes": notes, "ev": evidence,
+         "ss": source_system, "sr": source_ref},
     ).scalar_one()
     audit.write_audit(conn, workspace_id, actor, "bowling_entry.create", entity="bowling_entry",
                       entity_id=str(entry_id),
@@ -272,6 +272,10 @@ def validation_warnings(conn: Connection, innings_id: UUID) -> list[str]:
         if (r["maidens"] is not None and r["legal_balls"] is not None and bpo
                 and r["maidens"] > r["legal_balls"] // bpo):
             warnings.append("maidens_exceed_overs")
+        # a hat-trick needs at least three wickets; advisory only when the wickets are known too
+        # (unknown wickets never contradict a recorded hat-trick — unknown is not zero)
+        if r["hat_tricks"] and r["wickets"] is not None and r["wickets"] < 3:
+            warnings.append("hat_trick_without_three_wickets")
         # innings overs limit (playing condition, Law 17) — advisory, never assume a default
         if (r["legal_balls"] is not None and overs_limit is not None and bpo
                 and r["legal_balls"] > overs_limit * bpo):

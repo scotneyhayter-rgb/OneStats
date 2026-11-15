@@ -1251,6 +1251,7 @@ export interface Innings {
   wides: number | null;
   noballs: number | null;
   penalty: number | null;
+  unassigned_wickets: number | null;
   official_total: number | null;
   official_wickets: number | null;
   override_reason: string | null;
@@ -1306,6 +1307,7 @@ export interface BowlingEntry {
   wickets: number | null;
   wides: number | null;
   noballs: number | null;
+  hat_tricks: number | null;
   bowling_type_raw: string | null;
   notes: string | null;
   evidence: string | null;
