@@ -46,8 +46,8 @@ export function MemberPortal() {
             : <Badge variant="muted"><Lock className="mr-1 h-3 w-3" aria-hidden />Members only</Badge>}
           {i.stale && <Badge variant="warning">Needs refresh</Badge>}
           {i.path && (
-            <a href={`#/public-view${i.path}`} className="ml-auto text-xs text-brand underline"
-               onClick={(e) => { e.preventDefault(); if (i.path) window.open(i.path, "_blank"); }}>Open</a>
+            <a href={api.publicPreviewUrl(i.path)} target="_blank" rel="noreferrer" className="ml-auto text-xs text-brand underline"
+               onClick={(e) => { e.preventDefault(); const p = i.path; if (p) window.open(api.publicPreviewUrl(p), "_blank"); }}>Open</a>
           )}
         </div>
       ))}

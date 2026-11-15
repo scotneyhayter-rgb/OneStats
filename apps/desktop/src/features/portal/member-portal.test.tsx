@@ -8,7 +8,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
-const H = vi.hoisted(() => ({ memberPortal: vi.fn(), askOneStats: vi.fn() }));
+const H = vi.hoisted(() => ({
+  memberPortal: vi.fn(), askOneStats: vi.fn(),
+  publicPreviewUrl: (p: string) => `http://localhost:8000${p}`,
+}));
 
 vi.mock("../manage/_shared", () => ({
   useManage: () => ({ workspaceId: "w1" }),
@@ -40,6 +43,9 @@ describe("Member Portal", () => {
     expect(screen.getByText("Public")).toBeTruthy();
     expect(screen.getByText("Members only")).toBeTruthy();
     expect(screen.getByText("Draft Honours")).toBeTruthy();
+    // the Open link points at the FULL backend URL (not a relative path that resolves to the app shell)
+    const open = screen.getByRole("link", { name: "Open" });
+    expect(open.getAttribute("href")).toBe("http://localhost:8000/api/v1/public/r/s1");
   });
 
   it("offers Ask OneStats and queries the deterministic engine", async () => {
