@@ -74,6 +74,23 @@ describe("player dropdown selection", () => {
     });
   });
 
+  it("opens and seeds the search when you tab in and start typing (no click needed)", async () => {
+    // Tab-and-type: focus the field by tabbing across the row, then type a name — the picker opens
+    // seeded with that first character and the input takes over, so a line is entered without the mouse.
+    listPeople.mockResolvedValue([frank]);
+    identityCandidates.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<Harness onChange={() => {}} />);
+    const trigger = screen.getByRole("button", { name: "Batter 1" });
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+    await user.keyboard("F");            // typing on the focused trigger opens the picker, seeded with "F"
+    const searchbox = (await screen.findByPlaceholderText(/Search player/i)) as HTMLInputElement;
+    expect(searchbox.value).toBe("F");
+    await user.type(searchbox, "rank");  // continues straight into the now-focused input
+    expect(await screen.findByText("Frank Frederick")).toBeTruthy();
+  });
+
   it("offers a priority player (this innings' batter) even when the club-scoped search excludes them", async () => {
     // David batted as a fill-in; the club-scoped search returns nobody, but he must stay selectable
     listPeople.mockResolvedValue([]);

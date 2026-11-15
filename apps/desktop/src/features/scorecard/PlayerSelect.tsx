@@ -246,6 +246,18 @@ export function PlayerSelect({
           type="button"
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            // Tab-and-type: when the field is focused by tabbing across the row, start typing a name and
+            // the search panel opens seeded with that first character (no click needed). Arrow keys open
+            // the panel too. Space/Enter keep the native button activation (toggle open).
+            if (disabled || open) return;
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setOpen(true); }
+            else if (e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault();
+              setQuery(e.key);
+              setOpen(true);
+            }
+          }}
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label={rest["aria-label"] ?? "Select player"}

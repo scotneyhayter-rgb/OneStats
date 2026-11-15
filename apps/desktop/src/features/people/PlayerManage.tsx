@@ -331,7 +331,18 @@ export function PlayerManage() {
                             {a.role ? <span className="text-muted-foreground"> · {humanise(a.role)}</span> : null}
                           </span>
                           <span className="flex items-center gap-2">
-                            <span className="text-muted-foreground"><Unknown value={a.valid_from} /> – {a.valid_to ?? "present"}</span>
+                            <span className="text-muted-foreground">
+                              {a.valid_from ? (
+                                a.valid_from
+                              ) : a.first_match ? (
+                                <span title="Derived automatically from this player's first recorded match for the club">
+                                  {a.first_match} <span className="italic">(first match)</span>
+                                </span>
+                              ) : (
+                                <Unknown value={null} />
+                              )}
+                              {" – "}{a.valid_to ?? "present"}
+                            </span>
                             {canManage && (
                               <button type="button" disabled={busy}
                                 aria-label={`Remove ${clubName(a.organisation_id)} affiliation`}

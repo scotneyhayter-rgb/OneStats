@@ -56,8 +56,9 @@ describe("PlayerProfile", () => {
     expect(screen.getByText(/Leading Run Scorer 2024\/25/)).toBeTruthy();   // season leadership badge
     expect(screen.getByText("2× premierships")).toBeTruthy();
     expect(screen.getAllByText("1,850".replace(",", "") === "1850" ? "1850" : "1850").length).toBeGreaterThan(0);
-    // known-minimum indicator present on runs
-    expect(screen.getAllByText("min.").length).toBeGreaterThan(0);
+    // the "known min." / "min." tag was removed from the UI (noise); it must not render
+    expect(screen.queryByText("min.")).toBeNull();
+    expect(screen.queryByText("known min.")).toBeNull();
   });
 
   it("renders career charts on the Seasons tab and the Grand Finals section", async () => {
