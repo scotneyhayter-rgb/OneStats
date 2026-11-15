@@ -287,6 +287,19 @@ export interface Publication {
   json_path?: string;
   json_url?: string | null;
 }
+export interface GithubConnection {
+  repo: string | null;
+  branch: string;
+  token_set: boolean;
+}
+export interface GithubPublishResult {
+  committed: boolean;
+  commit: string;
+  files: number;
+  repo: string;
+  branch: string;
+  pages_url: string | null;
+}
 export interface AskAnswer {
   question: string;
   matched: boolean;
@@ -2160,6 +2173,12 @@ export const api = {
     if (!resp.ok) throw new ApiError(`Site export failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+  publicationGithubGet: (w: string) =>
+    request<GithubConnection>(`/api/v1/workspaces/${w}/publications/github`),
+  publicationGithubSet: (w: string, body: { repo?: string | null; branch?: string | null; token?: string }) =>
+    request<GithubConnection>(`/api/v1/workspaces/${w}/publications/github`, { method: "PUT", body }),
+  publicationGithubPublish: (w: string) =>
+    request<GithubPublishResult>(`/api/v1/workspaces/${w}/publications/github/publish`, { method: "POST" }),
   publicPreviewUrl: (path: string) => `${getApiBase()}${path}`,
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),

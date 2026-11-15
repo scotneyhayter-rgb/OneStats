@@ -5,7 +5,7 @@
  * External URL field). Publish / unpublish / revoke, auto-staleness after approved-stat changes, refresh,
  * and club branding. Admin only.
  */
-import { Copy, Download, RefreshCw } from "lucide-react";
+import { Copy, Download, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
@@ -13,7 +13,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
-import { api, ApiError, type Publication, type ReportCatalogue } from "../../lib/api";
+import { api, ApiError, type GithubConnection, type Publication, type ReportCatalogue } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { canManage } from "../../lib/permissions";
 import { useWorkspace } from "../../lib/workspace-context";
@@ -28,16 +28,23 @@ export function Publishing() {
   const [title, setTitle] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [baseSaved, setBaseSaved] = useState<string | null>(null);
+  const [gh, setGh] = useState<GithubConnection | null>(null);
+  const [ghRepo, setGhRepo] = useState("");
+  const [ghBranch, setGhBranch] = useState("main");
+  const [ghToken, setGhToken] = useState("");
+  const [ghBusy, setGhBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!current) return;
     try {
-      const [c, p, s] = await Promise.all([
-        api.statsCatalogue(current.id), api.publicationsList(current.id), api.publicationSettingsGet(current.id),
+      const [c, p, s, g] = await Promise.all([
+        api.statsCatalogue(current.id), api.publicationsList(current.id),
+        api.publicationSettingsGet(current.id), api.publicationGithubGet(current.id),
       ]);
       setCat(c); setPubs(p); setBaseUrl(s.public_base_url ?? ""); setBaseSaved(s.public_base_url ?? null);
+      setGh(g); setGhRepo(g.repo ?? ""); setGhBranch(g.branch || "main");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load publishing.");
     }
@@ -84,6 +91,29 @@ export function Publishing() {
       setError(e instanceof ApiError ? e.message : "Site export failed.");
     }
   }, [current]);
+
+  const saveGithub = useCallback(async () => {
+    if (!current) return;
+    const body: { repo: string | null; branch: string; token?: string } = {
+      repo: ghRepo.trim() || null, branch: ghBranch.trim() || "main",
+    };
+    if (ghToken) body.token = ghToken; // only send the token when the user typed one (blank keeps it)
+    await act(async () => { const g = await api.publicationGithubSet(current.id, body); setGh(g); setGhToken(""); },
+      "GitHub connection saved.");
+  }, [current, ghRepo, ghBranch, ghToken, act]);
+
+  const publishGithub = useCallback(async () => {
+    if (!current) return;
+    setError(null); setMsg(null); setGhBusy(true);
+    try {
+      const r = await api.publicationGithubPublish(current.id);
+      setMsg(`Published to GitHub — ${r.files} files committed (${r.commit.slice(0, 7)}).`
+        + (r.pages_url ? ` Live shortly at ${r.pages_url}` : " Enable GitHub Pages on the repo if you haven't yet."));
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "GitHub publish failed.");
+    } finally { setGhBusy(false); }
+  }, [current, load]);
 
   const download = useCallback(async (p: Publication) => {
     if (!current) return;
@@ -144,6 +174,39 @@ export function Publishing() {
             <li>When stats change: <b>Refresh all</b>, export again, and re-upload.</li>
           </ol>
           {baseSaved && <p className="text-xs text-success">Public address set — live links appear below. Hosted at <code className="rounded bg-muted/40 px-1.5 py-0.5">{baseSaved}</code></p>}
+        </CardContent></Card>
+
+        <Card><CardContent className="flex flex-col gap-3">
+          <h3 className="text-sm font-semibold">Publish directly to GitHub</h3>
+          <p className="text-xs text-muted-foreground">
+            Connect a GitHub repository once, then publish your whole site with one click — OneStats commits
+            the exported files straight to the repo as a single commit and GitHub Pages redeploys. Your token
+            is stored on this computer only and is never shown again. Only approved, public data is pushed.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs">Repository (owner/name)
+              <Input value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="scotneyhayter-rgb/rmcc-stats" />
+            </label>
+            <label className="flex w-24 flex-col gap-1 text-xs">Branch
+              <Input value={ghBranch} onChange={(e) => setGhBranch(e.target.value)} placeholder="main" />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-xs">Access token (fine-grained, Contents: Read and write)
+            <Input type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)}
+              placeholder={gh?.token_set ? "•••••••• saved — leave blank to keep" : "github_pat_…"} />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => void saveGithub()}>Save connection</Button>
+            <Button size="sm" disabled={ghBusy || !gh?.token_set || !gh?.repo} onClick={() => void publishGithub()}>
+              <Upload className="h-4 w-4" aria-hidden /> {ghBusy ? "Publishing…" : "Publish to GitHub now"}
+            </Button>
+            {gh?.token_set && <span className="text-xs text-success">Connected{gh.repo ? ` to ${gh.repo}` : ""}</span>}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Create a token at GitHub → Settings → Developer settings → Fine-grained tokens, scoped to just
+            this one repository with <b>Contents: Read and write</b> (add <b>Pages: Read and write</b> to let
+            OneStats turn Pages on for you). The token never leaves this computer except to push to your repo.
+          </p>
         </CardContent></Card>
 
         <Card><CardContent className="flex flex-col gap-3">

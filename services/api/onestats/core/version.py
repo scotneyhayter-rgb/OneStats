@@ -25,8 +25,8 @@ SERVER_VERSION = "1.0.0-beta.8"
 API_VERSION = 1
 
 # --- Database schema the server code expects (keep in step with the Alembic head) ---
-DB_SCHEMA_HEAD = "0074_hat_tricks_unassigned_wkts"
-DB_SCHEMA_LEVEL = 74
+DB_SCHEMA_HEAD = "0075_workspace_github_connect"
+DB_SCHEMA_LEVEL = 75
 
 # --- Desktop client compatibility rules (explicit; never inferred) ---
 # A desktop older than MIN_DESKTOP_VERSION must update before it may operate.
