@@ -4,6 +4,29 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.11 — 2026-11-15
+
+Profile polish — richer in-app analysis, cleaner exports, and keyboard-friendly scoring.
+
+**Changed since beta.10:**
+- **Publish to GitHub, fixed.** The whole site is pushed in a single request (no more slow per-file
+  uploads/timeouts) and the result is shown inline on the Publishing screen.
+- **Bowling charts.** Both the exported profile's Charts tab and the in-app profile's Analysis tab now show
+  *wickets innings-by-innings* (with a five-wicket-haul line) and *wickets per innings*, alongside the
+  batting charts.
+- **Honours up front.** Life Member and other honours now appear as a gold badge in the published profile's
+  hero, visible on every tab.
+- **Tidier badges.** The exported badge row keeps only the highest milestone in each ladder (one career-runs,
+  one career-wickets, …); the "known min." tag was removed from the app.
+- **Club crests.** The in-app profile header shows each club's uploaded crest, and the exported hero falls
+  back to the player's primary club crest when no workspace logo is set.
+- **Per-photo public toggle.** Each photo has a "Public" checkbox on the Manage screen; a photo appears on
+  the published profile (and as the hero avatar) only once it is cleared as public.
+- **Keyboard scoring.** On a scorecard, tab onto a player-name field and start typing — the picker opens
+  seeded with that character, no click needed.
+- **Affiliations.** A club membership with an unknown start date now shows the player's first recorded match
+  for that club (derived, never overwritten).
+
 ## 1.0.0-beta.10 — 2026-11-15
 
 A much deeper public player profile, more reports, and in-app navigation polish.
