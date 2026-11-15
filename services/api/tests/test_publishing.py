@@ -5,6 +5,7 @@ export, automatic-staleness on stat change, and workspace isolation. Requires a 
 from __future__ import annotations
 
 import json
+from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -283,3 +284,35 @@ def test_profile_html_is_a_tabbed_branded_page(seeded, conn):
     assert "class='tabs'" in html and "data-target='t_overview'" in html
     assert "data-target='t_batting'" in html          # the seeded player batted -> a Batting tab
     assert "<script>" in html and "<style>" in html   # self-contained: no external CSS/JS/images
+
+
+def test_profile_photo_embedded_only_when_public(seeded, conn, monkeypatch):
+    """A player's photo appears on the public profile ONLY when it is marked public_visible; a private
+    photo is never published. When shown, it is inlined as a data: URI (never an external link)."""
+    from onestats.domain import profiles as _profiles
+    wid, p = seeded["wid"], seeded["p"]
+    # pretend a stored file exists and inlines to a sentinel data URI (no real media needed here)
+    monkeypatch.setattr(publishing.photos, "photo_path", lambda s, w, k: object())
+    monkeypatch.setattr(publishing, "_file_data_uri",
+                        lambda path, **k: "data:image/png;base64,AAAA" if path else None)
+    _profiles.register_photo(conn, wid, ACTOR, p, media_key="x.png", is_primary=True, public_visible=False)
+    assert publishing._public_photo_data_uri(conn, TS, wid, p) is None        # private -> not selected
+    conn.execute(text("UPDATE person_photo SET public_visible = true WHERE person_id = :p"), {"p": p})
+    assert publishing._public_photo_data_uri(conn, TS, wid, p) == "data:image/png;base64,AAAA"
+
+
+def test_profile_theme_class_follows_branding(seeded, conn):
+    """The published profile carries the club's selected theme (light/dark/system), so its colours match
+    the configured branding rather than a fixed default."""
+    from onestats.domain import branding as _branding
+    wid, p = seeded["wid"], seeded["p"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile",
+                                        title="Star Player", person_id=p)
+    html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
+                        {"i": pub["id"]}).scalar_one()
+    assert "theme-system" in html                                   # no theme set -> follow the viewer
+    _branding.set_branding(conn, wid, UUID(ACTOR), {"theme_mode": "dark", "primary_colour": "#0b5e3b"})
+    publishing.republish(conn, TS, wid, ACTOR, pub["id"])
+    html2 = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
+                         {"i": pub["id"]}).scalar_one()
+    assert "theme-dark" in html2 and "#0b5e3b" in html2             # club theme + colour applied

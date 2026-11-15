@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
-from onestats.domain import audit, branding, logos, profiles
+from onestats.domain import audit, branding, logos, photos, profiles
 from onestats.domain.records import player_profile
 from onestats.reports import catalogue
 
@@ -37,17 +37,10 @@ def _slug() -> str:
     return secrets.token_urlsafe(12)
 
 
-def _logo_data_uri(settings: Settings | None, workspace_id: UUID, logo_ref: str | None,
-                   *, thumb: bool = False) -> str | None:
-    """Read a stored logo/crest and return it as a self-contained ``data:`` URI (so a published page
-    carries its images and works offline, with no server). ``thumb`` uses the small PNG thumbnail — good
-    for the several club crests; the hero logo uses the original. Returns None when unavailable."""
-    if settings is None or not logo_ref:
-        return None
-    try:
-        path = logos.logo_path(settings, workspace_id, logo_ref)
-    except ValueError:
-        return None
+def _file_data_uri(path: Any, *, thumb: bool = False) -> str | None:
+    """Turn a stored image file into a self-contained ``data:`` URI, so a published page carries its
+    images and works offline with no server. ``thumb`` prefers the small PNG thumbnail (kept alongside
+    the original) when present. Returns None when the file is missing or unreadable."""
     if path is None:
         return None
     if thumb:
@@ -63,13 +56,43 @@ def _logo_data_uri(settings: Settings | None, workspace_id: UUID, logo_ref: str 
     return f"data:image/{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
+def _logo_data_uri(settings: Settings | None, workspace_id: UUID, logo_ref: str | None,
+                   *, thumb: bool = False) -> str | None:
+    """A stored club logo/crest as a ``data:`` URI (hero logo uses the original; crests use thumbnails)."""
+    if settings is None or not logo_ref:
+        return None
+    try:
+        return _file_data_uri(logos.logo_path(settings, workspace_id, logo_ref), thumb=thumb)
+    except ValueError:
+        return None
+
+
+def _public_photo_data_uri(conn: Connection, settings: Settings | None, workspace_id: UUID,
+                           person_id: UUID) -> str | None:
+    """The player's primary photo as a ``data:`` URI — but ONLY a photo explicitly marked public
+    (``public_visible``). A photo that is not cleared for public use is never published."""
+    if settings is None:
+        return None
+    key = conn.execute(
+        text("SELECT media_key FROM person_photo WHERE person_id = :p AND public_visible = true "
+             "ORDER BY is_primary DESC, created_at LIMIT 1"),
+        {"p": person_id},
+    ).scalar_one_or_none()
+    if not key:
+        return None
+    try:
+        return _file_data_uri(photos.photo_path(settings, workspace_id, key), thumb=True)
+    except ValueError:
+        return None
+
+
 def _branding(conn: Connection, workspace_id: UUID) -> dict[str, Any]:
     ws = conn.execute(text("SELECT name FROM workspace WHERE id = :w"), {"w": workspace_id}).mappings().first()
     b = branding.get_branding(conn, workspace_id) or {}
     return {"club": (ws or {}).get("name") or "OneStats",
             "primary": b.get("primary_colour") or "#0b5e3b",
             "secondary": b.get("secondary_colour"), "accent": b.get("accent_colour"),
-            "logo_ref": b.get("logo_ref")}
+            "theme": b.get("theme_mode") or "system", "logo_ref": b.get("logo_ref")}
 
 
 def _filters(workspace_id: UUID, saved: dict[str, Any]) -> dict[str, Any]:
@@ -144,8 +167,9 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
     if scope_club:
         quals.insert(0, f"Statistics shown for {scope_club} only — figures from other clubs are not included.")
     brand = {**brand, "logo": _logo_data_uri(settings, workspace_id, brand.get("logo_ref"))}
+    photo = _public_photo_data_uri(conn, settings, workspace_id, person_id)
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
-            "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club,
+            "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club, "photo": photo,
             "career": prof["career"], "seasons": seasons, "records": records, "clubs": clubs,
             "grand_finals": prof.get("grand_finals"), "badges": badges,
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
@@ -176,18 +200,33 @@ def _table(headers: list[tuple[str, str]], rows: list[str]) -> str:
 
 
 _PROFILE_CSS = (
+    # Surface tokens — the club's selected theme (light / dark / system) swaps these; the brand colour
+    # is used for the hero, tables and accents in every theme.
+    ":root{--bg:#eef2f0;--card:#fff;--ink:#1a2420;--muted:#64726b;--line:#e3e9e6;--line2:#eef2f0;"
+    "--zebra:#f6f9f7;--tabbg:#fff;--tabink:#51605a;--shadow:rgba(0,0,0,.06)}"
+    ".theme-dark{--bg:#0f1512;--card:#18211d;--ink:#e9efec;--muted:#9aa8a1;--line:#273129;"
+    "--line2:#1f2822;--zebra:#1d2620;--tabbg:#141b17;--tabink:#9aa8a1;--shadow:rgba(0,0,0,.45)}"
+    "@media(prefers-color-scheme:dark){.theme-system{--bg:#0f1512;--card:#18211d;--ink:#e9efec;"
+    "--muted:#9aa8a1;--line:#273129;--line2:#1f2822;--zebra:#1d2620;--tabbg:#141b17;--tabink:#9aa8a1;"
+    "--shadow:rgba(0,0,0,.45)}}"
     "*{box-sizing:border-box}html{scroll-behavior:smooth}"
     "body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;margin:0;"
-    "color:#1a2420;background:#eef2f0;-webkit-font-smoothing:antialiased}"
+    "color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}"
     ".hero{background:var(--brand);background:linear-gradient(135deg,var(--brand),"
     "color-mix(in srgb,var(--brand) 70%,#000));color:#fff}"
     ".hero-in{max-width:1040px;margin:0 auto;padding:26px 20px 22px;display:flex;align-items:center;"
     "gap:22px;flex-wrap:wrap}"
-    ".crest{width:88px;height:88px;border-radius:50%;background:#fff;display:flex;align-items:center;"
-    "justify-content:center;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.28);flex:0 0 auto}"
-    ".crest img{width:100%;height:100%;object-fit:contain;padding:8px}"
+    ".avatar{width:92px;height:92px;border-radius:50%;overflow:hidden;background:#fff;flex:0 0 auto;"
+    "display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.3)}"
+    ".avatar img{width:100%;height:100%;object-fit:cover}"
+    ".avatar.crest img{object-fit:contain;padding:8px}"
+    ".avatar.mono{background:rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:33px;"
+    "border:2px solid rgba(255,255,255,.4)}"
     ".id{flex:1 1 240px;min-width:200px}"
-    ".id .club{text-transform:uppercase;letter-spacing:.09em;font-size:12px;opacity:.85;font-weight:600}"
+    ".id .club{text-transform:uppercase;letter-spacing:.09em;font-size:12px;opacity:.9;font-weight:600;"
+    "display:flex;align-items:center}"
+    ".club-crest{width:20px;height:20px;object-fit:contain;margin-right:7px;border-radius:4px;background:#fff;"
+    "padding:1px}"
     ".id h1{margin:.08em 0 .22em;font-size:30px;line-height:1.08;font-weight:800;letter-spacing:-.01em}"
     ".chips{display:flex;gap:7px;flex-wrap:wrap;margin:.1em 0}"
     ".chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:999px;"
@@ -198,10 +237,11 @@ _PROFILE_CSS = (
     "padding:10px 15px;text-align:center;min-width:74px}"
     ".key span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.85}"
     ".key b{font-size:23px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}"
-    ".tabs{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #dbe3df;display:flex;"
-    "gap:2px;overflow-x:auto;padding:0 10px;box-shadow:0 1px 5px rgba(0,0,0,.06)}"
-    ".tabs .tab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;color:#51605a;"
-    "font:inherit;font-size:14px;font-weight:600;padding:13px 14px;cursor:pointer;white-space:nowrap}"
+    ".tabs{position:sticky;top:0;z-index:5;background:var(--tabbg);border-bottom:1px solid var(--line);"
+    "display:flex;gap:2px;overflow-x:auto;padding:0 10px;box-shadow:0 1px 5px var(--shadow)}"
+    ".tabs .tab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;"
+    "color:var(--tabink);font:inherit;font-size:14px;font-weight:600;padding:13px 14px;cursor:pointer;"
+    "white-space:nowrap}"
     ".tabs .tab:hover{color:var(--brand)}"
     ".tabs .tab.on{color:var(--brand);border-bottom-color:var(--brand)}"
     "main{max-width:1040px;margin:0 auto;padding:20px}"
@@ -210,34 +250,35 @@ _PROFILE_CSS = (
     "h3.sub{color:var(--brand);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;"
     "margin:22px 0 9px;font-weight:700}"
     ".tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px;margin:4px 0}"
-    ".tile{background:#fff;border:1px solid #e3e9e6;border-radius:12px;padding:12px 14px;"
-    "box-shadow:0 1px 2px rgba(0,0,0,.04)}"
-    ".tile span{display:block;font-size:11px;color:#64726b;text-transform:uppercase;letter-spacing:.04em;"
-    "margin-bottom:4px}"
-    ".tile b{font-size:23px;font-weight:800;color:#15201b;font-variant-numeric:tabular-nums}"
-    ".tbl{overflow-x:auto;border:1px solid #e3e9e6;border-radius:12px;margin:8px 0;background:#fff}"
+    ".tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;"
+    "box-shadow:0 1px 2px var(--shadow)}"
+    ".tile span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;"
+    "letter-spacing:.04em;margin-bottom:4px}"
+    ".tile b{font-size:23px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}"
+    ".tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:var(--card)}"
     "table{border-collapse:collapse;width:100%;font-size:13.5px}"
     "th{background:var(--brand);color:#fff;padding:9px 12px;text-align:left;font-weight:600;white-space:nowrap}"
-    "td{padding:8px 12px;border-top:1px solid #eef2f0;font-variant-numeric:tabular-nums;white-space:nowrap}"
-    "th.r,td.r{text-align:right}tbody tr:nth-child(even){background:#f6f9f7}"
+    "td{padding:8px 12px;border-top:1px solid var(--line2);color:var(--ink);"
+    "font-variant-numeric:tabular-nums;white-space:nowrap}"
+    "th.r,td.r{text-align:right}tbody tr:nth-child(even) td{background:var(--zebra)}"
     ".badges{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 6px}"
-    ".badge{background:#fff;border:1px solid #d9e2dd;border-radius:999px;padding:5px 13px;font-size:12.5px;"
-    "color:#2b3a33;font-weight:500}"
+    ".badge{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 13px;"
+    "font-size:12.5px;color:var(--ink);font-weight:500}"
     ".badge.hon{background:var(--brand);color:#fff;border-color:var(--brand)}"
     ".clubs{display:flex;gap:12px;flex-wrap:wrap;margin:4px 0}"
-    ".clubrow{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #e3e9e6;"
+    ".clubrow{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);"
     "border-radius:12px;padding:7px 15px 7px 7px}"
     ".clubrow img{width:34px;height:34px;object-fit:contain;border-radius:6px;background:#f2f5f3}"
     ".clubrow .mono{width:34px;height:34px;border-radius:6px;background:var(--brand);color:#fff;display:flex;"
     "align-items:center;justify-content:center;font-weight:800;font-size:15px}"
-    ".clubrow b{font-size:14px;font-weight:600}"
-    ".list{margin:6px 0;padding-left:1.1em;font-size:14px}.list li{margin:.3em 0}"
-    ".muted{color:#64726b;font-size:12.5px}"
-    ".scope{background:#f3f6f4;background:color-mix(in srgb,var(--brand) 8%,#fff);"
-    "border:1px solid #d9e2dd;border:1px solid color-mix(in srgb,var(--brand) 26%,#fff);border-radius:10px;"
-    "padding:10px 14px;font-size:13px;color:#2b3a33;margin:2px 0 14px}"
-    ".bio{font-size:14px;line-height:1.6;color:#2b3a33;white-space:pre-wrap;max-width:720px}"
-    "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:#8a938d;font-size:11.5px}"
+    ".clubrow b{font-size:14px;font-weight:600;color:var(--ink)}"
+    ".list{margin:6px 0;padding-left:1.1em;font-size:14px;color:var(--ink)}.list li{margin:.3em 0}"
+    ".muted{color:var(--muted);font-size:12.5px}"
+    ".scope{background:color-mix(in srgb,var(--brand) 12%,var(--card));"
+    "border:1px solid color-mix(in srgb,var(--brand) 32%,var(--card));border-radius:10px;"
+    "padding:10px 14px;font-size:13px;color:var(--ink);margin:2px 0 14px}"
+    ".bio{font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap;max-width:720px}"
+    "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
 
@@ -459,7 +500,22 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
         f"<div class='key'><span>{escape(lbl)}</span><b>{val}</b></div>" for lbl, val in (
             ("Matches", _num(c.get("matches", 0))), ("Runs", _num(bat.get("runs", 0))),
             ("Wickets", _num(bowl.get("wickets", 0))), ("Catches", _num(field.get("catches", 0)))))
-    crest_html = (f"<div class='crest'><img src='{logo}' alt='{club} logo'></div>" if logo else "")
+
+    # Avatar: the player's own (public) photo first, then the club crest, then an initials monogram.
+    photo = snap.get("photo")
+    raw_name = str(snap.get("person_name") or title or "Player")
+    initials = escape("".join(w[0] for w in raw_name.split()[:2]).upper() or "?")
+    if photo:
+        avatar_html = f"<div class='avatar'><img src='{photo}' alt='{name}'></div>"
+    elif logo:
+        avatar_html = f"<div class='avatar crest'><img src='{logo}' alt='{club} logo'></div>"
+    else:
+        avatar_html = f"<div class='avatar mono'>{initials}</div>"
+    # When the photo is the avatar, still show the club crest as a small mark beside the club name.
+    club_mark = f"<img class='club-crest' src='{logo}' alt=''>" if (photo and logo) else ""
+
+    theme = str(brand.get("theme") or "system")
+    theme_class = "theme-" + (theme if theme in ("light", "dark") else "system")
 
     tabs = _profile_tabs(snap)
     tabbar = "".join(
@@ -475,9 +531,9 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         f"<title>{name} — {club}</title>"
         f"<style>:root{{--brand:{primary};--accent:{accent}}}</style>"
-        f"<style>{_PROFILE_CSS}</style></head><body>"
-        f"<header class='hero'><div class='hero-in'>{crest_html}"
-        f"<div class='id'><div class='club'>{club}</div><h1>{name}</h1>{chips_html}{meta_html}</div>"
+        f"<style>{_PROFILE_CSS}</style></head><body class='{theme_class}'>"
+        f"<header class='hero'><div class='hero-in'>{avatar_html}"
+        f"<div class='id'><div class='club'>{club_mark}{club}</div><h1>{name}</h1>{chips_html}{meta_html}</div>"
         f"<div class='keys'>{key_cells}</div></div></header>"
         f"<nav class='tabs' role='tablist'>{tabbar}</nav>"
         f"<main>{panels}{('<div>' + notes + '</div>') if notes else ''}</main>"
