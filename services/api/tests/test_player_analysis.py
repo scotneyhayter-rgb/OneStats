@@ -1,6 +1,8 @@
 """player_analysis pure-function tests (no database)."""
 from __future__ import annotations
 
+from datetime import date
+
 from onestats.domain.records import player_analysis as pa
 
 
@@ -23,3 +25,19 @@ def test_bowl_agg_best_is_most_wickets_then_fewest_runs():
         {"match_id": "m3", "balls": 30, "runs": 2, "wickets": 2, "maidens": 0},
     ]
     assert pa._bowl_agg(rows)["best"] == "3-5"
+
+
+def test_spells_orders_oldest_first_and_buckets_wickets():
+    """Bowling spells feed the Charts tab: innings oldest-first, and a 0..5+ wickets-per-innings frequency.
+    Innings with no recorded wickets (None) are excluded; a 6-for folds into the 5+ bucket."""
+    rows = [
+        {"match_date": date(2020, 3, 1), "wickets": 2, "runs": 30},
+        {"match_date": date(2019, 1, 1), "wickets": 6, "runs": 40},   # earlier → sorts first
+        {"match_date": date(2021, 2, 1), "wickets": 0, "runs": 25},
+        {"match_date": date(2022, 2, 1), "wickets": None, "runs": None},  # not a counted spell
+    ]
+    out = pa._spells(rows)
+    assert [i["date"] for i in out["innings"]] == ["2019-01-01", "2020-03-01", "2021-02-01"]
+    assert out["innings"][0]["wickets"] == 6
+    freq = {b["range"]: b["count"] for b in out["frequency"]}
+    assert freq == {"0": 1, "1": 0, "2": 1, "3": 0, "4": 0, "5+": 1}
