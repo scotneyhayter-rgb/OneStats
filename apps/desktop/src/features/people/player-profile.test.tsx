@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
   profileFull: vi.fn(), getProfile: vi.fn(), profileMatches: vi.fn(), personPhotoUrl: vi.fn(), profilePdfUrl: vi.fn(),
+  profileAnalysis: vi.fn().mockResolvedValue(null), orgLogoObjectUrl: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../../lib/workspace-context", () => ({ useWorkspace: () => ({ current: { id: "w1", name: "RMCC" } }) }));

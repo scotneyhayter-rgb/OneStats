@@ -121,6 +121,7 @@ export function PlayerProfile() {
   const [name, setName] = useState<string>("Player");
   const [photos, setPhotos] = useState<{ id: string; caption: string | null }[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [clubLogos, setClubLogos] = useState<Record<string, string>>({});   // org_id → logo object URL
   const [matches, setMatches] = useState<Record<string, unknown>[] | null>(null);
   const [analysis, setAnalysis] = useState<PlayerAnalysis | null>(null);
   const [splitDim, setSplitDim] = useState<"opposition" | "ground" | "grade" | "format">("opposition");
@@ -165,6 +166,19 @@ export function PlayerProfile() {
     for (const cl of full?.clubs ?? []) if (!seen.has(cl.org_id)) seen.set(cl.org_id, cl.club);
     return [...seen].map(([org_id, club]) => ({ org_id, club }));
   }, [full]);
+
+  // Club crests for the header — each club's uploaded logo (none → nothing shown, never a placeholder).
+  useEffect(() => {
+    if (!current) return;
+    let revoked = false;
+    clubOptions.forEach(({ org_id }) => {
+      if (clubLogos[org_id]) return;
+      api.orgLogoObjectUrl(current.id, org_id).then((u) => {
+        if (u && !revoked) setClubLogos((m) => ({ ...m, [org_id]: u }));
+      }).catch(() => {});
+    });
+    return () => { revoked = true; };
+  }, [current, clubOptions, clubLogos]);
 
   // Per-match chart points (chronological), so even a single-season player shows a trend per innings/match.
   const matchCharts = useMemo(() => {
@@ -304,7 +318,12 @@ export function PlayerProfile() {
                 <Badge variant="brand"><Trophy className="mr-1 h-3 w-3" aria-hidden />
                   {full!.grand_finals.premierships}× premiership{full!.grand_finals.premierships === 1 ? "" : "s"}</Badge>
               )}
-              {(full?.clubs ?? []).slice(0, 2).map((cl) => <span key={cl.team_id} className="text-muted-foreground">{cl.club}</span>)}
+              {(full?.clubs ?? []).slice(0, 2).map((cl) => (
+                <span key={cl.team_id} className="flex items-center gap-1 text-muted-foreground">
+                  {clubLogos[cl.org_id] && <img src={clubLogos[cl.org_id]} alt="" className="h-4 w-4 rounded-sm object-contain" />}
+                  {cl.club}
+                </span>
+              ))}
             </div>
           </div>
           {(full?.detail?.numbers ?? []).length > 0 && (
@@ -671,6 +690,12 @@ export function PlayerProfile() {
                     <LineChart title="Run scores (by innings)" points={analysis.scores.innings.map((s, i) => ({ label: s.date ? formatDate(s.date, dateStyle) : `#${i + 1}`, value: s.runs }))} />
                     <BarChart title="Score frequency" points={analysis.scores.frequency.map((f) => ({ label: f.range, value: f.count }))} />
                   </div>
+                  {(analysis.spells?.innings.length ?? 0) > 0 && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <LineChart title="Wickets (by innings)" points={analysis.spells.innings.map((s, i) => ({ label: s.date ? formatDate(s.date, dateStyle) : `#${i + 1}`, value: s.wickets }))} />
+                      <BarChart title="Wickets per innings" points={analysis.spells.frequency.map((f) => ({ label: f.range, value: f.count }))} />
+                    </div>
+                  )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div><h4 className="mb-1 text-xs font-semibold">How out</h4>
                       {analysis.dismissals.how_out.length === 0 ? <p className="text-xs text-muted-foreground">No dismissals recorded.</p> :

@@ -151,6 +151,7 @@ export interface PlayerAnalysis {
   partnership_totals: { partner: string; runs: number; stands: number; matches: number; best: number; average: number | null }[];
   dismissals: { how_out: { type: string; count: number }[]; dismissed_by: { player: string; count: number }[] };
   scores: { innings: { date: string | null; runs: number; not_out: boolean }[]; frequency: { range: string; count: number }[] };
+  spells: { innings: { date: string | null; wickets: number; runs: number | null }[]; frequency: { range: string; count: number }[] };
 }
 export interface PlayerFullProfile {
   person_id: string;
