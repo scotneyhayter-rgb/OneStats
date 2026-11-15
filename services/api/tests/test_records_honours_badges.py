@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import batting, competitions, matches, people, profiles
+from onestats.domain import batting, bowling, competitions, matches, people, profiles
 from onestats.domain import innings as inn
 from onestats.domain.records import badges, honours
 
@@ -106,3 +106,28 @@ def test_badges_distinguish_calculated_from_awarded(conn):
     assert any(x["source"] == "honorary" for x in b["awarded"])     # life member -> honorary, not calculated
     # 100-runs milestone is a calculated, confirmed badge
     assert any(x["source"] == "calculated" and x["state"] == "achieved_confirmed" for x in b["calculated"])
+
+
+def test_hat_trick_badge_is_calculated_and_only_when_recorded(conn):
+    """A recorded hat-trick yields a calculated 'N× Hat-trick' bowling badge; a bowler with none gets
+    no such badge (it is never inferred from wicket counts)."""
+    wid = _ws(conn, "HT BADGE")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    htb = people.create_person(conn, wid, ACTOR, display_name="Hat-trick Bowler")
+    plain = people.create_person(conn, wid, ACTOR, display_name="Plain Bowler")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=htb, legal_balls=30,
+                         runs_conceded=20, wickets=4, hat_tricks=1)
+    bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=plain, legal_balls=30,
+                         runs_conceded=25, wickets=2)
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    b = badges.person_badges(conn, wid, htb)
+    assert any("hat-trick" in x["label"].lower() and x["source"] == "calculated" for x in b["calculated"])
+    # the bowler with no recorded hat-trick gets no hat-trick badge
+    b2 = badges.person_badges(conn, wid, plain)
+    assert not any("hat-trick" in x["label"].lower() for x in b2["calculated"])

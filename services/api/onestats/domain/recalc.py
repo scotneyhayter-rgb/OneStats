@@ -211,7 +211,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
             "SELECT be.person_id AS pid, be.legal_balls AS balls_raw, be.overs_text AS overs_text, "
             " coalesce(be.maidens,0) AS maidens, coalesce(be.runs_conceded,0) AS runs, "
             " be.runs_conceded AS runs_raw, coalesce(be.wickets,0) AS wickets, be.wickets AS wickets_raw, "
-            " i.bowling_team_id AS team_id "
+            " coalesce(be.hat_tricks,0) AS hat_tricks, i.bowling_team_id AS team_id "
             "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id "
             "WHERE i.match_id = :m AND be.person_id IS NOT NULL"
         ),
@@ -224,7 +224,8 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
     for r in rows:
         a = agg.setdefault(r["pid"], {"team_id": r["team_id"], "innings": 0, "balls": 0, "overs": 0.0,
                                       "balls_known": 0, "maidens": 0, "runs": 0, "wickets": 0, "wickets_known": 0,
-                                      "five_wkt_innings": 0, "bbi_w": -1, "bbi_r": None, "overs_len_known": True})
+                                      "five_wkt_innings": 0, "hat_tricks": 0, "bbi_w": -1, "bbi_r": None,
+                                      "overs_len_known": True})
         a["innings"] += 1
         # Balls/overs come from the recorded legal_balls when present, else from the recorded Overs
         # (``overs_text``) — the source stores overs, not balls, so without this economy/overs read as 0.
@@ -251,6 +252,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
             a["wickets_known"] += 1
         if r["wickets"] >= 5:
             a["five_wkt_innings"] += 1
+        a["hat_tricks"] += r["hat_tricks"]
         # best bowling in an innings: most wickets, then fewest runs
         if r["wickets"] > a["bbi_w"] or (r["wickets"] == a["bbi_w"] and a["bbi_r"] is not None
                                          and r["runs"] < a["bbi_r"]):
@@ -264,6 +266,7 @@ def _calc_player_bowling(conn: Connection, match: dict[str, Any]) -> list[dict[s
                                 "overs": overs, "overs_known": 1 if (a["overs_len_known"] and overs > 0) else 0,
                                 "maidens": a["maidens"], "runs": a["runs"], "wickets": a["wickets"],
                                 "wickets_known": a["wickets_known"], "five_wkt_innings": a["five_wkt_innings"],
+                                "hat_tricks": a["hat_tricks"],
                                 "bbi_wickets": max(a["bbi_w"], 0), "bbi_runs": a["bbi_r"],
                                 "ten_wkt_match": 1 if a["wickets"] >= 10 else 0, "match_wickets": a["wickets"],
                                 "is_home": str(a["team_id"]) == str(home) if home else None,

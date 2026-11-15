@@ -73,7 +73,7 @@ def _build(conn, wid, *, classification="grand_final"):
     batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bat5, batting_position=5,
                          runs=20, balls_faced=18, dismissal_type="stumped", bowler_person_id=bowler, fielder_person_id=keeper)
     bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=bowler, legal_balls=30, maidens=1,
-                         runs_conceded=20, wickets=5)
+                         runs_conceded=20, wickets=5, hat_tricks=1)
     matches.set_result(conn, wid, ACTOR, mid, result_type="home_win", won_by_team_id=home)
     if classification:
         matches.set_classification(conn, wid, ACTOR, mid, classification=classification)
@@ -184,6 +184,7 @@ def test_bowling_engine(conn):
     x = _build(conn, wid)
     row = next(r for r in engine.bowling_leaders(conn, _f(wid), over_length=6) if r["subject_id"] == str(x["bowler"]))
     assert row["wickets"] == 5 and row["five_wkt_innings"] == 1 and row["best_match_wickets"] == 5
+    assert row["hat_tricks"] == 1  # the recorded hat-trick sums through the career aggregation
     assert row["average"] == 4.0 and row["economy"] == 4.0 and row["strike_rate"] == 6.0
 
 

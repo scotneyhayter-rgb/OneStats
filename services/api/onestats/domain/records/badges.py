@@ -38,6 +38,9 @@ def person_badges(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict
     if int(bowl.get("five_wkt_innings", 0)) > 0:
         calculated.append({"label": f"{bowl['five_wkt_innings']}× Five-Wicket Innings", "category": "bowling",
                            "source": "calculated", "state": "achieved_confirmed"})
+    if int(bowl.get("hat_tricks", 0)) > 0:
+        calculated.append({"label": f"{bowl['hat_tricks']}× Hat-trick", "category": "bowling",
+                           "source": "calculated", "state": "achieved_confirmed"})
 
     confirmed: list[dict[str, Any]] = []
     for h in honours.list_honours(conn, workspace_id, person_id=person_id):

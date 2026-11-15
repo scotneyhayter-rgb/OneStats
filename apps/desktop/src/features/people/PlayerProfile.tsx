@@ -507,6 +507,7 @@ export function PlayerProfile() {
                 {statCard("Average", bowl.average, 2)}{statCard("Economy", bowl.economy, 2)}{statCard("Strike rate", bowl.strike_rate, 2)}
                 {statCard("Best bowling", bestBowling)}
                 {statCard("5wi", bowl.five_wkt_innings)}{statCard("Best (match)", bowl.best_match_wickets)}
+                {statCard("Hat-tricks", bowl.hat_tricks)}
               </div>
               {matchCharts.count > 0 && (
                 <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
