@@ -232,14 +232,27 @@ REPORTS: dict[str, dict[str, Any]] = {
         _C("rank", "#", "right"), _C("player", "Player"), _C("score", "Score", "right"),
         _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
         "fn": lambda conn, f, **kw: records_detail.batting_milestones_chronological(
-            conn, f, lo=kw.get("lo", 100), hi=kw.get("hi"))},
+            conn, f, lo=kw.get("lo", 100), hi=kw.get("hi"), today=bool(kw.get("today")))},
     "bowl_haul_chrono": {"title": "Bowling Hauls (Chronological)", "columns": [
         _C("rank", "#", "right"), _C("player", "Player"), _C("figures", "Figures", "right"),
         _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
         "fn": lambda conn, f, **kw: (
             records_detail.bowling_match_hauls_chronological(conn, f, min_wickets=kw.get("min_wickets", 10))
             if kw.get("scope") == "match"
-            else records_detail.bowling_innings_hauls_chronological(conn, f, min_wickets=kw.get("min_wickets", 5)))},
+            else records_detail.bowling_innings_hauls_chronological(
+                conn, f, min_wickets=kw.get("min_wickets", 5), today=bool(kw.get("today"))))},
+    "season_feat_count": {"title": "Best Single-Season Count", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("season", "Season"), _C("count", "Count", "right")],
+        "fn": lambda conn, f, **kw: records_detail.most_feats_in_a_season(conn, f, feat=kw.get("feat", "centuries"))},
+    "century_each_innings": {"title": "A Century in Each Innings", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("scores", "Scores", "right"),
+        _C("ground", "Ground"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: records_detail.century_in_each_innings(conn, f)},
+    "pct_of_total": {"title": "Highest % of Team Innings Total", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("score", "Score", "right"),
+        _C("pct", "% of total", "right", 1), _C("total", "Team total", "right"),
+        _C("opposition", "Opposition"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: records_detail.highest_pct_of_innings_total(conn, f)},
     # --- captaincy by season & comparison ---
     "captaincy_season": {"title": "Captaincy by Season", "columns": [
         _C("season", "Season"), _C("player", "Captain"), _C("captained", "M", "right"), _C("wins", "W", "right"),
@@ -336,6 +349,26 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("bat_fifties_chrono", "Half Centuries Scored In Chronological Order", "Batting",
              "Every half-century (50–99), listed oldest first, with the opposition, ground and season.",
              "bat_milestone_chrono", {"lo": 50, "hi": 99}, ("organisation", "season", "grade", "competition")),
+    CatEntry("bat_on_this_day", "On This Day — Fifties & Hundreds", "Batting",
+             "Scores of 50 or more made on today's date in past seasons (most recent first).",
+             "bat_milestone_chrono", {"lo": 50, "today": True}, ("organisation", "grade", "competition")),
+    CatEntry("bat_centuries_in_season", "Most Centuries in a Season", "Batting",
+             "Each batter's best single-season century count (seasons are never combined).",
+             "season_feat_count", {"feat": "centuries"}, ("grade", "competition")),
+    CatEntry("bat_fifties_in_season", "Most Half-Centuries in a Season", "Batting",
+             "Each batter's best single-season count of fifties (50–99).",
+             "season_feat_count", {"feat": "fifties"}, ("grade", "competition")),
+    CatEntry("bat_ducks_in_season", "Most Ducks in a Season", "Batting",
+             "Each batter's worst single-season duck count (out for nought).",
+             "season_feat_count", {"feat": "ducks"}, ("grade", "competition")),
+    CatEntry("bat_century_each_innings", "A Century in Each Innings", "Batting",
+             "Matches where a batter made a hundred in both innings of the same game.",
+             "century_each_innings", {}, ("organisation", "season", "grade", "competition")),
+    CatEntry("bat_pct_of_total", "Highest % of Team Innings Total", "Batting",
+             "The biggest share a single innings took of its team's recorded total.",
+             "pct_of_total", {}, ("organisation", "season", "grade", "competition"),
+             limitations="Counts only innings with a trustworthy total (an official total or a near-complete "
+                         "card of 7+ recorded batters) of at least 40 runs — so a partial scorecard never reads as 100%."),
     # ---- Bowling ----
     CatEntry("bowl_most_wickets", "Most Wickets", "Bowling", "Leading wicket takers.",
              "bowling", {"order_by": "wickets"}, _SCOPE, limitations=_KNOWN_MIN),
@@ -360,6 +393,10 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("bowl_10wm_chrono", "10 Wickets in a Match In Chronological Order", "Bowling",
              "Every ten-wicket match haul, listed oldest first, with the opposition, ground and season.",
              "bowl_haul_chrono", {"scope": "match", "min_wickets": 10}, ("organisation", "season", "grade", "competition")),
+    CatEntry("bowl_on_this_day", "On This Day — Five-Wicket Hauls", "Bowling",
+             "Five-wicket innings hauls taken on today's date in past seasons (most recent first).",
+             "bowl_haul_chrono", {"scope": "innings", "min_wickets": 5, "today": True},
+             ("organisation", "grade", "competition")),
     CatEntry("bowl_best_match", "Best Bowling in a Match", "Bowling",
              "Best bowling figures in a match — most wickets, then fewest runs conceded (runs tie-break).",
              "best_bowling_match", {}, ("season", "grade", "competition", "split"),
@@ -380,6 +417,9 @@ CATALOGUE: list[CatEntry] = [
     # ---- Fielding ----
     CatEntry("field_most_catches", "Most Catches (all)", "Fielding", "Most catches, including keeper catches.",
              "fielding", {"order_by": "catches"}, _SCOPE_NO_VENUE),
+    CatEntry("field_catches_in_season", "Most Catches in a Season", "Fielding",
+             "Each fielder's best single-season catch count (seasons are never combined).",
+             "season_feat_count", {"feat": "catches"}, ("grade", "competition")),
     CatEntry("field_most_outfield", "Most Outfield Catches", "Fielding", "Most catches taken in the field (non-keeper).",
              "fielding", {"order_by": "field_catches"}, _SCOPE_NO_VENUE),
     CatEntry("field_most_run_outs", "Most Run Outs", "Fielding", "Most run-out involvements credited.",

@@ -139,12 +139,17 @@ _OPP_BAT = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team m
             " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.batting_team_id LIMIT 1)")
 _OPP_BOWL = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
              " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.bowling_team_id LIMIT 1)")
+# restrict to matches played on today's calendar day in any past season ("On This Day")
+_TODAY = ("AND m.match_date IS NOT NULL "
+          "AND extract(month from m.match_date) = extract(month from current_date) "
+          "AND extract(day from m.match_date) = extract(day from current_date)")
 
 
 def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo: int, hi: int | None = None,
-                                     limit: int = 2000) -> list[dict[str, Any]]:
+                                     today: bool = False, limit: int = 2000) -> list[dict[str, Any]]:
     """Every batting innings scoring at least ``lo`` (and at most ``hi`` when given), oldest first — e.g.
-    centuries (lo=100) or half-centuries (lo=50, hi=99), in the order they were made."""
+    centuries (lo=100) or half-centuries (lo=50, hi=99). ``today`` restricts to this calendar day (On This
+    Day) and orders most recent first."""
     where, params = _scope(f, team_col="i.batting_team_id")
     params["lo"] = lo
     params["lim"] = limit
@@ -152,12 +157,14 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
     if hi is not None:
         hi_clause = "AND be.runs <= :hi"
         params["hi"] = hi
+    order = "DESC" if today else "ASC"
     sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BAT} AS opp "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
-           f"WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs >= :lo {hi_clause} AND {where} "
-           "ORDER BY m.match_date ASC NULLS LAST, be.runs DESC LIMIT :lim")
+           f"WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs >= :lo {hi_clause} "
+           f"{_TODAY if today else ''} AND {where} "
+           f"ORDER BY m.match_date {order} NULLS LAST, be.runs DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
     out: list[dict[str, Any]] = []
     for i, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
@@ -169,17 +176,20 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
 
 
 def bowling_innings_hauls_chronological(conn: Connection, f: dict[str, Any], *, min_wickets: int,
-                                        limit: int = 2000) -> list[dict[str, Any]]:
-    """Every bowling innings taking at least ``min_wickets`` wickets, oldest first (e.g. five-wicket hauls)."""
+                                        today: bool = False, limit: int = 2000) -> list[dict[str, Any]]:
+    """Every bowling innings taking at least ``min_wickets`` wickets, oldest first (e.g. five-wicket hauls).
+    ``today`` restricts to this calendar day (On This Day), most recent first."""
     where, params = _scope(f, team_col="i.bowling_team_id")
     params["mw"] = min_wickets
     params["lim"] = limit
+    order = "DESC" if today else "ASC"
     sql = (f"SELECT {_CANON} AS sid, be.wickets AS w, be.runs_conceded AS r, m.match_date AS d, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BOWL} AS opp "
            "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
-           f"WHERE be.person_id IS NOT NULL AND be.wickets IS NOT NULL AND be.wickets >= :mw AND {where} "
-           "ORDER BY m.match_date ASC NULLS LAST, be.wickets DESC LIMIT :lim")
+           f"WHERE be.person_id IS NOT NULL AND be.wickets IS NOT NULL AND be.wickets >= :mw "
+           f"{_TODAY if today else ''} AND {where} "
+           f"ORDER BY m.match_date {order} NULLS LAST, be.wickets DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
     out: list[dict[str, Any]] = []
     for i, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
@@ -214,6 +224,92 @@ def bowling_match_hauls_chronological(conn: Connection, f: dict[str, Any], *, mi
         figs = f"{r['w']}-{r['r']}" if r["r"] is not None else f"{r['w']}-?"
         out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "figures": figs, "opposition": r["opp"], "ground": r["ground"], "season": r["season"],
+                    "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
+_DUCK = ("be.runs = 0 AND be.dismissal_type IS NOT NULL AND be.dismissal_type NOT IN "
+         "('not_out','retired_not_out','dnb','absent','retired','unknown')")
+
+
+def most_feats_in_a_season(conn: Connection, f: dict[str, Any], *, feat: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Each player's best single-season count of a feat — ``centuries`` / ``fifties`` / ``ducks`` (from the
+    batting card) or ``catches`` (from the fielding ledger) — ranked. Seasons are never combined."""
+    where, params = _scope({k: v for k, v in f.items() if k != "season_id"})   # season is the grouping
+    if feat == "catches":
+        src = (f"SELECT {_CANON} AS sid, s.label AS season, sum((c.metrics->>'catches')::int) AS n "
+               "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
+               f"JOIN season s ON s.id = c.season_id WHERE c.calculator = 'player_fielding' AND {where} "
+               f"GROUP BY {_CANON}, s.label")
+    else:
+        cond = {"centuries": "be.runs >= 100", "fifties": "be.runs >= 50 AND be.runs < 100", "ducks": _DUCK}[feat]
+        src = (f"SELECT {_CANON} AS sid, s.label AS season, count(*) AS n "
+               "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+               "JOIN person p ON p.id = be.person_id JOIN season s ON s.id = m.season_id "
+               f"WHERE be.person_id IS NOT NULL AND {cond} AND {where} GROUP BY {_CANON}, s.label")
+    best: dict[str, tuple[int, Any]] = {}
+    for r in conn.execute(text(src), params).mappings():
+        sid, n = str(r["sid"]), int(r["n"] or 0)
+        if n > 0 and (sid not in best or n > best[sid][0]):
+            best[sid] = (n, r["season"])
+    names = _names(conn, f["workspace_id"])
+    out = [{"subject_id": sid, "player": names.get(sid, "Unknown"), "season": season, "count": n}
+           for sid, (n, season) in best.items()]
+    out.sort(key=lambda x: (-x["count"], x["player"]))
+    out = out[:limit]
+    for i, r in enumerate(out, start=1):
+        r["rank"] = i
+    return out
+
+
+def century_in_each_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
+    """Matches where a player made a hundred in BOTH innings (a century in each innings of the same match)."""
+    where, params = _scope(f, team_col="i.batting_team_id")
+    params["lim"] = limit
+    sql = (f"SELECT {_CANON} AS sid, m.match_date AS d, v.name AS ground, "
+           "       array_agg(be.runs ORDER BY i.inns_number) AS scores "
+           "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+           "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
+           f"WHERE be.person_id IS NOT NULL AND be.runs >= 100 AND {where} "
+           f"GROUP BY {_CANON}, m.id, m.match_date, v.name HAVING count(*) >= 2 "
+           "ORDER BY m.match_date DESC NULLS LAST LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out: list[dict[str, Any]] = []
+    for idx, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
+        scores = " & ".join(str(s) for s in r["scores"])
+        out.append({"rank": idx, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "scores": scores, "ground": r["ground"],
+                    "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
+def highest_pct_of_innings_total(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
+    """The biggest share a single innings took of its team's recorded total (runs ÷ innings total). The
+    innings total is the recorded batting runs plus extras; innings whose total is unknown are skipped."""
+    where, params = _scope(f, team_col="i.batting_team_id")
+    params["lim"] = limit
+    computed = ("(coalesce((SELECT sum(b2.runs) FROM batting_entry b2 WHERE b2.innings_id = i.id AND b2.runs IS NOT NULL), 0) "
+                "+ coalesce(i.byes,0)+coalesce(i.legbyes,0)+coalesce(i.wides,0)+coalesce(i.noballs,0)+coalesce(i.penalty,0))")
+    total = f"coalesce(i.official_total, {computed})"
+    # Only count innings whose total is trustworthy: a reviewer-set official total, or a near-complete card
+    # (>= 7 batters with recorded runs). A partial card — e.g. only this batter entered — would otherwise
+    # read as 100% of the total, which is a data gap, not a feat.
+    complete = ("(i.official_total IS NOT NULL OR "
+                "(SELECT count(*) FROM batting_entry b3 WHERE b3.innings_id = i.id AND b3.runs IS NOT NULL) >= 7)")
+    sql = (f"SELECT sid, runs, dt, d, ground, opp, total, round(runs * 100.0 / total, 1) AS pct FROM ("
+           f"  SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, v.name AS ground, "
+           f"         {_OPP_BAT} AS opp, {total} AS total "
+           "  FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+           "  JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
+           f"  WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs > 0 AND {complete} AND {where}) q "
+           "WHERE total >= 40 AND runs <= total ORDER BY runs::numeric / total DESC, runs DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out: list[dict[str, Any]] = []
+    for idx, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
+        not_out = r["dt"] in ("not_out", "retired_not_out")
+        out.append({"rank": idx, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "score": f"{r['runs']}{'*' if not_out else ''}", "pct": float(r["pct"]) if r["pct"] is not None else None,
+                    "total": int(r["total"]), "opposition": r["opp"], "ground": r["ground"],
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
