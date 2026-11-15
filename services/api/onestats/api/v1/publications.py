@@ -200,6 +200,16 @@ def set_status(workspace_id: UUID, pub_id: UUID, body: StatusBody, settings: Set
         return {"id": str(row["id"]), "status": row["status"]}
 
 
+@router.delete("/{pub_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_publication(workspace_id: UUID, pub_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> None:
+    """Permanently remove a publication (unlike unpublish/revoke, which keep the record)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            publishing.delete_publication(conn, workspace_id, str(ctx.user["id"]), pub_id)
+        except ValueError as exc:
+            raise _err(exc) from exc
+
+
 @router.get("/{pub_id}/export")
 def static_export(workspace_id: UUID, pub_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
     """The self-contained files (JSON + HTML) to upload to existing website hosting."""
