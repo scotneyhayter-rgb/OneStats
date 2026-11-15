@@ -327,6 +327,12 @@ def career_view(conn: Connection, person_id: UUID, *, public: bool = False,
     played_for_clubs: list[dict[str, Any]] = []
     if workspace_id is not None:
         from onestats.domain.records import player_profile
+        # Derive each membership's effective start from the player's first recorded match for that club,
+        # so an affiliation with an unknown start date is automatically associated to their first match
+        # (shown, never silently written over the stored value).
+        first_match = player_profile.first_match_by_org(conn, workspace_id, person_id)
+        for a in affs:
+            a["first_match"] = first_match.get(str(a["organisation_id"]))
         affiliated = {str(o) for o in org_ids}
         seen: set[str] = set()
         for ct in player_profile.clubs_and_teams(conn, workspace_id, person_id):
@@ -334,7 +340,7 @@ def career_view(conn: Connection, person_id: UUID, *, public: bool = False,
             if oid in affiliated or oid in seen:
                 continue
             seen.add(oid)
-            played_for_clubs.append({"org_id": oid, "club": ct["club"]})
+            played_for_clubs.append({"org_id": oid, "club": ct["club"], "first_match": first_match.get(oid)})
 
     if public:
         # Internal profile existing never implies public visibility.

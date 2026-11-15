@@ -242,16 +242,11 @@ export function PlayerProfile() {
     }
   };
 
-  // Hover text for the known-minimum ("min.") badge, so the flag explains itself.
-  const KNOWN_MIN_HINT =
-    "At least this many — the total includes innings with unknown figures, so it's a floor, never overstated. Completing those innings can only raise it.";
-
-  const statCard = (label: string, value: unknown, dp?: number, flag?: boolean) => (
+  const statCard = (label: string, value: unknown, dp?: number) => (
     <div className="rounded-[var(--radius-app)] border border-border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-2xl font-semibold tabular-nums">{num(value, dp)}</span>
-        {flag && <Badge variant="warning" title={KNOWN_MIN_HINT}>min.</Badge>}
       </div>
     </div>
   );
@@ -368,14 +363,14 @@ export function PlayerProfile() {
           </div>
           {c?.has_batting && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
+              {statCard("Runs", bat.runs)}
               {statCard("Bat average", bat.average, 2)}
               {statCard("Highest", highest)}
             </div>
           )}
           {c?.has_bowling && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
+              {statCard("Wickets", bowl.wickets)}
               {statCard("Bowl average", bowl.average, 2)}
               {statCard("Best bowling", bestBowling)}
             </div>
@@ -461,7 +456,6 @@ export function PlayerProfile() {
                       <li key={i} className="flex items-center gap-2 py-1.5 text-sm">
                         <Trophy className="h-4 w-4 shrink-0 text-brand" aria-hidden /><span>{r.title}</span>
                         <span className="ml-auto font-semibold tabular-nums">{typeof r.value === "number" ? num(r.value) : r.value}</span>
-                        {r.known_minimum && <Badge variant="warning" title={KNOWN_MIN_HINT}>min.</Badge>}
                       </li>
                     ))}
                   </ul>
@@ -484,7 +478,7 @@ export function PlayerProfile() {
             <>
               <h3 className="text-sm font-semibold">Batting</h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {statCard("Innings", bat.innings)}{statCard("Not outs", bat.not_outs)}{statCard("Runs", bat.runs, undefined, Boolean(bat.runs_known_minimum))}
+                {statCard("Innings", bat.innings)}{statCard("Not outs", bat.not_outs)}{statCard("Runs", bat.runs)}
                 {statCard("Highest", highest)}{statCard("Average", bat.average, 2)}{statCard("Strike rate", bat.strike_rate, 2)}
                 {statCard("50s", bat.fifties)}{statCard("100s", bat.hundreds)}{statCard("Ducks", bat.ducks)}
                 {statCard("Fours", bat.fours)}{statCard("Sixes", bat.sixes)}
@@ -504,7 +498,7 @@ export function PlayerProfile() {
               <h3 className="text-sm font-semibold">Bowling</h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {statCard("Innings", bowl.innings)}{statCard("Overs", bowl.overs, 1)}{statCard("Maidens", bowl.maidens)}
-                {statCard("Runs", bowl.runs)}{statCard("Wickets", bowl.wickets, undefined, Boolean(bowl.wickets_known_minimum))}
+                {statCard("Runs", bowl.runs)}{statCard("Wickets", bowl.wickets)}
                 {statCard("Average", bowl.average, 2)}{statCard("Economy", bowl.economy, 2)}{statCard("Strike rate", bowl.strike_rate, 2)}
                 {statCard("Best bowling", bestBowling)}
                 {statCard("5wi", bowl.five_wkt_innings)}{statCard("Best (match)", bowl.best_match_wickets)}
@@ -550,10 +544,10 @@ export function PlayerProfile() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {statCard("Grand finals", gf.appearances)}
                   {statCard("Premierships", gf.premierships)}
-                  {gf.has_batting && statCard("GF runs", gfb.runs, undefined, Boolean(gfb.runs_known_minimum))}
+                  {gf.has_batting && statCard("GF runs", gfb.runs)}
                   {gf.has_batting && statCard("GF average", gfb.average, 2)}
                   {gf.has_batting && statCard("GF highest", gfb.highest_score)}
-                  {gf.has_bowling && statCard("GF wickets", gfw.wickets, undefined, Boolean(gfw.wickets_known_minimum))}
+                  {gf.has_bowling && statCard("GF wickets", gfw.wickets)}
                   {gf.has_bowling && statCard("GF best (match)", gfw.best_match_wickets)}
                   {gf.has_captaincy && statCard("GF captained", gfc.captained)}
                   {gf.has_captaincy && statCard("GF won as captain", gfc.gf_wins)}

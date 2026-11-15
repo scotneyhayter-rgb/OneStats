@@ -198,6 +198,23 @@ def clubs_and_teams(conn: Connection, workspace_id: UUID, person_id: UUID) -> li
             for r in rows]
 
 
+def first_match_by_org(conn: Connection, workspace_id: UUID, person_id: UUID) -> dict[str, str]:
+    """The earliest recorded match date the player appeared in for each organisation (club), as
+    ``{org_id: 'YYYY-MM-DD'}``. Used to derive an affiliation's effective start when its own date is
+    unknown — a player's time at a club begins, at the latest, at their first match for it. Approved or
+    not: this is the recorded appearance history, the same basis as ``clubs_and_teams``."""
+    ids = _merge_ids(conn, person_id)
+    rows = conn.execute(
+        text("SELECT o.id AS org_id, MIN(m.match_date) AS first_match "
+             "FROM match_stat_contribution c JOIN team t ON t.id = c.team_id "
+             "JOIN organisation o ON o.id = t.organisation_id JOIN match m ON m.id = c.match_id "
+             "WHERE c.workspace_id = :w AND c.subject_id = ANY(CAST(:ids AS uuid[])) AND c.team_id IS NOT NULL "
+             "GROUP BY o.id"),
+        {"w": workspace_id, "ids": ids},
+    ).mappings().all()
+    return {str(r["org_id"]): r["first_match"].isoformat() for r in rows if r["first_match"] is not None}
+
+
 def records_held(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[dict[str, Any]]:
     """All-time records this player currently holds (No.1, or tied No.1)."""
     pid = str(person_id)

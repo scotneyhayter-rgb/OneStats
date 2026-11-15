@@ -209,6 +209,33 @@ def test_career_view_played_for_clubs_from_matches_excludes_recorded_affiliation
     assert profiles.career_view(conn, p)["played_for_clubs"] == []
 
 
+def test_career_view_derives_affiliation_first_match_from_earliest_appearance(conn):
+    import json
+
+    wid = _ws(conn, "FIRST MATCH")
+    p = _person(conn, wid, "D Cosgriff")
+    org = _org(conn, wid, "Rhymney Moyston CC")
+    # An affiliation with NO recorded start date — OneStats should derive it from the first match.
+    affiliations.create_affiliation(conn, wid, ACTOR, person_id=p, organisation_id=org, role="player")
+    team = conn.execute(text("INSERT INTO team(workspace_id, organisation_id, name) VALUES (:w,:o,'RMCC XI') "
+                             "RETURNING id"), {"w": wid, "o": org}).scalar_one()
+    m_early = conn.execute(text("INSERT INTO match(workspace_id, match_date) VALUES (:w,:d) RETURNING id"),
+                           {"w": wid, "d": date(2003, 11, 15)}).scalar_one()
+    m_late = conn.execute(text("INSERT INTO match(workspace_id, match_date) VALUES (:w,:d) RETURNING id"),
+                          {"w": wid, "d": date(2010, 1, 1)}).scalar_one()
+    conn.execute(
+        text("INSERT INTO match_stat_contribution(workspace_id, match_id, calculator, subject_kind, subject_id, "
+             "team_id, metrics) VALUES (:w,:m,'player_appearance','person',:sid,:tid, CAST(:met AS jsonb))"),
+        [{"w": wid, "m": str(m_late), "sid": str(p), "tid": str(team), "met": json.dumps({"matches": 1})},
+         {"w": wid, "m": str(m_early), "sid": str(p), "tid": str(team), "met": json.dumps({"matches": 1})}],
+    )
+    view = profiles.career_view(conn, p, workspace_id=wid)
+    aff = next(a for a in view["affiliations"] if str(a["organisation_id"]) == str(org))
+    assert aff["valid_from"] is None and aff["first_match"] == "2003-11-15"   # earliest appearance, not the later match
+    # Without a workspace_id no appearance lookup runs, so no derived date is attached.
+    assert profiles.career_view(conn, p)["affiliations"][0].get("first_match") is None
+
+
 def test_public_view_strips_internal_and_hidden(conn):
     wid = _ws(conn, "PROF PRIV")
     # public (non-junior) person with a public-visible profile
