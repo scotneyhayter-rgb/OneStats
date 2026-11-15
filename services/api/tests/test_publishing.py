@@ -386,3 +386,12 @@ def test_score_charts_render_self_contained_svg():
     dist = publishing._chart_distribution([{"range": "0-9", "count": 3}, {"range": "100+", "count": 1}])
     assert dist.startswith("<svg") and ">3<" in dist and "0-9" in dist
     assert publishing._chart_scores([]) == "" and publishing._chart_distribution([]) == ""
+
+
+def test_by_season_chart_labels_peak_and_guards_short_input():
+    """The by-season chart directly labels the peak season and tooltips every bar; it needs at least two
+    seasons with data."""
+    seasons = [{"label": "2020/21", "runs": 100, "wickets": 5}, {"label": "2021/22", "runs": 300, "wickets": 2}]
+    rc = publishing._chart_by_season(seasons, "runs", "Runs by season")
+    assert rc.startswith("<svg") and ">300<" in rc and "2021/22: 300" in rc           # peak label + tooltip
+    assert publishing._chart_by_season([{"label": "x", "runs": 10}], "runs", "x") == ""  # needs >= 2
