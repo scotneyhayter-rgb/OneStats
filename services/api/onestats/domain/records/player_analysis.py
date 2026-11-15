@@ -21,12 +21,26 @@ _NON_INNINGS = ("dnb", "absent")                     # not a batting innings
 _APPROVED = "m.approval_status IN ('approved','verified_partial') AND m.include_in_statistics = true"
 
 
+def _org_clause(team_col: str, organisation_id: UUID | None, params: dict[str, Any]) -> str:
+    """Scope an innings query to one club: keep only innings the player played in for a team belonging to
+    ``organisation_id``. ``team_col`` is the innings' own side (``i.batting_team_id`` / ``i.bowling_team_id``).
+    Mirrors the club filter used by the career summary, so a club-scoped profile never mixes in other
+    clubs' figures. Returns an empty string (and adds nothing) when no club is selected."""
+    if organisation_id is None:
+        return ""
+    params["org"] = organisation_id
+    return f" AND {team_col} IN (SELECT id FROM team WHERE organisation_id = :org)"
+
+
 def _names(conn: Connection, workspace_id: UUID) -> dict[str, str]:
     return {str(r["id"]): r["display_name"] for r in conn.execute(
         text("SELECT id, display_name FROM person WHERE workspace_id = :w"), {"w": workspace_id}).mappings()}
 
 
-def _batting_innings(conn: Connection, workspace_id: UUID, ids: list[str]) -> list[dict[str, Any]]:
+def _batting_innings(conn: Connection, workspace_id: UUID, ids: list[str],
+                     organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"ids": ids, "w": workspace_id}
+    org = _org_clause("i.batting_team_id", organisation_id, params)
     rows = conn.execute(
         text(
             "SELECT be.runs, be.balls_faced AS balls, be.dismissal_type AS dt, be.bowler_person_id AS bowler, "
@@ -38,14 +52,17 @@ def _batting_innings(conn: Connection, workspace_id: UUID, ids: list[str]) -> li
             "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
             "LEFT JOIN grade g ON g.id = m.grade_id LEFT JOIN venue v ON v.id = m.venue_id "
             f"WHERE be.person_id = ANY(CAST(:ids AS uuid[])) AND m.workspace_id = :w AND {_APPROVED} "
-            "  AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))"
+            "  AND (be.dismissal_type IS NULL OR be.dismissal_type NOT IN ('dnb','absent'))" + org
         ),
-        {"ids": ids, "w": workspace_id},
+        params,
     ).mappings().all()
     return [dict(r) for r in rows]
 
 
-def _bowling_innings(conn: Connection, workspace_id: UUID, ids: list[str]) -> list[dict[str, Any]]:
+def _bowling_innings(conn: Connection, workspace_id: UUID, ids: list[str],
+                     organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"ids": ids, "w": workspace_id}
+    org = _org_clause("i.bowling_team_id", organisation_id, params)
     rows = conn.execute(
         text(
             "SELECT bo.wickets, bo.runs_conceded AS runs, bo.legal_balls AS balls, bo.maidens, "
@@ -55,9 +72,9 @@ def _bowling_innings(conn: Connection, workspace_id: UUID, ids: list[str]) -> li
             "  WHERE mt.match_id = m.id AND mt.team_id <> i.bowling_team_id LIMIT 1) AS opposition "
             "FROM bowling_entry bo JOIN innings i ON i.id = bo.innings_id JOIN match m ON m.id = i.match_id "
             "LEFT JOIN grade g ON g.id = m.grade_id LEFT JOIN venue v ON v.id = m.venue_id "
-            f"WHERE bo.person_id = ANY(CAST(:ids AS uuid[])) AND m.workspace_id = :w AND {_APPROVED}"
+            f"WHERE bo.person_id = ANY(CAST(:ids AS uuid[])) AND m.workspace_id = :w AND {_APPROVED}" + org
         ),
-        {"ids": ids, "w": workspace_id},
+        params,
     ).mappings().all()
     return [dict(r) for r in rows]
 
@@ -184,7 +201,9 @@ def _spells(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _partnerships(conn: Connection, workspace_id: UUID, ids: list[str], names: dict[str, str],
-                  limit: int) -> list[dict[str, Any]]:
+                  limit: int, organisation_id: UUID | None = None) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"w": workspace_id, "ids": ids, "lim": limit}
+    org = _org_clause("i.batting_team_id", organisation_id, params)
     rows = conn.execute(
         text(
             "SELECT p.runs, p.wicket_number AS wicket, p.unbroken, p.player1_person_id AS a, "
@@ -196,10 +215,10 @@ def _partnerships(conn: Connection, workspace_id: UUID, ids: list[str], names: d
             "LEFT JOIN venue v ON v.id = m.venue_id "
             f"WHERE p.runs IS NOT NULL AND m.workspace_id = :w AND {_APPROVED} "
             "  AND (p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
-            "       OR p.player2_person_id = ANY(CAST(:ids AS uuid[]))) "
-            "ORDER BY p.runs DESC LIMIT :lim"
+            "       OR p.player2_person_id = ANY(CAST(:ids AS uuid[]))) " + org
+            + " ORDER BY p.runs DESC LIMIT :lim"
         ),
-        {"w": workspace_id, "ids": ids, "lim": limit},
+        params,
     ).mappings().all()
     idset = set(ids)
     out = []
@@ -212,9 +231,12 @@ def _partnerships(conn: Connection, workspace_id: UUID, ids: list[str], names: d
 
 
 def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], names: dict[str, str],
-                        limit: int) -> list[dict[str, Any]]:
+                        limit: int, organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     """Career aggregate per partner: total partnership runs put on WITH each other player, the number of
-    recorded stands together, and the best single stand. Pairs are unordered; approved matches only."""
+    recorded stands together, and the best single stand. Pairs are unordered; approved matches only.
+    ``organisation_id`` restricts the stands to those made while batting for that one club."""
+    params: dict[str, Any] = {"w": workspace_id, "ids": ids, "lim": limit}
+    org = _org_clause("i.batting_team_id", organisation_id, params)
     rows = conn.execute(
         text(
             "SELECT CASE WHEN p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
@@ -224,10 +246,10 @@ def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], na
             f"WHERE p.runs IS NOT NULL AND m.workspace_id = :w AND {_APPROVED} "
             "  AND p.player1_person_id IS NOT NULL AND p.player2_person_id IS NOT NULL "
             "  AND (p.player1_person_id = ANY(CAST(:ids AS uuid[])) "
-            "       OR p.player2_person_id = ANY(CAST(:ids AS uuid[]))) "
-            "GROUP BY partner ORDER BY total DESC LIMIT :lim"
+            "       OR p.player2_person_id = ANY(CAST(:ids AS uuid[]))) " + org
+            + " GROUP BY partner ORDER BY total DESC LIMIT :lim"
         ),
-        {"w": workspace_id, "ids": ids, "lim": limit},
+        params,
     ).mappings().all()
     idset = set(ids)
     out = []
@@ -242,18 +264,22 @@ def _partnership_totals(conn: Connection, workspace_id: UUID, ids: list[str], na
     return out
 
 
-def player_analysis(conn: Connection, workspace_id: UUID, person_id: UUID, *, limit: int = 15) -> dict[str, Any]:
+def player_analysis(conn: Connection, workspace_id: UUID, person_id: UUID, *, limit: int = 15,
+                    organisation_id: UUID | None = None) -> dict[str, Any]:
+    """Deep career analysis for the profile. ``organisation_id`` scopes every section — splits, best
+    innings/figures, partnerships, dismissals and the chart series — to the matches the player featured in
+    for that one club, so a club-scoped profile reflects that club alone and never mixes in other clubs."""
     ids = _merge_ids(conn, person_id)
     names = _names(conn, workspace_id)
-    bat = _batting_innings(conn, workspace_id, ids)
-    bowl = _bowling_innings(conn, workspace_id, ids)
+    bat = _batting_innings(conn, workspace_id, ids, organisation_id)
+    bowl = _bowling_innings(conn, workspace_id, ids, organisation_id)
     dims = ("opposition", "ground", "grade", "format")
     return {
         "splits": {d: {"batting": _split(bat, d, _bat_agg), "bowling": _split(bowl, d, _bowl_agg)} for d in dims},
         "best_batting": _best_batting(bat, limit),
         "best_bowling": _best_bowling(bowl, limit),
-        "partnerships": _partnerships(conn, workspace_id, ids, names, limit),
-        "partnership_totals": _partnership_totals(conn, workspace_id, ids, names, limit),
+        "partnerships": _partnerships(conn, workspace_id, ids, names, limit, organisation_id),
+        "partnership_totals": _partnership_totals(conn, workspace_id, ids, names, limit, organisation_id),
         "dismissals": _dismissals(bat, names),
         "scores": _scores(bat),
         "spells": _spells(bowl),

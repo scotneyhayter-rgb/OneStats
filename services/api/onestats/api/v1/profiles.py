@@ -140,16 +140,18 @@ def career_stats(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx
 
 
 @router.get("/{person_id}/seasons")
-def profile_seasons(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> list[dict[str, Any]]:
+def profile_seasons(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                    organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return player_profile.season_breakdown(conn, workspace_id, person_id)
+        return player_profile.season_breakdown(conn, workspace_id, person_id, organisation_id=organisation_id)
 
 
 @router.get("/{person_id}/matches")
 def profile_matches(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
-                    limit: int = 500) -> list[dict[str, Any]]:
+                    limit: int = 500, organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return player_profile.match_history(conn, workspace_id, person_id, limit=limit)
+        return player_profile.match_history(conn, workspace_id, person_id, limit=limit,
+                                            organisation_id=organisation_id)
 
 
 @router.get("/{person_id}/full-profile")
@@ -165,12 +167,14 @@ def full_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx
 
 
 @router.get("/{person_id}/analysis")
-def player_analysis(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx) -> dict[str, Any]:
+def player_analysis(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: ViewCtx,
+                    organisation_id: UUID | None = None) -> dict[str, Any]:
     """Career analysis for the profile: performance splits (opposition/ground/grade/format), best batting &
-    bowling, top partnerships, dismissal analysis and chart series — approved data, one engine, no copy."""
+    bowling, top partnerships, dismissal analysis and chart series — approved data, one engine, no copy.
+    ``organisation_id`` scopes every section to one club, matching the profile screen's club selector."""
     from onestats.domain.records import player_analysis as pa
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        return pa.player_analysis(conn, workspace_id, person_id)
+        return pa.player_analysis(conn, workspace_id, person_id, organisation_id=organisation_id)
 
 
 @router.get("/{person_id}/profile.pdf")

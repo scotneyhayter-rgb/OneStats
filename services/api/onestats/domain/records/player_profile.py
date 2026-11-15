@@ -111,19 +111,28 @@ def _highest_and_bbi(conn: Connection, workspace_id: UUID, person_id: UUID,
     return highest_not_out, best_bowling
 
 
-def season_breakdown(conn: Connection, workspace_id: UUID, person_id: UUID) -> list[dict[str, Any]]:
+def season_breakdown(conn: Connection, workspace_id: UUID, person_id: UUID,
+                     organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     """Per-season career line. Seasons the player appeared in, each with that season's figures (not
-    combined across seasons; a player in two grades in one season is aggregated for the season line)."""
+    combined across seasons; a player in two grades in one season is aggregated for the season line).
+    ``organisation_id`` restricts the line to seasons (and figures) for that one club."""
     ids = _merge_ids(conn, person_id)
+    params: dict[str, Any] = {"w": workspace_id, "ids": ids}
+    org_scope = ""
+    if organisation_id is not None:
+        org_scope = " AND c.team_id IN (SELECT id FROM team WHERE organisation_id = :org)"
+        params["org"] = organisation_id
     seasons = conn.execute(
         text("SELECT DISTINCT s.id, s.label, s.start_date FROM season s JOIN match_stat_contribution c "
-             "ON c.season_id = s.id WHERE c.workspace_id = :w AND c.subject_id = ANY(CAST(:ids AS uuid[])) "
-             "ORDER BY s.start_date NULLS LAST, s.label"),
-        {"w": workspace_id, "ids": ids},
+             "ON c.season_id = s.id WHERE c.workspace_id = :w AND c.subject_id = ANY(CAST(:ids AS uuid[]))"
+             + org_scope + " ORDER BY s.start_date NULLS LAST, s.label"),
+        params,
     ).mappings().all()
     out = []
     for s in seasons:
-        f = {"workspace_id": workspace_id, "season_id": s["id"]}
+        f: dict[str, Any] = {"workspace_id": workspace_id, "season_id": s["id"]}
+        if organisation_id is not None:
+            f["organisation_id"] = organisation_id
         bat = engine.person_batting(conn, f, person_id)
         bowl = engine.person_bowling(conn, f, person_id)
         field = engine.person_fielding(conn, f, person_id)
@@ -137,10 +146,17 @@ def season_breakdown(conn: Connection, workspace_id: UUID, person_id: UUID) -> l
     return out
 
 
-def match_history(conn: Connection, workspace_id: UUID, person_id: UUID, *, limit: int = 500) -> list[dict[str, Any]]:
+def match_history(conn: Connection, workspace_id: UUID, person_id: UUID, *, limit: int = 500,
+                  organisation_id: UUID | None = None) -> list[dict[str, Any]]:
     """Match-by-match career: each match the player featured in, with their batting/bowling/fielding line,
-    captaincy flag, opposition/venue/result. Missing figures are left null (not shown as zero)."""
+    captaincy flag, opposition/venue/result. Missing figures are left null (not shown as zero).
+    ``organisation_id`` restricts the list to matches the player featured in for that one club."""
     ids = _merge_ids(conn, person_id)
+    params: dict[str, Any] = {"w": workspace_id, "ids": ids, "lim": limit}
+    org_scope = ""
+    if organisation_id is not None:
+        org_scope = " AND team_id IN (SELECT id FROM team WHERE organisation_id = :org)"
+        params["org"] = organisation_id
     rows = conn.execute(
         text(
             "SELECT m.id, m.match_date, m.classification, m.result_type, m.competition_id, "
@@ -161,10 +177,10 @@ def match_history(conn: Connection, workspace_id: UUID, person_id: UUID, *, limi
             "        AND x2.subject_id = ANY(CAST(:ids AS uuid[])) AND x2.team_id IS NOT NULL LIMIT 1) LIMIT 1) AS opposition "
             "FROM match m WHERE m.workspace_id = :w AND m.id IN ("
             "   SELECT DISTINCT match_id FROM match_stat_contribution WHERE workspace_id = :w "
-            "     AND subject_id = ANY(CAST(:ids AS uuid[]))) "
+            "     AND subject_id = ANY(CAST(:ids AS uuid[]))" + org_scope + ") "
             "ORDER BY m.match_date DESC NULLS LAST LIMIT :lim"
         ),
-        {"w": workspace_id, "ids": ids, "lim": limit},
+        params,
     ).mappings().all()
     out = []
     for r in rows:
@@ -345,7 +361,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
         "span": career_matches_span(conn, workspace_id, person_id, organisation_id=organisation_id),
         "career": career_summary(conn, workspace_id, person_id, competition_id=competition_id,
                                  season_id=season_id, organisation_id=organisation_id),
-        "seasons": season_breakdown(conn, workspace_id, person_id),
+        "seasons": season_breakdown(conn, workspace_id, person_id, organisation_id=organisation_id),
         "clubs": clubs_and_teams(conn, workspace_id, person_id),
         "records": records_held(conn, workspace_id, person_id),
         "season_leaderships": season_leaderships(conn, workspace_id, person_id),

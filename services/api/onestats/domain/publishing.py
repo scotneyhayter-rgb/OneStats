@@ -172,18 +172,20 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
                      "is_wicketkeeper": det.get("is_wicketkeeper"), "biography": det.get("biography"),
                      "numbers": det.get("numbers") or [],
                      "leadership": det.get("leadership") or [], "recognition": det.get("recognition") or []}
-    # When a club is chosen, the published figures are that club's ONLY: full_profile scopes career, match
-    # span and grand finals by organisation. Season-by-season and all-time records are NOT club-scoped, so
-    # they are omitted on a club-scoped profile rather than leak figures from other clubs. Honours and
-    # badges stay — they are the player's own recognition, not other clubs' match statistics.
+    # When a club is chosen, every published figure is that club's ONLY: full_profile scopes career, match
+    # span, grand finals AND the season-by-season line by organisation, and the deep analysis / match list
+    # below are scoped too — so a club profile carries the same reports as the whole-career one, for that
+    # club alone, never leaking another club's figures. All-time records held are workspace-wide (not a
+    # single-club figure), so they are the one report omitted on a club profile. Honours and badges stay —
+    # they are the player's own recognition, not other clubs' match statistics.
     scope_club = None
-    seasons = prof.get("seasons") or []
+    seasons = prof.get("seasons") or []        # full_profile scopes these by club when org_id is set
     records = prof.get("records") or []
     clubs = _club_crests(conn, settings, workspace_id, prof.get("clubs"))
     if org_id is not None:
         scope_club = next((c.get("club") for c in (prof.get("clubs") or [])
                            if str(c.get("org_id")) == str(org_id)), None)
-        seasons, records = [], []
+        records = []                           # all-time records held are workspace-wide, not club-scoped
         clubs = [c for c in clubs if c["club"] == scope_club]  # don't list other clubs on a club profile
     b = prof.get("badges") or {}
     collapsed = _collapse_badge_ladders(b.get("calculated") or [])
@@ -196,9 +198,10 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
     brand = {**brand, "logo": _logo_data_uri(settings, workspace_id, brand.get("logo_ref"))}
     photo = _public_photo_data_uri(conn, settings, workspace_id, person_id)
     # Deep analysis (best innings/spells, partnerships, splits by opposition/ground/grade/format, how-out)
-    # is whole-career only — the splits span every club, so it is omitted on a single-club profile.
-    analysis = player_analysis.player_analysis(conn, workspace_id, person_id) if org_id is None else None
-    matches = player_profile.match_history(conn, workspace_id, person_id) if org_id is None else None
+    # and the match-by-match list are scoped to the chosen club when one is selected (org_id), so a
+    # club-scoped profile shows the same reports as the whole-career one — restricted to that club.
+    analysis = player_analysis.player_analysis(conn, workspace_id, person_id, organisation_id=org_id)
+    matches = player_profile.match_history(conn, workspace_id, person_id, organisation_id=org_id)
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
             "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club, "photo": photo,
             "analysis": analysis, "matches": matches,

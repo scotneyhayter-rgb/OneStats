@@ -148,17 +148,20 @@ export function PlayerProfile() {
   }, [current, personId, clubFilter]);
   useEffect(() => { void load(); }, [load]);
 
+  // Changing the club scope invalidates the on-demand match/analysis data so it refetches for the new club.
+  useEffect(() => { setMatches(null); setAnalysis(null); }, [clubFilter]);
+
   useEffect(() => {
     // match data backs both the Matches table and the per-match charts on Batting/Bowling
     if (!current || !personId || matches || !["matches", "batting", "bowling"].includes(tab)) return;
-    api.profileMatches(current.id, personId).then(setMatches).catch(() => setMatches([]));
-  }, [tab, current, personId, matches]);
+    api.profileMatches(current.id, personId, clubFilter || undefined).then(setMatches).catch(() => setMatches([]));
+  }, [tab, current, personId, matches, clubFilter]);
 
   useEffect(() => {
-    // career analysis (splits / best / partnerships / charts) — loaded on demand
+    // career analysis (splits / best / partnerships / charts) — loaded on demand, scoped to the chosen club
     if (!current || !personId || analysis || !["splits", "best", "partnerships", "analysis"].includes(tab)) return;
-    api.profileAnalysis(current.id, personId).then(setAnalysis).catch(() => setAnalysis(null));
-  }, [tab, current, personId, analysis]);
+    api.profileAnalysis(current.id, personId, clubFilter || undefined).then(setAnalysis).catch(() => setAnalysis(null));
+  }, [tab, current, personId, analysis, clubFilter]);
 
   // Distinct clubs the player has represented (one entry per club, not per team), for the club selector.
   const clubOptions = useMemo(() => {
