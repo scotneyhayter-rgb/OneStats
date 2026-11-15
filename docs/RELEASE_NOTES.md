@@ -4,6 +4,21 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.8 — 2026-11-15
+
+Scorecard hat-tricks and run-outs, plus a portal link fix.
+
+**Changed since beta.7:**
+- **Bowling cards can now record hat-tricks and run-outs**, mirroring CricketStatz: the bowling grid
+  has an **HT** column (hat-tricks taken by each bowler) and a **Run-outs / unassigned wickets** box for
+  wickets not credited to any bowler, with a wickets reconciliation line (bowler W + run-outs = wickets
+  fallen, max 10). Both are recorded, never derived; unknown stays unknown, never zero.
+- **Fixed: the Member Portal's "Open" links did nothing** — they now open the published report/profile
+  at its real address instead of a path that resolved to the app itself.
+
+> Installed manually, like beta.7 (self-update is not enabled). Installing runs the new database
+> migration automatically.
+
 ## 1.0.0-beta.7 — 2026-11-15
 
 Live publishing to a static host, richer stats navigation, affiliation clean-up, and more polish.
