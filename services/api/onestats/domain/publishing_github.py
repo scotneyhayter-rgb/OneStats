@@ -16,7 +16,6 @@ Security & integrity:
 """
 from __future__ import annotations
 
-import base64
 import re
 from typing import Any
 from uuid import UUID
@@ -120,7 +119,7 @@ def publish_to_github(conn: Connection, workspace_id: UUID, actor: str,
 
     files = publishing.site_export(conn, workspace_id)
     headers = {**_HEADERS, "Authorization": f"Bearer {token}"}
-    with httpx.Client(base_url=_GITHUB_API, headers=headers, transport=transport, timeout=60.0) as client:
+    with httpx.Client(base_url=_GITHUB_API, headers=headers, transport=transport, timeout=120.0) as client:
         # Resolve the current branch tip (if the repo already has one). A brand-new empty repo has no ref
         # yet (404/409) — then we create the first commit with no parent and initialise the branch.
         ref = client.get(f"/repos/{owner}/{name}/git/ref/heads/{branch}")
@@ -132,17 +131,11 @@ def publish_to_github(conn: Connection, workspace_id: UUID, actor: str,
         elif ref.status_code not in (404, 409):
             raise ValueError(_detail(ref))
 
-        # One blob per file (base64 so any content is safe), then a complete tree (no base_tree, so the
-        # commit is an exact mirror of the export — removed/unpublished items disappear).
-        tree: list[dict[str, Any]] = []
-        for path, content in files.items():
-            blob = client.post(f"/repos/{owner}/{name}/git/blobs",
-                               json={"content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-                                     "encoding": "base64"})
-            if blob.status_code not in (200, 201):
-                raise ValueError(_detail(blob))
-            tree.append({"path": path, "mode": "100644", "type": "blob", "sha": blob.json()["sha"]})
-
+        # Build the whole tree in ONE request: each file's text goes inline as `content`, so GitHub creates
+        # the blobs server-side — no per-file blob POST (far fewer round trips for a large site). No
+        # base_tree, so the commit is an exact mirror of the export (removed/unpublished items disappear).
+        tree = [{"path": path, "mode": "100644", "type": "blob", "content": content}
+                for path, content in files.items()]
         tree_resp = client.post(f"/repos/{owner}/{name}/git/trees", json={"tree": tree})
         if tree_resp.status_code not in (200, 201):
             raise ValueError(_detail(tree_resp))
