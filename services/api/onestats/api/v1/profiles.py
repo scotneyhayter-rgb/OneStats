@@ -107,6 +107,10 @@ class PhotoMeta(BaseModel):
     public_visible: bool = False
 
 
+class PhotoVisibility(BaseModel):
+    public_visible: bool
+
+
 @router.get("/{person_id}/profile")
 def get_profile(workspace_id: UUID, person_id: UUID, settings: SettingsDep, ctx: PCtx) -> dict[str, Any]:
     with workspace_transaction(_engine(settings), workspace_id) as conn:
@@ -298,6 +302,19 @@ def get_photo_file(workspace_id: UUID, photo_id: UUID, settings: SettingsDep, ct
     if path is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "photo_file_missing")
     return FileResponse(str(path))
+
+
+@router.patch("/photos/{photo_id}")
+def update_photo(workspace_id: UUID, photo_id: UUID, body: PhotoVisibility, settings: SettingsDep,
+                 ctx: PCtx) -> dict[str, Any]:
+    """Set whether a photo is shown on the published public profile (per-photo opt-in)."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        try:
+            row = profiles.set_photo_visibility(conn, workspace_id, str(ctx.user["id"]), photo_id,
+                                                body.public_visible)
+        except ValueError as exc:
+            raise _value_error(exc) from exc
+        return _ids(row)
 
 
 @router.delete("/photos/{photo_id}")

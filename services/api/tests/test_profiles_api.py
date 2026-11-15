@@ -30,6 +30,7 @@ def test_profile_routes_registered(client):
     assert f"{base}/{{person_id}}/recognition" in paths
     assert f"{base}/{{person_id}}/photos" in paths
     assert f"{base}/photos/{{photo_id}}/file" in paths
+    assert "patch" in client.app.openapi()["paths"][f"{base}/photos/{{photo_id}}"]   # per-photo public toggle
 
 
 def test_profile_endpoints_require_authentication(client):
@@ -40,3 +41,4 @@ def test_profile_endpoints_require_authentication(client):
     assert client.put(f"{base}/{pid}/profile", json={"biography": "x"}).status_code == 401
     assert client.post(f"{base}/{pid}/recognition", json={"recognition_type": "life_member"}).status_code == 401
     assert client.get(f"{base}/photos/{uuid.uuid4()}/file").status_code == 401
+    assert client.patch(f"{base}/photos/{uuid.uuid4()}", json={"public_visible": True}).status_code == 401

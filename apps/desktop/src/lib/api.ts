@@ -1815,6 +1815,9 @@ export const api = {
   },
   deletePersonPhoto: (w: string, photoId: string) =>
     request<void>(`/api/v1/workspaces/${w}/people/photos/${photoId}`, { method: "DELETE" }),
+  setPhotoPublic: (w: string, photoId: string, publicVisible: boolean) =>
+    request<{ id: string; public_visible: boolean }>(`/api/v1/workspaces/${w}/people/photos/${photoId}`,
+      { method: "PATCH", body: { public_visible: publicVisible } }),
   addPersonNumber: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/numbers`, { method: "POST", body }),
   addPersonLeadership: (w: string, id: string, body: Record<string, unknown>) =>

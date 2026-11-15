@@ -276,6 +276,20 @@ def get_photo(conn: Connection, photo_id: UUID) -> dict[str, Any] | None:
     return dict(r) if r else None
 
 
+def set_photo_visibility(conn: Connection, workspace_id: UUID, actor: str, photo_id: UUID,
+                         public_visible: bool) -> dict[str, Any]:
+    """Clear (or un-clear) a photo for public display. Only a photo marked ``public_visible`` is ever
+    embedded in a published profile, so this is the explicit, per-photo opt-in for the public page."""
+    row = get_photo(conn, photo_id)
+    if row is None:
+        raise ValueError("photo_not_found")
+    conn.execute(text("UPDATE person_photo SET public_visible = :v WHERE id = :id"),
+                 {"v": bool(public_visible), "id": photo_id})
+    audit.write_audit(conn, workspace_id, actor, "person_photo.visibility", entity="person",
+                      entity_id=str(row["person_id"]), after={"public_visible": bool(public_visible)})
+    return get_photo(conn, photo_id) or row
+
+
 def delete_photo(conn: Connection, workspace_id: UUID, actor: str, photo_id: UUID) -> dict[str, Any] | None:
     row = get_photo(conn, photo_id)
     if row is None:
