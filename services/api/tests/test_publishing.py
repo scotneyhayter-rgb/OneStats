@@ -331,6 +331,8 @@ def test_profile_recognition_becomes_an_honour_badge():
     }
     html = publishing._render_profile_page(snap, "Honoured Player", "", "slug")
     assert "badge hon" in html and "Life Member" in html
+    # Also a prominent gold honour badge in the hero, so it shows on every tab (not only Overview/Honours).
+    assert "hon-badge" in html and html.count("Life Member") >= 2
 
 
 def test_delete_publication_removes_it_entirely(seeded, conn):
@@ -386,6 +388,18 @@ def test_score_charts_render_self_contained_svg():
     dist = publishing._chart_distribution([{"range": "0-9", "count": 3}, {"range": "100+", "count": 1}])
     assert dist.startswith("<svg") and ">3<" in dist and "0-9" in dist
     assert publishing._chart_scores([]) == "" and publishing._chart_distribution([]) == ""
+
+
+def test_wicket_chart_renders_self_contained_svg():
+    """The bowling chart is self-contained inline SVG: a five-wicket reference line, and each bar tooltips
+    the date and figures. It needs at least two recorded spells."""
+    wk = publishing._chart_wickets([
+        {"date": "2020-01-01", "wickets": 2, "runs": 30},
+        {"date": "2020-02-01", "wickets": 5, "runs": 12},
+    ])
+    assert wk.startswith("<svg") and "class='ref'" in wk and "5-12" in wk and "<title>" in wk
+    assert publishing._chart_wickets([]) == ""
+    assert publishing._chart_wickets([{"date": "2020-01-01", "wickets": 3, "runs": 20}]) == ""  # needs ≥2
 
 
 def test_by_season_chart_labels_peak_and_guards_short_input():

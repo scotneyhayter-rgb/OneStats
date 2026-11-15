@@ -167,6 +167,22 @@ def _scores(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"innings": innings, "frequency": [{"range": b, "count": freq[b]} for b in buckets]}
 
 
+def _spells(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Bowling spells chronologically (oldest first) plus a wickets-per-innings frequency, for the bowling
+    charts — mirrors :func:`_scores`. Only innings where wickets were recorded are counted."""
+    bowled = sorted((r for r in rows if r["wickets"] is not None),
+                    key=lambda r: (r["match_date"] is None, r["match_date"]))
+    innings = [{"date": r["match_date"].isoformat() if r["match_date"] else None,
+                "wickets": int(r["wickets"] or 0),
+                "runs": int(r["runs"]) if r["runs"] is not None else None} for r in bowled]
+    buckets = ["0", "1", "2", "3", "4", "5+"]
+    freq = {b: 0 for b in buckets}
+    for r in bowled:
+        w = int(r["wickets"] or 0)
+        freq["5+" if w >= 5 else str(w)] += 1
+    return {"innings": innings, "frequency": [{"range": b, "count": freq[b]} for b in buckets]}
+
+
 def _partnerships(conn: Connection, workspace_id: UUID, ids: list[str], names: dict[str, str],
                   limit: int) -> list[dict[str, Any]]:
     rows = conn.execute(
@@ -240,4 +256,5 @@ def player_analysis(conn: Connection, workspace_id: UUID, person_id: UUID, *, li
         "partnership_totals": _partnership_totals(conn, workspace_id, ids, names, limit),
         "dismissals": _dismissals(bat, names),
         "scores": _scores(bat),
+        "spells": _spells(bowl),
     }

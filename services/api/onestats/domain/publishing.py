@@ -283,6 +283,43 @@ def _chart_distribution(freq: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
+def _chart_wickets(innings: list[dict[str, Any]]) -> str:
+    """Wickets innings-by-innings as thin columns (oldest left), a single brand hue, with a dashed
+    five-wicket reference line and a per-bar native tooltip showing the figures. Self-contained SVG."""
+    pts = [r for r in innings if r.get("wickets") is not None]
+    if len(pts) < 2:
+        return ""
+    w, h, ml, mr, mt, mb = 760, 200, 20, 10, 14, 22
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(pts)
+    maxv = max(5, max(int(r["wickets"]) for r in pts))
+    step = pw / n
+    bw = max(1.0, step * 0.82)
+
+    def y_of(v: float) -> float:
+        return mt + ph - (v / maxv) * ph
+
+    parts = [(f"<svg class='chart' viewBox='0 0 {w} {h}' role='img' preserveAspectRatio='xMidYMid meet' "
+              "aria-label='Wickets innings by innings'>")]
+    parts.append(f"<line class='grid' x1='{ml}' y1='{mt + ph:.1f}' x2='{w - mr}' y2='{mt + ph:.1f}'/>")
+    if maxv >= 5:
+        yy = y_of(5)
+        parts.append(f"<line class='ref' x1='{ml}' y1='{yy:.1f}' x2='{w - mr}' y2='{yy:.1f}'/>")
+        parts.append(f"<text x='{ml - 4}' y='{yy + 3:.1f}' text-anchor='end'>5</text>")
+    for i, r in enumerate(pts):
+        v = int(r["wickets"])
+        x = ml + i * step + (step - bw) / 2
+        yy = y_of(v)
+        runs = r.get("runs")
+        fig = f"{v}-{runs}" if runs is not None else str(v)
+        parts.append(f"<rect class='bar' x='{x:.1f}' y='{yy:.1f}' width='{bw:.1f}' height='{mt + ph - yy:.1f}' "
+                     f"rx='1'><title>{escape(str(r.get('date') or ''))}: {escape(fig)}</title></rect>")
+    parts.append(f"<text x='{ml}' y='{h - 6}' text-anchor='start'>Oldest</text>")
+    parts.append(f"<text x='{w - mr}' y='{h - 6}' text-anchor='end'>Most recent</text>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def _chart_by_season(seasons: list[dict[str, Any]], field: str, aria: str) -> str:
     """A column per season (chronological) for one measure — runs or wickets. Single brand hue, the peak
     season directly labelled, sparse season ticks, per-bar tooltips. Self-contained SVG."""
@@ -351,6 +388,10 @@ _PROFILE_CSS = (
     ".chips{display:flex;gap:7px;flex-wrap:wrap;margin:.1em 0}"
     ".chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:999px;"
     "padding:3px 11px;font-size:12.5px;font-weight:500}"
+    ".honours{display:flex;gap:7px;flex-wrap:wrap;margin:.5em 0 .1em}"
+    ".hon-badge{background:linear-gradient(135deg,#f7dc82,#e6b43f);color:#3a2c04;border-radius:999px;"
+    "padding:3px 12px;font-size:12.5px;font-weight:700;letter-spacing:.01em;"
+    "box-shadow:0 1px 4px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.35)}"
     ".hero .meta{font-size:12.5px;opacity:.9;margin-top:.5em}"
     ".keys{display:flex;gap:10px;flex-wrap:wrap}"
     ".key{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.24);border-radius:12px;"
@@ -657,6 +698,17 @@ def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None
     if dist:
         charts.append("<h3 class='sub'>Score distribution</h3>" + dist
                       + "<p class='caption'>How many innings fell in each score band.</p>")
+    # ---- Bowling charts (wickets innings-by-innings + wickets-per-innings distribution) ----
+    spells = an.get("spells") or {}
+    wk = _chart_wickets(spells.get("innings") or [])
+    if wk:
+        charts.append("<h3 class='sub'>Wickets — innings by innings</h3>" + wk
+                      + "<p class='caption'>Each bar is one bowling innings, oldest on the left. The dashed "
+                        "line marks a five-wicket haul. Hover a bar for the date and figures.</p>")
+    wdist = _chart_distribution(spells.get("frequency") or [])
+    if wdist:
+        charts.append("<h3 class='sub'>Wickets per innings</h3>" + wdist
+                      + "<p class='caption'>How many bowling innings returned each number of wickets.</p>")
     if charts:
         tabs.append(("charts", "Charts", "".join(charts)))
 
@@ -771,6 +823,22 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
         chips.append("<span class='chip'>No. " + escape(", ".join(str(n) for n in det["numbers"])) + "</span>")
     chips_html = f"<div class='chips'>{''.join(chips)}</div>" if chips else ""
 
+    # Honour-grade recognitions (Life Member, honorary member, …) and awarded honour badges lead the hero
+    # as gold badges, so the player's standing is visible on every tab — not only on the Overview/Honours
+    # panel. These are the player's own recognition, kept on club-scoped profiles too.
+    hon_labels: list[str] = []
+    for r in (det.get("recognition") or []):
+        lab = str(r.get("label") or "").strip()
+        if lab and lab not in hon_labels:
+            hon_labels.append(lab)
+    for x in ((snap.get("badges") or {}).get("awarded") or []):
+        lab = str(x.get("label") or "").strip()
+        if lab and lab not in hon_labels:
+            hon_labels.append(lab)
+    honours_html = ("<div class='honours'>"
+                    + "".join(f"<span class='hon-badge'>★ {escape(lab)}</span>" for lab in hon_labels)
+                    + "</div>") if hon_labels else ""
+
     def _edge(e: dict[str, Any] | None) -> str | None:
         if not e or not e.get("date"):
             return None
@@ -821,7 +889,7 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
         f"<style>:root{{--brand:{primary};--accent:{accent}}}</style>"
         f"<style>{_PROFILE_CSS}</style></head><body class='{theme_class}'>"
         f"<header class='hero'><div class='hero-in'>{avatar_html}"
-        f"<div class='id'><div class='club'>{club_mark}{club}</div><h1>{name}</h1>{chips_html}{meta_html}</div>"
+        f"<div class='id'><div class='club'>{club_mark}{club}</div><h1>{name}</h1>{chips_html}{honours_html}{meta_html}</div>"
         f"<div class='keys'>{key_cells}</div></div></header>"
         f"<nav class='tabs' role='tablist'>{tabbar}</nav>"
         f"<main>{panels}{('<div>' + notes + '</div>') if notes else ''}</main>"
