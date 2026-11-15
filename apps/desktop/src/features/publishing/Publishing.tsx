@@ -34,6 +34,7 @@ export function Publishing() {
   const [ghBranch, setGhBranch] = useState("main");
   const [ghToken, setGhToken] = useState("");
   const [ghBusy, setGhBusy] = useState(false);
+  const [ghResult, setGhResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [toRemove, setToRemove] = useState<Publication | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,14 +107,18 @@ export function Publishing() {
 
   const publishGithub = useCallback(async () => {
     if (!current) return;
-    setError(null); setMsg(null); setGhBusy(true);
+    setError(null); setMsg(null); setGhResult(null); setGhBusy(true);
     try {
       const r = await api.publicationGithubPublish(current.id);
-      setMsg(`Published to GitHub — ${r.files} files committed (${r.commit.slice(0, 7)}).`
-        + (r.pages_url ? ` Live shortly at ${r.pages_url}` : " Enable GitHub Pages on the repo if you haven't yet."));
+      const text = `Pushed ${r.files} file${r.files === 1 ? "" : "s"} to ${r.repo} (commit ${r.commit.slice(0, 7)}). `
+        + (r.pages_url
+          ? `Your site is live shortly at ${r.pages_url}`
+          : "GitHub Pages isn't enabled on the repo yet — turn it on at Settings → Pages → Deploy from a branch → "
+            + `${r.branch} → / (root). (Your token needs Pages: Read and write for OneStats to do that for you.)`);
+      setGhResult({ ok: true, text });
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "GitHub publish failed.");
+      setGhResult({ ok: false, text: e instanceof ApiError ? e.message : "GitHub publish failed — check the repo and token." });
     } finally { setGhBusy(false); }
   }, [current, load]);
 
@@ -204,6 +209,12 @@ export function Publishing() {
             </Button>
             {gh?.token_set && <span className="text-xs text-success">Connected{gh.repo ? ` to ${gh.repo}` : ""}</span>}
           </div>
+          {ghBusy && <p className="text-xs text-muted-foreground">Pushing your whole site to GitHub… this can take a moment for a large club.</p>}
+          {ghResult && (
+            <p className={`rounded-[var(--radius-app)] border px-3 py-2 text-xs ${ghResult.ok ? "border-success/40 bg-success/5 text-success" : "border-danger/40 bg-danger/5 text-danger"}`}>
+              {ghResult.text}
+            </p>
+          )}
           <p className="text-[11px] text-muted-foreground">
             Create a token at GitHub → Settings → Developer settings → Fine-grained tokens, scoped to just
             this one repository with <b>Contents: Read and write</b> (add <b>Pages: Read and write</b> to let
