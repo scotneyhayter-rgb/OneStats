@@ -1,5 +1,6 @@
 import { GitMerge, Plus, Undo2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -61,20 +62,42 @@ export function PeopleManagement() {
 // ------------------------------------------------------------------ directory
 
 function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; canManage: boolean; onMsg: (m: string) => void }) {
+  const navigate = useNavigate();
+  // Search / role / page live in the URL, so opening a player and pressing Back lands you right back on
+  // the same search, filter and page — you never lose your place while browsing the roster.
+  const [params, setParams] = useSearchParams();
+  const search = params.get("q") ?? "";
+  const role = params.get("role") ?? "";
+  const page = Math.max(0, Number(params.get("page") ?? "0") || 0);
   const [people, setPeople] = useState<Person[]>([]);
-  const [search, setSearch] = useState("");
-  const [role, setRole] = useState("");
-  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const PAGE = 25;
 
+  const setParam = (key: "q" | "role" | "page", value: string) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value); else next.delete(key);
+      if (key !== "page") next.delete("page");   // changing the search/filter resets to page 1
+      return next;
+    }, { replace: true });
+
+  // Debounce the term sent to the server so typing stays snappy; the input itself updates instantly.
+  const [debounced, setDebounced] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const opts: { role?: string } = {};
+      // Server-side search covers names, aliases and initials (the client-only filter did not); it also
+      // avoids loading the whole roster to search it.
+      const opts: { search?: string; role?: string } = {};
+      if (debounced) opts.search = debounced;
       if (role) opts.role = role;
       setPeople(await api.listPeople(workspaceId, opts));
     } catch (e) {
@@ -82,34 +105,37 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, role]);
+  }, [workspaceId, role, debounced]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const filtered = people.filter((p) => p.display_name.toLowerCase().includes(search.toLowerCase()));
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
-  const shown = filtered.slice(page * PAGE, page * PAGE + PAGE);
+  const pages = Math.max(1, Math.ceil(people.length / PAGE));
+  const safePage = Math.min(page, pages - 1);
+  const shown = people.slice(safePage * PAGE, safePage * PAGE + PAGE);
 
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Input placeholder="Search name / alias / initials..." value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="max-w-xs" />
-        <Select value={role} onChange={(e) => setRole(e.target.value)} className="max-w-[12rem]">
+          onChange={(e) => setParam("q", e.target.value)} className="max-w-xs" />
+        <Select value={role} onChange={(e) => setParam("role", e.target.value)} className="max-w-[12rem]">
           <option value="">All roles</option>
           {ROLES.map((r) => <option key={r} value={r}>{humanise(r)}</option>)}
         </Select>
+        {!loading && !error && people.length > 0 && (
+          <span className="text-xs text-muted-foreground">{people.length} {people.length === 1 ? "person" : "people"}</span>
+        )}
         <div className="flex-1" />
         {canManage && <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" aria-hidden /> New person</Button>}
       </div>
 
       {loading && <TableSkeleton rows={8} cols={4} />}
       {!loading && error && <ErrorState message={error} onRetry={() => void load()} />}
-      {!loading && !error && filtered.length === 0 && (
-        <EmptyState icon={<Users className="h-8 w-8" aria-hidden />} title="No people"
-          description={canManage ? "Add a person or import from Cricket Statz." : "Nothing to show yet."} />
+      {!loading && !error && people.length === 0 && (
+        <EmptyState icon={<Users className="h-8 w-8" aria-hidden />} title={search || role ? "No matching people" : "No people"}
+          description={search || role ? "Try a different name or role." : canManage ? "Add a person or import from Cricket Statz." : "Nothing to show yet."} />
       )}
       {!loading && !error && shown.length > 0 && (
         <>
@@ -118,7 +144,7 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
               <Card key={p.id} className="hover:border-brand">
                 <CardContent className="flex items-center gap-3 py-3">
                   <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-                    onClick={() => { window.location.hash = `#/people/${p.id}`; }}
+                    onClick={() => navigate(`/people/${p.id}`)}
                     aria-label={`Open ${p.display_name}'s career profile`}>
                     <Users className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                     <div className="min-w-0 flex-1">
@@ -128,16 +154,16 @@ function Directory({ workspaceId, canManage, onMsg }: { workspaceId: string; can
                   </button>
                   {p.is_junior && <Badge variant="warning">junior</Badge>}
                   {p.merged_into_id && <Badge variant="muted">merged</Badge>}
-                  <Button size="sm" variant="outline" onClick={() => { window.location.hash = `#/people/${p.id}/manage`; }}>Manage</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/people/${p.id}/manage`)}>Manage</Button>
                 </CardContent>
               </Card>
             ))}
           </div>
           {pages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
-              <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Prev</Button>
-              <span className="text-muted-foreground">Page {page + 1} of {pages}</span>
-              <Button size="sm" variant="outline" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)}>Next</Button>
+              <Button size="sm" variant="outline" disabled={safePage === 0} onClick={() => setParam("page", String(safePage - 1))}>Prev</Button>
+              <span className="text-muted-foreground">Page {safePage + 1} of {pages}</span>
+              <Button size="sm" variant="outline" disabled={safePage >= pages - 1} onClick={() => setParam("page", String(safePage + 1))}>Next</Button>
             </div>
           )}
         </>

@@ -6,7 +6,7 @@
  */
 
 import { ChevronDown, ChevronRight, Plus, Trash2, Trophy } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states/States";
@@ -56,7 +56,8 @@ export function Scorecard() {
   const dateStyle = useDateStyle();   // re-render the list when the date-format preference changes
   // Return-to-last-match: remember the match just closed, then scroll to & highlight it in the list.
   const [returnToId, setReturnToId] = useState<string | null>(null);
-  // Collapsible season groups (collapsed labels); all expanded by default.
+  // Collapsible season groups (set holds the COLLAPSED season labels). Collapsed by default on open so
+  // the screen is a tidy, navigable list of seasons (see the first-load effect below).
   const [collapsedSeasons, setCollapsedSeasons] = useState<Set<string>>(new Set());
   // Deep-link: ?open=<matchId> opens that match's editor directly (e.g. from a Research Centre gap);
   // ?season=<id>&label=<label> scopes the list to one season (from the Research Centre's Season view).
@@ -93,6 +94,17 @@ export function Scorecard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // On first open, collapse every season so the Matches screen is a tidy, scannable list of seasons —
+  // the user expands the one they want instead of scrolling a long flat list. Applied once; a scoped
+  // (season/issue) deep-link is already narrowed, so it stays expanded.
+  const didCollapse = useRef(false);
+  useEffect(() => {
+    if (didCollapse.current || matches.length === 0) return;
+    didCollapse.current = true;
+    if (seasonFilter || issueFilter) return;
+    setCollapsedSeasons(new Set(matches.map((m) => seasonOf(m.match_date))));
+  }, [matches, seasonFilter, issueFilter]);
 
   // Honour ?open=<matchId> and/or ?season=<id>&label=<label> deep-links once, then strip the params
   // (keeping the season scope in state) so Back returns to the list without re-triggering.
@@ -260,6 +272,16 @@ export function Scorecard() {
               onClick={() => setIssueFilter("")}
               className="ml-0.5 rounded-full px-1 hover:bg-warning/20">✕</button>
           </span>
+        )}
+        {seasonGroups.length > 1 && (
+          <Button size="sm" variant="ghost"
+            onClick={() => {
+              const labels = seasonGroups.map((g) => g.season);
+              const anyExpanded = labels.some((s) => !collapsedSeasons.has(s));
+              setCollapsedSeasons(anyExpanded ? new Set(labels) : new Set());
+            }}>
+            {seasonGroups.some((g) => !collapsedSeasons.has(g.season)) ? "Collapse all" : "Expand all"}
+          </Button>
         )}
         <div className="flex-1" />
         {canManage && (
