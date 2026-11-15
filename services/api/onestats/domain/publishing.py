@@ -26,7 +26,7 @@ from sqlalchemy.engine import Connection
 
 from onestats.core.config import Settings
 from onestats.domain import audit, branding, logos, photos, profiles
-from onestats.domain.records import player_profile
+from onestats.domain.records import player_analysis, player_profile
 from onestats.reports import catalogue
 
 _COLS = ("id, workspace_id, kind, report_id, person_id, title, filters, slug, status, stale, "
@@ -168,8 +168,12 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
         quals.insert(0, f"Statistics shown for {scope_club} only — figures from other clubs are not included.")
     brand = {**brand, "logo": _logo_data_uri(settings, workspace_id, brand.get("logo_ref"))}
     photo = _public_photo_data_uri(conn, settings, workspace_id, person_id)
+    # Deep analysis (best innings/spells, partnerships, splits by opposition/ground/grade/format, how-out)
+    # is whole-career only — the splits span every club, so it is omitted on a single-club profile.
+    analysis = player_analysis.player_analysis(conn, workspace_id, person_id) if org_id is None else None
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
             "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club, "photo": photo,
+            "analysis": analysis,
             "career": prof["career"], "seasons": seasons, "records": records, "clubs": clubs,
             "grand_finals": prof.get("grand_finals"), "badges": badges,
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
@@ -184,6 +188,17 @@ def _num(v: Any, dp: int = 0) -> str:
     if isinstance(v, float):
         return f"{v:.{dp}f}"
     return escape(str(v))
+
+
+def _date(s: Any) -> str:
+    """Format an ISO date (YYYY-MM-DD) as '17 Feb 2018'; pass other strings through, unknown → em dash."""
+    if not s:
+        return "—"
+    try:
+        d = datetime.fromisoformat(str(s)[:10]).date()
+    except ValueError:
+        return escape(str(s))
+    return d.strftime("%d %b %Y").lstrip("0")
 
 
 def _tiles(pairs: list[tuple[str, str]]) -> str:
@@ -325,6 +340,17 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
         ("Wickets", _num(bowl.get("wickets", 0))), ("Bowl avg", _num(bowl.get("average"), 2)),
         ("Best bowling", _bb(bowl)), ("Catches", _num(field.get("catches", 0))),
         ("Stumpings", _num(field.get("stumpings", 0))), ("Run-outs", _num(field.get("run_outs", 0)))]))
+    # Headline highlights with the opponent (e.g. "HS 120* v Pomonal · BB 4-3 v Chalambar").
+    an_ov = snap.get("analysis") or {}
+    hl: list[str] = []
+    for key, lbl, fld in (("best_batting", "HS", "score"), ("best_bowling", "BB", "figures")):
+        top = (an_ov.get(key) or [])
+        if top:
+            opp = top[0].get("opposition")
+            hl.append(f"{lbl} <b>{escape(str(top[0].get(fld) or ''))}</b>"
+                      + (f" v {escape(str(opp))}" if opp else ""))
+    if hl:
+        ov.append("<p class='muted' style='margin:2px 0 8px'>" + " &nbsp;·&nbsp; ".join(hl) + "</p>")
     clubs = snap.get("clubs") or []
     if clubs:
         rows = []
@@ -442,7 +468,100 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
     if hon:
         tabs.append(("honours", "Honours & Records", "".join(hon)))
 
+    _analysis_tabs(snap.get("analysis") or {}, tabs)
     return tabs
+
+
+def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None:
+    """Append the CricketStatz-style deep-dive tabs from the whole-career analysis: best batting/bowling,
+    splits (by opposition/ground/grade/format), top partnerships, and dismissal analysis."""
+    # ---- Best performances ----
+    bb_rows, bw_rows = an.get("best_batting") or [], an.get("best_bowling") or []
+    if bb_rows or bw_rows:
+        parts: list[str] = []
+        if bb_rows:
+            rows = [f"<tr><td class='r'>{i + 1}</td><td class='r'><b>{escape(str(r.get('score') or ''))}</b></td>"
+                    f"<td>{escape(str(r.get('opposition') or '—'))}</td><td>{escape(str(r.get('ground') or '—'))}</td>"
+                    f"<td>{_date(r.get('date'))}</td><td class='r'>{_num(r.get('position'))}</td></tr>"
+                    for i, r in enumerate(bb_rows)]
+            parts.append("<h3 class='sub'>Best batting</h3>" + _table(
+                [("#", "r"), ("Score", "r"), ("Opposition", ""), ("Ground", ""), ("Date", ""), ("Pos", "r")], rows))
+        if bw_rows:
+            rows = [f"<tr><td class='r'>{i + 1}</td><td class='r'><b>{escape(str(r.get('figures') or ''))}</b></td>"
+                    f"<td>{escape(str(r.get('opposition') or '—'))}</td><td>{escape(str(r.get('ground') or '—'))}</td>"
+                    f"<td>{_date(r.get('date'))}</td></tr>"
+                    for i, r in enumerate(bw_rows)]
+            parts.append("<h3 class='sub'>Best bowling</h3>" + _table(
+                [("#", "r"), ("Figures", "r"), ("Opposition", ""), ("Ground", ""), ("Date", "")], rows))
+        tabs.append(("best", "Best", "".join(parts)))
+
+    # ---- Splits (by opposition / ground / grade / format) ----
+    splits = an.get("splits") or {}
+    sp: list[str] = []
+    for dim, title, head in (("opposition", "By opposition", "Opposition"), ("ground", "By ground", "Ground"),
+                             ("grade", "By grade", "Grade"), ("format", "By format", "Format")):
+        s = splits.get(dim) or {}
+        bat_rows, bowl_rows = s.get("batting") or [], s.get("bowling") or []
+        if not bat_rows and not bowl_rows:
+            continue
+        sp.append(f"<h3 class='sub'>{escape(title)}</h3>")
+        if bat_rows:
+            rows = ["<tr><td>" + escape(str(r.get("label") or "—")) + "</td>" + "".join(
+                f"<td class='r'>{v}</td>" for v in (
+                    _num(r.get("matches")), _num(r.get("innings")), _num(r.get("runs")), _num(r.get("average"), 2),
+                    escape(str(r.get("high_score") or "—")), _num(r.get("fifties")), _num(r.get("hundreds")))) + "</tr>"
+                for r in bat_rows]
+            sp.append("<p class='muted' style='margin:6px 0 2px'>Batting</p>" + _table(
+                [(head, ""), ("M", "r"), ("Inns", "r"), ("Runs", "r"), ("Avg", "r"), ("HS", "r"),
+                 ("50", "r"), ("100", "r")], rows))
+        if bowl_rows:
+            rows = ["<tr><td>" + escape(str(r.get("label") or "—")) + "</td>" + "".join(
+                f"<td class='r'>{v}</td>" for v in (
+                    _num(r.get("matches")), escape(str(r.get("overs") or "—")), _num(r.get("maidens")),
+                    _num(r.get("runs")), _num(r.get("wickets")), _num(r.get("average"), 2),
+                    _num(r.get("economy"), 2), escape(str(r.get("best") or "—")))) + "</tr>"
+                for r in bowl_rows]
+            sp.append("<p class='muted' style='margin:6px 0 2px'>Bowling &amp; fielding</p>" + _table(
+                [(head, ""), ("M", "r"), ("Overs", "r"), ("Mdns", "r"), ("Runs", "r"), ("Wkts", "r"),
+                 ("Avg", "r"), ("Econ", "r"), ("BB", "r")], rows))
+    if sp:
+        tabs.append(("splits", "Splits", "".join(sp)))
+
+    # ---- Partnerships ----
+    parts_rows, totals = an.get("partnerships") or [], an.get("partnership_totals") or []
+    if parts_rows or totals:
+        ph: list[str] = []
+        if parts_rows:
+            rows = [f"<tr><td class='r'>{i + 1}</td>"
+                    f"<td class='r'><b>{_num(r.get('runs'))}{'*' if r.get('unbroken') else ''}</b></td>"
+                    f"<td>{escape(str(r.get('partner') or '—'))}</td><td>{escape(str(r.get('opposition') or '—'))}</td>"
+                    f"<td>{escape(str(r.get('ground') or '—'))}</td><td>{_date(r.get('date'))}</td></tr>"
+                    for i, r in enumerate(parts_rows)]
+            ph.append("<h3 class='sub'>Highest partnerships</h3>" + _table(
+                [("#", "r"), ("Runs", "r"), ("Partner", ""), ("Opposition", ""), ("Ground", ""), ("Date", "")], rows))
+        if totals:
+            rows = ["<tr><td>" + escape(str(r.get("partner") or "—")) + "</td>" + "".join(
+                f"<td class='r'>{v}</td>" for v in (
+                    _num(r.get("runs")), _num(r.get("stands")), _num(r.get("best")), _num(r.get("average"), 2))) + "</tr>"
+                for r in totals]
+            ph.append("<h3 class='sub'>Most runs added with</h3>" + _table(
+                [("Partner", ""), ("Runs", "r"), ("Stands", "r"), ("Best", "r"), ("Avg", "r")], rows))
+        tabs.append(("partnerships", "Partnerships", "".join(ph)))
+
+    # ---- Dismissals ----
+    dis = an.get("dismissals") or {}
+    how, by = dis.get("how_out") or [], dis.get("dismissed_by") or []
+    if how or by:
+        dh: list[str] = []
+        if how:
+            rows = ["<tr><td>" + escape(str(r.get("type") or "").title()) + "</td><td class='r'>"
+                    + _num(r.get("count")) + "</td></tr>" for r in how]
+            dh.append("<h3 class='sub'>How out</h3>" + _table([("Dismissal", ""), ("Count", "r")], rows))
+        if by:
+            rows = ["<tr><td>" + escape(str(r.get("player") or "—")) + "</td><td class='r'>"
+                    + _num(r.get("count")) + "</td></tr>" for r in by]
+            dh.append("<h3 class='sub'>Most often dismissed by</h3>" + _table([("Bowler", ""), ("Times", "r")], rows))
+        tabs.append(("dismissals", "Dismissals", "".join(dh)))
 
 
 def _hs(bat: dict[str, Any]) -> str:
