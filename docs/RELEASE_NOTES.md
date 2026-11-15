@@ -4,6 +4,30 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.10 — 2026-11-15
+
+A much deeper public player profile, more reports, and in-app navigation polish.
+
+**Changed since beta.9:**
+- **Comprehensive public player profile.** The published profile is now CricketStatz-grade: besides the
+  earlier tabs it adds **Best** (top innings & spells), **Charts** (scores innings-by-innings and a score
+  distribution), **Splits** (by opposition / ground / grade / format), **Partnerships**, **Dismissals** and
+  a **match-by-match log** — and the **Seasons** tab now shows runs-by-season and wickets-by-season charts.
+  **Recognitions** such as Life Member now appear as badges, and published **report** pages are branded to
+  match. All approved public data only, self-contained, light/dark aware.
+- **New reports:** Centuries / Half-Centuries in chronological order, 5-wickets-in-an-innings and
+  10-wickets-in-a-match in chronological order, **On This Day** (batting & bowling), Most Centuries /
+  Half-Centuries / Ducks / Catches **in a Season**, A Century in Each Innings, and Highest % of a Team's
+  Innings Total.
+- **Navigation polish:** the Matches screen opens with seasons **collapsed** (with Expand/Collapse all),
+  and the People directory now searches server-side (names, aliases, initials) and **keeps your place** —
+  open a player and come back to the same search, filter and page.
+- **Remove published items:** a published report or profile can now be permanently removed.
+- **One-click Publish to GitHub** (from beta.9) is included.
+
+> Installed manually, like beta.9 (self-update is not enabled). Installing runs the new database
+> migrations automatically.
+
 ## 1.0.0-beta.9 — 2026-11-15
 
 Live publishing to GitHub in one click, a redesigned public player profile, and career hat-tricks.
