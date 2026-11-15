@@ -153,6 +153,23 @@ def test_photo_metadata_primary_toggle(conn):
     assert len(primaries) == 1 and primaries[0]["media_key"] == "photo-b.jpg"  # only one primary
 
 
+def test_photo_public_visibility_toggle(conn):
+    """A photo is private by default and can be cleared for the public profile (per-photo opt-in), then
+    hidden again. An unknown photo id is rejected."""
+    wid = _ws(conn, "PROF WS6")
+    p = _person(conn, wid, "Public Figure")
+    profiles.register_photo(conn, wid, ACTOR, p, media_key="pic.jpg", is_primary=True)
+    photo_id = profiles.list_photos(conn, p)[0]["id"]
+    assert profiles.list_photos(conn, p)[0]["public_visible"] is False       # private by default
+    profiles.set_photo_visibility(conn, wid, ACTOR, photo_id, True)
+    assert profiles.list_photos(conn, p)[0]["public_visible"] is True
+    profiles.set_photo_visibility(conn, wid, ACTOR, photo_id, False)
+    assert profiles.list_photos(conn, p)[0]["public_visible"] is False
+    import uuid
+    with pytest.raises(ValueError, match="photo_not_found"):
+        profiles.set_photo_visibility(conn, wid, ACTOR, uuid.uuid4(), True)
+
+
 # ----------------------------------------------------------- career view (RMCC) + privacy
 
 

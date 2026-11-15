@@ -118,6 +118,13 @@ export function PlayerManage() {
     try { await api.deletePersonPhoto(workspaceId, photoId); onChanged("Photo removed."); await load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Could not remove photo."); }
   };
+  const setPhotoPublic = async (photoId: string, pub: boolean) => {
+    try {
+      await api.setPhotoPublic(workspaceId, photoId, pub);
+      onChanged(pub ? "Photo will show on the published public profile." : "Photo hidden from the public profile.");
+      await load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not update the photo."); }
+  };
 
   const saveBio = async () => {
     setBusy(true);
@@ -448,13 +455,23 @@ export function PlayerManage() {
                   <h3 className={sectionH}>Photo</h3>
                   <div className="flex flex-wrap items-center gap-3">
                     {(view?.photos ?? []).map((p: any) => (
-                      <div key={p.id} className="relative">
-                        {photoUrls[p.id]
-                          ? <img src={photoUrls[p.id]} alt="" className="h-20 w-20 rounded-full object-cover" />
-                          : <div className="h-20 w-20 rounded-full bg-muted" />}
-                        {canManage && <button type="button" aria-label="Remove photo"
-                          className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-xs text-muted-foreground hover:text-danger"
-                          onClick={() => void removePhoto(p.id)}>×</button>}
+                      <div key={p.id} className="flex flex-col items-center gap-1">
+                        <div className="relative">
+                          {photoUrls[p.id]
+                            ? <img src={photoUrls[p.id]} alt="" className="h-20 w-20 rounded-full object-cover" />
+                            : <div className="h-20 w-20 rounded-full bg-muted" />}
+                          {canManage && <button type="button" aria-label="Remove photo"
+                            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-xs text-muted-foreground hover:text-danger"
+                            onClick={() => void removePhoto(p.id)}>×</button>}
+                        </div>
+                        {canManage && (
+                          <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground"
+                            title="Show this photo on the published public profile">
+                            <input type="checkbox" checked={!!p.public_visible}
+                              onChange={(e) => void setPhotoPublic(p.id, e.target.checked)} />
+                            Public
+                          </label>
+                        )}
                       </div>
                     ))}
                     {canManage && (
