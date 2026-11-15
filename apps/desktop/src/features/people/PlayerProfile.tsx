@@ -320,7 +320,8 @@ export function PlayerProfile() {
           <div className={`flex flex-wrap gap-2 ${(full?.detail?.numbers ?? []).length > 0 ? "" : "ml-auto"}`}>
             <ResearchThisButton query={`${name} cricket player records statistics`}
               context={{ player: name, club: (full?.clubs ?? [])[0]?.club }} />
-            <Button size="sm" variant="outline" onClick={() => navigate("/people")}>Directory</Button>
+            <Button size="sm" variant="outline"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/people"))}>Directory</Button>
             <Button size="sm" variant="outline" onClick={() => void publishProfile()}>Publish</Button>
             <Button size="sm" onClick={() => void exportPdf()}><Download className="h-4 w-4" aria-hidden /> Export PDF</Button>
           </div>
