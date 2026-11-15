@@ -135,6 +135,89 @@ def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 
             for r in conn.execute(text(sql), params).mappings()]
 
 
+_OPP_BAT = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
+            " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.batting_team_id LIMIT 1)")
+_OPP_BOWL = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
+             " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.bowling_team_id LIMIT 1)")
+
+
+def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo: int, hi: int | None = None,
+                                     limit: int = 2000) -> list[dict[str, Any]]:
+    """Every batting innings scoring at least ``lo`` (and at most ``hi`` when given), oldest first — e.g.
+    centuries (lo=100) or half-centuries (lo=50, hi=99), in the order they were made."""
+    where, params = _scope(f, team_col="i.batting_team_id")
+    params["lo"] = lo
+    params["lim"] = limit
+    hi_clause = ""
+    if hi is not None:
+        hi_clause = "AND be.runs <= :hi"
+        params["hi"] = hi
+    sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, "
+           f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BAT} AS opp "
+           "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+           "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
+           f"WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs >= :lo {hi_clause} AND {where} "
+           "ORDER BY m.match_date ASC NULLS LAST, be.runs DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out: list[dict[str, Any]] = []
+    for i, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
+        not_out = r["dt"] in ("not_out", "retired_not_out")
+        out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "score": f"{r['runs']}{'*' if not_out else ''}", "opposition": r["opp"], "ground": r["ground"],
+                    "season": r["season"], "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
+def bowling_innings_hauls_chronological(conn: Connection, f: dict[str, Any], *, min_wickets: int,
+                                        limit: int = 2000) -> list[dict[str, Any]]:
+    """Every bowling innings taking at least ``min_wickets`` wickets, oldest first (e.g. five-wicket hauls)."""
+    where, params = _scope(f, team_col="i.bowling_team_id")
+    params["mw"] = min_wickets
+    params["lim"] = limit
+    sql = (f"SELECT {_CANON} AS sid, be.wickets AS w, be.runs_conceded AS r, m.match_date AS d, "
+           f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BOWL} AS opp "
+           "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
+           "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
+           f"WHERE be.person_id IS NOT NULL AND be.wickets IS NOT NULL AND be.wickets >= :mw AND {where} "
+           "ORDER BY m.match_date ASC NULLS LAST, be.wickets DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out: list[dict[str, Any]] = []
+    for i, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
+        figs = f"{r['w']}-{r['r']}" if r["r"] is not None else f"{r['w']}-?"
+        out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "figures": figs, "opposition": r["opp"], "ground": r["ground"], "season": r["season"],
+                    "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
+def bowling_match_hauls_chronological(conn: Connection, f: dict[str, Any], *, min_wickets: int,
+                                      limit: int = 2000) -> list[dict[str, Any]]:
+    """Every match in which a bowler took at least ``min_wickets`` wickets across the match, oldest first
+    (e.g. ten-wicket match hauls). Match wickets/runs come from the verified per-match ledger."""
+    where, params = _scope(f, team_col="c.team_id")
+    params["mw"] = min_wickets
+    params["lim"] = limit
+    opp = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
+           " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = c.match_id AND mt.team_id <> c.team_id LIMIT 1)")
+    sql = (f"SELECT {_CANON} AS sid, max((c.metrics->>'match_wickets')::int) AS w, "
+           "       sum((c.metrics->>'runs')::int) AS r, m.match_date AS d, v.name AS ground, "
+           f"       (SELECT label FROM season WHERE id = m.season_id) AS season, {opp} AS opp "
+           "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
+           "LEFT JOIN venue v ON v.id = m.venue_id "
+           f"WHERE c.calculator = 'player_bowling' AND {where} "
+           f"GROUP BY {_CANON}, c.match_id, m.match_date, v.name, m.season_id, c.team_id "
+           "HAVING max((c.metrics->>'match_wickets')::int) >= :mw "
+           "ORDER BY m.match_date ASC NULLS LAST, w DESC LIMIT :lim")
+    names = _names(conn, f["workspace_id"])
+    out: list[dict[str, Any]] = []
+    for i, r in enumerate(conn.execute(text(sql), params).mappings(), start=1):
+        figs = f"{r['w']}-{r['r']}" if r["r"] is not None else f"{r['w']}-?"
+        out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
+                    "figures": figs, "opposition": r["opp"], "ground": r["ground"], "season": r["season"],
+                    "match_date": r["d"].isoformat() if r["d"] else None})
+    return out
+
+
 def most_scores_in_range(conn: Connection, f: dict[str, Any], *, lo: int, hi: int,
                          limit: int = 50) -> list[dict[str, Any]]:
     """Count innings with a score in [lo, hi] per player (e.g. 40s = 40–49, 90s = 90–99)."""

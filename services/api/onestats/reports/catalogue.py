@@ -227,6 +227,19 @@ REPORTS: dict[str, dict[str, Any]] = {
         _C("rank", "#", "right"), _C("player", "Player"), _C("wickets", "Wkts", "right"),
         _C("runs", "Runs", "right"), _C("match_date", "Date")],
         "fn": lambda conn, f, **kw: records_detail.best_bowling_in_match(conn, f)},
+    # --- chronological milestone lists (every qualifying innings/match, oldest first) ---
+    "bat_milestone_chrono": {"title": "Batting Milestones (Chronological)", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("score", "Score", "right"),
+        _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: records_detail.batting_milestones_chronological(
+            conn, f, lo=kw.get("lo", 100), hi=kw.get("hi"))},
+    "bowl_haul_chrono": {"title": "Bowling Hauls (Chronological)", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("figures", "Figures", "right"),
+        _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
+        "fn": lambda conn, f, **kw: (
+            records_detail.bowling_match_hauls_chronological(conn, f, min_wickets=kw.get("min_wickets", 10))
+            if kw.get("scope") == "match"
+            else records_detail.bowling_innings_hauls_chronological(conn, f, min_wickets=kw.get("min_wickets", 5)))},
     # --- captaincy by season & comparison ---
     "captaincy_season": {"title": "Captaincy by Season", "columns": [
         _C("season", "Season"), _C("player", "Captain"), _C("captained", "M", "right"), _C("wins", "W", "right"),
@@ -317,6 +330,12 @@ CATALOGUE: list[CatEntry] = [
              "scores_range", {"lo": 90, "hi": 99}, ("season", "grade", "competition", "split")),
     CatEntry("bat_most_40s", "Most Scores in the 40s", "Batting", "Innings scored between 40 and 49 (distinct from 50s).",
              "scores_range", {"lo": 40, "hi": 49}, ("season", "grade", "competition", "split")),
+    CatEntry("bat_centuries_chrono", "Centuries Scored In Chronological Order", "Batting",
+             "Every century (100 and over), listed oldest first, with the opposition, ground and season.",
+             "bat_milestone_chrono", {"lo": 100}, ("organisation", "season", "grade", "competition")),
+    CatEntry("bat_fifties_chrono", "Half Centuries Scored In Chronological Order", "Batting",
+             "Every half-century (50–99), listed oldest first, with the opposition, ground and season.",
+             "bat_milestone_chrono", {"lo": 50, "hi": 99}, ("organisation", "season", "grade", "competition")),
     # ---- Bowling ----
     CatEntry("bowl_most_wickets", "Most Wickets", "Bowling", "Leading wicket takers.",
              "bowling", {"order_by": "wickets"}, _SCOPE, limitations=_KNOWN_MIN),
@@ -335,6 +354,12 @@ CATALOGUE: list[CatEntry] = [
              qualification=_QUAL_BOWL, rerank=("strike_rate", "asc")),
     CatEntry("bowl_most_five_fors", "Most Five-Wicket Innings", "Bowling", "Most five-wicket innings.",
              "bowling", {"order_by": "five_wkt_innings"}, _SCOPE),
+    CatEntry("bowl_5wi_chrono", "5 Wickets in an Innings In Chronological Order", "Bowling",
+             "Every five-wicket innings haul, listed oldest first, with the opposition, ground and season.",
+             "bowl_haul_chrono", {"scope": "innings", "min_wickets": 5}, ("organisation", "season", "grade", "competition")),
+    CatEntry("bowl_10wm_chrono", "10 Wickets in a Match In Chronological Order", "Bowling",
+             "Every ten-wicket match haul, listed oldest first, with the opposition, ground and season.",
+             "bowl_haul_chrono", {"scope": "match", "min_wickets": 10}, ("organisation", "season", "grade", "competition")),
     CatEntry("bowl_best_match", "Best Bowling in a Match", "Bowling",
              "Best bowling figures in a match — most wickets, then fewest runs conceded (runs tie-break).",
              "best_bowling_match", {}, ("season", "grade", "competition", "split"),
