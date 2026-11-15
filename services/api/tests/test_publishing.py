@@ -360,3 +360,16 @@ def test_profile_includes_deep_analysis_tabs_whole_career(seeded, conn):
     assert "data-target='t_best'" in html and "data-target='t_splits'" in html
     snap = _snap(conn, pub["id"])
     assert snap["analysis"] is not None and snap["analysis"]["best_batting"]
+
+
+def test_profile_includes_match_log(seeded, conn):
+    """A whole-career profile carries a match-by-match log (Matches tab) with each match's opposition,
+    ground and result — enriched from match_history."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="player_profile",
+                                        title="Star Player", person_id=seeded["p"])
+    html = conn.execute(text("SELECT snapshot_html FROM publication WHERE id = :i"),
+                        {"i": pub["id"]}).scalar_one()
+    assert "data-target='t_matches'" in html
+    ms = _snap(conn, pub["id"])["matches"]
+    assert ms and all(k in ms[0] for k in ("opposition", "ground", "result", "match_date"))

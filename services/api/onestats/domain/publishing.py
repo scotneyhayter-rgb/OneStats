@@ -171,9 +171,10 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
     # Deep analysis (best innings/spells, partnerships, splits by opposition/ground/grade/format, how-out)
     # is whole-career only — the splits span every club, so it is omitted on a single-club profile.
     analysis = player_analysis.player_analysis(conn, workspace_id, person_id) if org_id is None else None
+    matches = player_profile.match_history(conn, workspace_id, person_id) if org_id is None else None
     return {"kind": "player_profile", "person_name": person.get("display_name") or "Player",
             "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club, "photo": photo,
-            "analysis": analysis,
+            "analysis": analysis, "matches": matches,
             "career": prof["career"], "seasons": seasons, "records": records, "clubs": clubs,
             "grand_finals": prof.get("grand_finals"), "badges": badges,
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
@@ -469,7 +470,37 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
         tabs.append(("honours", "Honours & Records", "".join(hon)))
 
     _analysis_tabs(snap.get("analysis") or {}, tabs)
+    _matches_tab(snap.get("matches") or [], tabs)
     return tabs
+
+
+_RESULT_LABEL = {"win": "Won", "loss": "Lost", "draw": "Draw", "tie": "Tie", "no_result": "No result"}
+
+
+def _matches_tab(rows: list[dict[str, Any]], tabs: list[tuple[str, str, str]]) -> None:
+    """A match-by-match career log (newest first): date, opposition, ground, the player's batting and
+    bowling line, catches and the match result."""
+    if not rows:
+        return
+    trs: list[str] = []
+    for m in rows:
+        runs = m.get("runs")
+        bat = f"{runs}{'' if m.get('out') else '*'}" if runs is not None else "—"
+        wk = m.get("wickets")
+        bowl = (f"{wk}-{m.get('runs_conceded') if m.get('runs_conceded') is not None else '?'}"
+                if wk is not None else "—")
+        ct = m.get("catches")
+        cap = " <span class='muted'>(c)</span>" if m.get("captained") else ""
+        trs.append("<tr><td>" + _date(m.get("match_date")) + "</td>"
+                   + "<td>" + escape(str(m.get("opposition") or "—")) + cap + "</td>"
+                   + "<td>" + escape(str(m.get("ground") or "—")) + "</td>"
+                   + "<td class='r'>" + escape(bat) + "</td>"
+                   + "<td class='r'>" + escape(bowl) + "</td>"
+                   + "<td class='r'>" + (_num(ct) if ct is not None else "—") + "</td>"
+                   + "<td>" + escape(_RESULT_LABEL.get(str(m.get("result")), "—")) + "</td></tr>")
+    tabs.append(("matches", "Matches", _table(
+        [("Date", ""), ("Opposition", ""), ("Ground", ""), ("Bat", "r"), ("Bowl", "r"),
+         ("Ct", "r"), ("Result", "")], trs)))
 
 
 def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None:
