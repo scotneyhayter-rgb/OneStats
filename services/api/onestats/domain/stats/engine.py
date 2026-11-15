@@ -168,6 +168,7 @@ _BOWL_SELECT = (
     + ", " + _num("balls_known", "balls_known") + ", " + _num("maidens", "maidens") + ", "
     + _num("runs", "runs") + ", " + _num("wickets", "wickets") + ", " + _num("wickets_known", "wickets_known") + ", "
     + _num("five_wkt_innings", "five_wkt_innings") + ", " + _num("ten_wkt_match", "ten_wkt_match")
+    + ", " + _num("hat_tricks", "hat_tricks")
     # true overs summed per match using each match's own balls-per-over (never one assumed over length)
     + ", coalesce(sum((c.metrics->>'overs')::numeric),0) AS overs_sum"
     + ", coalesce(sum((c.metrics->>'overs_known')::int),0) AS overs_known_matches"
@@ -197,6 +198,7 @@ def _bowl_row(r: dict[str, Any], over_length: int = 6) -> dict[str, Any]:
         "subject_id": str(r["subject_id"]), "matches": matches, "innings": innings,
         "balls": balls, "overs": overs_display, "maidens": int(r["maidens"]), "runs": runs,
         "wickets": wickets, "five_wkt_innings": int(r["five_wkt_innings"]),
+        "hat_tricks": int(r.get("hat_tricks") or 0),
         "ten_wkt_match": int(r["ten_wkt_match"]), "best_match_wickets": int(r["best_match_wickets"]),
         "average": round(runs / wickets, 2) if wickets else None,
         "economy": economy,
