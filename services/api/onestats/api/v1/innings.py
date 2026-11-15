@@ -70,6 +70,7 @@ class InningsUpdate(BaseModel):
     wides: int | None = Field(default=None, ge=0)
     noballs: int | None = Field(default=None, ge=0)
     penalty: int | None = Field(default=None, ge=0)
+    unassigned_wickets: int | None = Field(default=None, ge=0, le=10)
     iresult_raw: str | None = None
     notes: str | None = None
 

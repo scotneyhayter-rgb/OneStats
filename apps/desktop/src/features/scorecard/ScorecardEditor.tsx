@@ -938,7 +938,8 @@ function InningsEditor({
     onDirty, refreshKey, onChanged: () => { setRefreshKey((k) => k + 1); void recompute(); },
     battingOrgId: teamOrg(innings.batting_team_id), bowlingOrgId: teamOrg(innings.bowling_team_id),
     battingTeamName: teamName(innings.batting_team_id), bowlingTeamName: teamName(innings.bowling_team_id),
-    byes: innings.byes, legbyes: innings.legbyes };
+    byes: innings.byes, legbyes: innings.legbyes,
+    unassignedWickets: innings.unassigned_wickets, onInningsPatch: patchInnings };
 
   // Batting side is explicit (never assumed). Choosing it sets bowling to the other recorded side.
   const applyBatting = (battingId: string | null) => {

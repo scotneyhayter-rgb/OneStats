@@ -282,3 +282,52 @@ def test_overs_and_run_rate_from_recorded_overs_without_balls_per_over(conn):
     t = inn.totals(conn, iid)
     assert t["balls_per_over"] is None and t["legal_balls"] is None  # no assumption made
     assert t["overs_bowled"] == "10.0" and t["run_rate"] == 4.0      # from recorded overs
+
+
+def test_hat_tricks_recorded_and_read_back(conn):
+    """A bowler's hat-tricks are recorded, stored and returned; unknown stays NULL, not zero."""
+    wid = _ws(conn, "BOWL HT")
+    iid = _innings(conn, wid, balls_per_over=6)
+    e = bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "HT Bowler"),
+                          bowling_order=1, overs_text="10", wickets=4, hat_tricks=1)
+    assert bowl.get_entry(conn, e)["hat_tricks"] == 1
+    # a second bowler with nothing recorded keeps hat_tricks unknown (not 0)
+    e2 = bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Other"),
+                           bowling_order=2, overs_text="5")
+    assert bowl.get_entry(conn, e2)["hat_tricks"] is None
+    # editable back to a different value
+    bowl.update_entry(conn, wid, ACTOR, e, hat_tricks=2)
+    assert bowl.get_entry(conn, e)["hat_tricks"] == 2
+
+
+def test_hat_trick_without_three_wickets_warns_only_when_wickets_known(conn):
+    """A hat-trick needs >=3 wickets: advisory only when the wickets are known and below three; an
+    unknown wickets figure never contradicts a recorded hat-trick (unknown is not zero)."""
+    wid = _ws(conn, "BOWL HT WARN")
+    iid = _innings(conn, wid, balls_per_over=6)
+    # hat-trick recorded but only 2 wickets known -> non-blocking advisory
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Bad"),
+                      bowling_order=1, overs_text="4", wickets=2, hat_tricks=1)
+    assert "hat_trick_without_three_wickets" in bowl.validation_warnings(conn, iid)
+    # wickets unknown -> no contradiction, no warning
+    wid2 = _ws(conn, "BOWL HT WARN2")
+    iid2 = _innings(conn, wid2, balls_per_over=6)
+    bowl.create_entry(conn, wid2, ACTOR, innings_id=iid2, person_id=_person(conn, wid2, "Unk"),
+                      bowling_order=1, overs_text="4", hat_tricks=1)
+    assert "hat_trick_without_three_wickets" not in bowl.validation_warnings(conn, iid2)
+
+
+def test_unassigned_wickets_recorded_and_reconciled(conn):
+    """Run-outs / unassigned wickets store on the innings and combine with bowler wickets: when the
+    sum exceeds ten it is flagged (non-blocking); a legitimate sum is not."""
+    wid = _ws(conn, "BOWL UNASSIGNED")
+    iid = _innings(conn, wid, balls_per_over=6)
+    inn.update_innings(conn, wid, ACTOR, iid, unassigned_wickets=2)
+    assert inn.get_innings(conn, iid)["unassigned_wickets"] == 2
+    # 9 bowler wickets + 2 unassigned = 11 > 10 -> advisory
+    bowl.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "W1"),
+                      bowling_order=1, overs_text="10", wickets=9)
+    assert "total_wickets_exceed_10" in inn.validation_warnings(conn, iid)
+    # correct it to 1 unassigned -> 10 total, no warning
+    inn.update_innings(conn, wid, ACTOR, iid, unassigned_wickets=1)
+    assert "total_wickets_exceed_10" not in inn.validation_warnings(conn, iid)

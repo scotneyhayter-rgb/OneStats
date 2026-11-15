@@ -29,9 +29,9 @@ STATUSES = ("in_progress", "completed", "declared", "closed", "forfeited", "inco
 _EXTRAS = ("byes", "legbyes", "wides", "noballs", "penalty")
 _COLS = (
     "id, workspace_id, match_id, inns_number, batting_team_id, bowling_team_id, status, "
-    "byes, legbyes, wides, noballs, penalty, official_total, official_wickets, override_reason, "
-    "override_evidence, override_by, override_at, iresult_raw, iresult, iresult_status, notes, "
-    "source_system, source_ref, created_at, updated_at"
+    "byes, legbyes, wides, noballs, penalty, unassigned_wickets, official_total, official_wickets, "
+    "override_reason, override_evidence, override_by, override_at, iresult_raw, iresult, "
+    "iresult_status, notes, source_system, source_ref, created_at, updated_at"
 )
 
 
@@ -97,7 +97,7 @@ def update_innings(conn: Connection, workspace_id: UUID, actor: str, innings_id:
     if "status" in fields and fields["status"] is not None and fields["status"] not in STATUSES:
         raise ValueError("invalid_status")
     allowed = {"status", "batting_team_id", "bowling_team_id", "byes", "legbyes", "wides",
-               "noballs", "penalty", "iresult_raw", "notes"}
+               "noballs", "penalty", "unassigned_wickets", "iresult_raw", "notes"}
     data = {k: v for k, v in fields.items() if k in allowed and v is not None}
     for key in ("batting_team_id", "bowling_team_id"):
         if key in data and not _is_match_side(conn, before["match_id"], data[key]):
@@ -248,6 +248,17 @@ def validation_warnings(conn: Connection, innings_id: UUID) -> list[str]:
         warnings.append("official_total_less_than_extras")
     if inn["official_wickets"] is not None and inn["official_wickets"] > 10:
         warnings.append("official_wickets_gt_10")
+    # recorded bowler wickets + run-outs/unassigned cannot exceed ten in an innings — advisory, and
+    # only when both components are known (unknown is never treated as zero).
+    if inn["unassigned_wickets"] is not None and conn.execute(
+        text("SELECT to_regclass('public.bowling_entry')")
+    ).scalar_one() is not None:
+        bowler_wkts = conn.execute(
+            text("SELECT sum(wickets) FROM bowling_entry WHERE innings_id = :i AND wickets IS NOT NULL"),
+            {"i": innings_id},
+        ).scalar_one_or_none()
+        if bowler_wkts is not None and bowler_wkts + inn["unassigned_wickets"] > 10:
+            warnings.append("total_wickets_exceed_10")
     t = totals(conn, innings_id)
     if (t["derived_total"] is not None and inn["official_total"] is not None
             and t["derived_total"] != inn["official_total"]):

@@ -71,6 +71,10 @@ interface GridCtx {
   // innings extras (for the bowling totals reconciliation: bowler runs + byes + leg byes = innings runs)
   byes?: number | null;
   legbyes?: number | null;
+  // run-outs / wickets not credited to any bowler (innings-level), and a way to save a change to it,
+  // so the bowling card can reconcile wickets fallen (bowler W + unassigned) like CricketStatz
+  unassignedWickets?: number | null;
+  onInningsPatch?: (body: Record<string, unknown>) => void | Promise<void>;
 }
 
 /** A focus grid: register inputs by (row,col); handle arrow/Enter keys to move focus. */
@@ -456,10 +460,14 @@ export function BowlingGrid(ctx: GridCtx) {
   const tW = sumN(rows.map((r) => r.wickets));
   const tWd = sumN(rows.map((r) => r.wides));
   const tNb = sumN(rows.map((r) => r.noballs));
+  const tHt = sumN(rows.map((r) => r.hat_tricks));
   // Reconciliation: a bowler's runs conceded include their wides/no-balls, so sum(R) + byes + leg byes
   // is the innings runs — it should match the batting side's total.
   const byeslb = (ctx.byes ?? 0) + (ctx.legbyes ?? 0);
   const inningsRuns = tR != null ? tR + byeslb : null;
+  // Wickets reconciliation: bowler-credited wickets + run-outs/unassigned = wickets fallen (max 10).
+  const unassigned = ctx.unassignedWickets ?? null;
+  const wicketsFallen = tW != null ? tW + (unassigned ?? 0) : null;
   const tdTot = "px-1 py-1 tabular-nums";
 
   return (
@@ -474,6 +482,7 @@ export function BowlingGrid(ctx: GridCtx) {
             <th className="px-1 py-1">W</th>
             <th className="px-1 py-1">Wd</th>
             <th className="px-1 py-1">Nb</th>
+            <th className="px-1 py-1" title="Hat-tricks taken by this bowler in the innings">HT</th>
             {canManage && <th className="w-8" />}
           </tr>
         </thead>
@@ -498,6 +507,7 @@ export function BowlingGrid(ctx: GridCtx) {
               <td className="px-1 py-1"><NumCell value={r.wickets} ariaLabel={`Wickets ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wickets: v })} /></td>
               <td className="px-1 py-1"><NumCell value={r.wides} ariaLabel={`Wides ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wides: v })} /></td>
               <td className="px-1 py-1"><NumCell value={r.noballs} ariaLabel={`No-balls ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { noballs: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.hat_tricks} ariaLabel={`Hat-tricks ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { hat_tricks: v })} /></td>
               {canManage && (
                 <td className="px-1 py-1">
                   <button aria-label={`Remove bowler ${i + 1}`} onClick={() => void remove(r.id)}
@@ -509,7 +519,7 @@ export function BowlingGrid(ctx: GridCtx) {
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={8} className="px-1 py-3 text-sm text-muted-foreground">No bowlers recorded.</td></tr>
+            <tr><td colSpan={9} className="px-1 py-3 text-sm text-muted-foreground">No bowlers recorded.</td></tr>
           )}
         </tbody>
         {rows.length > 0 && (
@@ -522,15 +532,33 @@ export function BowlingGrid(ctx: GridCtx) {
               <td className={tdTot}>{tW ?? "—"}</td>
               <td className={tdTot}>{tWd ?? "—"}</td>
               <td className={tdTot}>{tNb ?? "—"}</td>
+              <td className={tdTot}>{tHt ?? "—"}</td>
               {canManage && <td />}
             </tr>
           </tfoot>
         )}
       </table>
+      {(canManage || unassigned != null) && ctx.onInningsPatch && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Run-outs / unassigned wickets</span>
+            <input aria-label="Run-outs / unassigned wickets" inputMode="numeric" placeholder="—" disabled={!canManage}
+              defaultValue={unassigned == null ? "" : String(unassigned)}
+              onBlur={(e) => {
+                const s = e.target.value.trim();
+                const v = s === "" ? null : /^\d+$/.test(s) ? Number.parseInt(s, 10) : null;
+                if (v !== unassigned) void ctx.onInningsPatch?.({ unassigned_wickets: v });
+              }}
+              className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50" />
+          </label>
+          <span className="text-xs text-muted-foreground opacity-70">wickets not credited to a bowler (run-outs, etc.)</span>
+        </div>
+      )}
       {rows.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span>Byes + Leg byes: <span className="tabular-nums text-foreground">{byeslb}</span></span>
           <span>Innings runs (bowling R + byes/leg byes): <span className="tabular-nums font-medium text-foreground">{inningsRuns ?? "—"}</span> <span className="opacity-70">— should match the batting total</span></span>
+          <span>Wickets (bowling W + run-outs): <span className={`tabular-nums font-medium ${wicketsFallen != null && wicketsFallen > 10 ? "text-danger" : "text-foreground"}`}>{wicketsFallen ?? "—"}</span> <span className="opacity-70">— wickets fallen (max 10)</span></span>
         </div>
       )}
       {canManage && (
