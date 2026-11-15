@@ -215,16 +215,86 @@ def _table(headers: list[tuple[str, str]], rows: list[str]) -> str:
     return f"<div class='tbl'><table><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
 
 
+def _chart_scores(innings: list[dict[str, Any]]) -> str:
+    """Scores innings-by-innings as thin columns (oldest left), a single brand hue, with dashed 50/100
+    reference lines and a per-bar native tooltip. Self-contained SVG; scales to container width."""
+    pts = [r for r in innings if r.get("runs") is not None]
+    if len(pts) < 2:
+        return ""
+    w, h, ml, mr, mt, mb = 760, 220, 26, 10, 14, 22
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(pts)
+    maxv = max(100, max(int(r["runs"]) for r in pts))
+    step = pw / n
+    bw = max(1.0, step * 0.82)
+
+    def y_of(v: float) -> float:
+        return mt + ph - (v / maxv) * ph
+
+    parts = [(f"<svg class='chart' viewBox='0 0 {w} {h}' role='img' preserveAspectRatio='xMidYMid meet' "
+              "aria-label='Scores innings by innings'>")]
+    parts.append(f"<line class='grid' x1='{ml}' y1='{mt + ph:.1f}' x2='{w - mr}' y2='{mt + ph:.1f}'/>")
+    for ref in (50, 100):
+        if ref <= maxv:
+            yy = y_of(ref)
+            parts.append(f"<line class='ref' x1='{ml}' y1='{yy:.1f}' x2='{w - mr}' y2='{yy:.1f}'/>")
+            parts.append(f"<text x='{ml - 4}' y='{yy + 3:.1f}' text-anchor='end'>{ref}</text>")
+    for i, r in enumerate(pts):
+        v = int(r["runs"])
+        x = ml + i * step + (step - bw) / 2
+        yy = y_of(v)
+        cls = "bar no" if r.get("not_out") else "bar"
+        star = "*" if r.get("not_out") else ""
+        parts.append(f"<rect class='{cls}' x='{x:.1f}' y='{yy:.1f}' width='{bw:.1f}' height='{mt + ph - yy:.1f}' "
+                     f"rx='1'><title>{escape(str(r.get('date') or ''))}: {v}{star}</title></rect>")
+    parts.append(f"<text x='{ml}' y='{h - 6}' text-anchor='start'>Oldest</text>")
+    parts.append(f"<text x='{w - mr}' y='{h - 6}' text-anchor='end'>Most recent</text>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _chart_distribution(freq: list[dict[str, Any]]) -> str:
+    """Score distribution: a count of innings in each score band, as a single-hue column chart with the
+    count labelled above each bar. Self-contained SVG."""
+    if not freq or not any(int(b.get("count") or 0) for b in freq):
+        return ""
+    w, h, ml, mr, mt, mb = 760, 190, 12, 12, 20, 26
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(freq)
+    maxc = max((int(b.get("count") or 0) for b in freq), default=0) or 1
+    step = pw / n
+    bw = step * 0.58
+    parts = [(f"<svg class='chart' viewBox='0 0 {w} {h}' role='img' preserveAspectRatio='xMidYMid meet' "
+              "aria-label='Score distribution'>")]
+    parts.append(f"<line class='grid' x1='{ml}' y1='{mt + ph}' x2='{w - mr}' y2='{mt + ph}'/>")
+    for i, b in enumerate(freq):
+        c = int(b.get("count") or 0)
+        cx = ml + (i + 0.5) * step
+        bh = (c / maxc) * ph
+        y = mt + ph - bh
+        rng = escape(str(b.get("range") or ""))
+        parts.append(f"<rect class='bar' x='{cx - bw / 2:.1f}' y='{y:.1f}' width='{bw:.1f}' height='{bh:.1f}' "
+                     f"rx='3'><title>{rng}: {c}</title></rect>")
+        if c:
+            parts.append(f"<text class='val' x='{cx:.1f}' y='{y - 4:.1f}' text-anchor='middle'>{c}</text>")
+        parts.append(f"<text x='{cx:.1f}' y='{h - 8}' text-anchor='middle'>{rng}</text>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 _PROFILE_CSS = (
     # Surface tokens — the club's selected theme (light / dark / system) swaps these; the brand colour
     # is used for the hero, tables and accents in every theme.
     ":root{--bg:#eef2f0;--card:#fff;--ink:#1a2420;--muted:#64726b;--line:#e3e9e6;--line2:#eef2f0;"
-    "--zebra:#f6f9f7;--tabbg:#fff;--tabink:#51605a;--shadow:rgba(0,0,0,.06)}"
+    "--zebra:#f6f9f7;--tabbg:#fff;--tabink:#51605a;--shadow:rgba(0,0,0,.06);"
+    "--chart:var(--brand);--chart-soft:color-mix(in srgb,var(--brand) 42%,#fff);--grid:#dde4e0}"
     ".theme-dark{--bg:#0f1512;--card:#18211d;--ink:#e9efec;--muted:#9aa8a1;--line:#273129;"
-    "--line2:#1f2822;--zebra:#1d2620;--tabbg:#141b17;--tabink:#9aa8a1;--shadow:rgba(0,0,0,.45)}"
+    "--line2:#1f2822;--zebra:#1d2620;--tabbg:#141b17;--tabink:#9aa8a1;--shadow:rgba(0,0,0,.45);"
+    "--chart:color-mix(in srgb,var(--brand) 60%,#fff);--chart-soft:color-mix(in srgb,var(--brand) 32%,#fff);--grid:#2c372f}"
     "@media(prefers-color-scheme:dark){.theme-system{--bg:#0f1512;--card:#18211d;--ink:#e9efec;"
     "--muted:#9aa8a1;--line:#273129;--line2:#1f2822;--zebra:#1d2620;--tabbg:#141b17;--tabink:#9aa8a1;"
-    "--shadow:rgba(0,0,0,.45)}}"
+    "--shadow:rgba(0,0,0,.45);--chart:color-mix(in srgb,var(--brand) 60%,#fff);"
+    "--chart-soft:color-mix(in srgb,var(--brand) 32%,#fff);--grid:#2c372f}}"
     "*{box-sizing:border-box}html{scroll-behavior:smooth}"
     "body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;margin:0;"
     "color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}"
@@ -294,6 +364,12 @@ _PROFILE_CSS = (
     "border:1px solid color-mix(in srgb,var(--brand) 32%,var(--card));border-radius:10px;"
     "padding:10px 14px;font-size:13px;color:var(--ink);margin:2px 0 14px}"
     ".bio{font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap;max-width:720px}"
+    ".chart{width:100%;max-width:760px;height:auto;display:block;margin:8px 0 4px}"
+    ".chart .bar{fill:var(--chart)}.chart .bar.no{fill:var(--chart-soft)}"
+    ".chart .grid{stroke:var(--line);stroke-width:1}"
+    ".chart .ref{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3;opacity:.55}"
+    ".chart text{fill:var(--muted);font-size:11px}.chart .val{fill:var(--ink);font-weight:600}"
+    ".caption{font-size:11.5px;color:var(--muted);margin:2px 0 0;max-width:760px}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -525,6 +601,21 @@ def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None
             parts.append("<h3 class='sub'>Best bowling</h3>" + _table(
                 [("#", "r"), ("Figures", "r"), ("Opposition", ""), ("Ground", ""), ("Date", "")], rows))
         tabs.append(("best", "Best", "".join(parts)))
+
+    # ---- Charts (scores innings-by-innings + score distribution) ----
+    scores = an.get("scores") or {}
+    charts: list[str] = []
+    sc = _chart_scores(scores.get("innings") or [])
+    if sc:
+        charts.append("<h3 class='sub'>Scores — innings by innings</h3>" + sc
+                      + "<p class='caption'>Each bar is one innings, oldest on the left. Lighter bars are "
+                        "not-out innings; the dashed lines mark 50 and 100. Hover a bar for the date and score.</p>")
+    dist = _chart_distribution(scores.get("frequency") or [])
+    if dist:
+        charts.append("<h3 class='sub'>Score distribution</h3>" + dist
+                      + "<p class='caption'>How many innings fell in each score band.</p>")
+    if charts:
+        tabs.append(("charts", "Charts", "".join(charts)))
 
     # ---- Splits (by opposition / ground / grade / format) ----
     splits = an.get("splits") or {}

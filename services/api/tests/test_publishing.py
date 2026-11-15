@@ -373,3 +373,16 @@ def test_profile_includes_match_log(seeded, conn):
     assert "data-target='t_matches'" in html
     ms = _snap(conn, pub["id"])["matches"]
     assert ms and all(k in ms[0] for k in ("opposition", "ground", "result", "match_date"))
+
+
+def test_score_charts_render_self_contained_svg():
+    """The profile charts are self-contained inline SVG: a not-out innings is tagged for the lighter fill
+    and tooltipped with a star, and the distribution labels each band's count."""
+    sc = publishing._chart_scores([
+        {"date": "2020-01-01", "runs": 10, "not_out": False},
+        {"date": "2020-02-01", "runs": 120, "not_out": True},
+    ])
+    assert sc.startswith("<svg") and "class='bar no'" in sc and "120*" in sc and "<title>" in sc
+    dist = publishing._chart_distribution([{"range": "0-9", "count": 3}, {"range": "100+", "count": 1}])
+    assert dist.startswith("<svg") and ">3<" in dist and "0-9" in dist
+    assert publishing._chart_scores([]) == "" and publishing._chart_distribution([]) == ""
