@@ -22,6 +22,7 @@ import { useWorkspace } from "../../lib/workspace-context";
 const REPORTS: { key: string; label: string; cats: string[] }[] = [
   { key: "batting", label: "Batting", cats: ["Batting"] },
   { key: "bowling", label: "Bowling", cats: ["Bowling"] },
+  { key: "partnerships", label: "Partnerships", cats: ["Partnerships"] },
   { key: "fielding", label: "Fielding & WK", cats: ["Fielding", "Wicketkeeping"] },
   { key: "captaincy", label: "Captaincy", cats: ["Captaincy"] },
   { key: "participation", label: "Appearances", cats: ["Player Participation"] },
@@ -327,8 +328,8 @@ export function Statistics() {
         <div className="flex flex-wrap items-center gap-2">
           {REPORTS.map((r) => (
             <button key={r.key} type="button" onClick={() => { setReport(r.key); setSortKey(null); }}
-              className={`rounded-[var(--radius-app)] border px-3 py-1.5 text-sm ${
-                report === r.key ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground"}`}>
+              className={`rounded-[var(--radius-app)] border px-3 py-1.5 text-sm transition-colors ${
+                report === r.key ? "border-brand bg-brand/10 font-medium text-brand shadow-sm" : "border-border text-muted-foreground hover:border-brand/40 hover:text-foreground"}`}>
               {r.label}
             </button>
           ))}
@@ -340,8 +341,8 @@ export function Statistics() {
             {genreReports.map((r) => (
               <button key={r.id} type="button" title={r.description}
                 onClick={() => { setReportId(r.id); setSortKey(null); }}
-                className={`rounded-full border px-2.5 py-1 text-xs transition ${
-                  (reportId || genreReports[0]?.id) === r.id ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground hover:border-brand/60"}`}>
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  (reportId || genreReports[0]?.id) === r.id ? "border-brand bg-brand/10 font-medium text-brand" : "border-border text-muted-foreground hover:border-brand/60 hover:bg-muted"}`}>
                 {r.name}
               </button>
             ))}
@@ -545,7 +546,7 @@ export function Statistics() {
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={i} className={i % 2 ? "bg-muted/30" : ""}>
+                    <tr key={i} className={`transition-colors hover:bg-brand/5 ${i % 2 ? "bg-muted/30" : ""}`}>
                       {data.columns.map((c) => (
                         <td key={c.key} className={`whitespace-nowrap px-2 py-1 tabular-nums ${c.align === "right" ? "text-right" : "text-left"}`}>
                           {fmt(r[c.key], c)}

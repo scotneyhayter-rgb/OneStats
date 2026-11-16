@@ -473,23 +473,20 @@ def most_matches_together(conn: Connection, f: dict[str, Any], *, limit: int = 5
 def top_partnership_aggregates(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Σ partnership runs for an unordered batting pair across matches (no double counting)."""
     where, params = _scope(f, team_col="i.batting_team_id")
-    sql = ("SELECT p1.id AS a, p2.id AS b, sum(pt.runs) AS total, count(*) AS n "
+    # Aggregate per UNORDERED pair: a stand is stored with its two batters in either slot, so group on
+    # least/greatest of the two ids and sum BOTH directions. (Previously it grouped on the raw slots and
+    # kept only the larger direction, undercounting a pair split across slots — which is why this figure
+    # disagreed with the per-partner total on the player profile.)
+    pa, pb = "least(pt.player1_person_id, pt.player2_person_id)", "greatest(pt.player1_person_id, pt.player2_person_id)"
+    sql = (f"SELECT {pa} AS a, {pb} AS b, sum(pt.runs) AS total, count(*) AS n "
            "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
-           "JOIN person p1 ON p1.id = pt.player1_person_id JOIN person p2 ON p2.id = pt.player2_person_id "
-           f"WHERE pt.runs IS NOT NULL AND pt.player1_person_id IS NOT NULL AND pt.player2_person_id IS NOT NULL "
-           f"AND {where} GROUP BY p1.id, p2.id ORDER BY total DESC LIMIT :lim")
+           "WHERE pt.runs IS NOT NULL AND pt.player1_person_id IS NOT NULL AND pt.player2_person_id IS NOT NULL "
+           f"AND {where} GROUP BY {pa}, {pb} ORDER BY total DESC LIMIT :lim")
     params["lim"] = limit
     names = _names(conn, f["workspace_id"])
-    out = []
-    seen: set = set()
-    for r in conn.execute(text(sql), params).mappings():
-        key = tuple(sorted((str(r["a"]), str(r["b"]))))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
-                    "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])})
-    return out
+    return [{"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
+             "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])}
+            for r in conn.execute(text(sql), params).mappings()]
 
 
 def top_partnership_aggregates_by_season(conn: Connection, f: dict[str, Any], *,
@@ -497,23 +494,18 @@ def top_partnership_aggregates_by_season(conn: Connection, f: dict[str, Any], *,
     """Highest partnership-run aggregate for an unordered batting pair WITHIN a single season (all-time
     list; seasons are never combined). Mirrors the career aggregate but groups by season as well."""
     where, params = _scope({k: v for k, v in f.items() if k != "season_id"}, team_col="i.batting_team_id")
-    sql = ("SELECT p1.id AS a, p2.id AS b, s.label AS season, sum(pt.runs) AS total, count(*) AS n "
+    # Unordered pair within each season (same reasoning as the career aggregate: sum both slot orders).
+    pa, pb = "least(pt.player1_person_id, pt.player2_person_id)", "greatest(pt.player1_person_id, pt.player2_person_id)"
+    sql = (f"SELECT {pa} AS a, {pb} AS b, s.label AS season, sum(pt.runs) AS total, count(*) AS n "
            "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN season s ON s.id = m.season_id "
-           "JOIN person p1 ON p1.id = pt.player1_person_id JOIN person p2 ON p2.id = pt.player2_person_id "
            "WHERE pt.runs IS NOT NULL AND pt.player1_person_id IS NOT NULL AND pt.player2_person_id IS NOT NULL "
-           f"AND {where} GROUP BY p1.id, p2.id, s.label ORDER BY total DESC LIMIT :lim")
+           f"AND {where} GROUP BY {pa}, {pb}, s.label ORDER BY total DESC LIMIT :lim")
     params["lim"] = limit
     names = _names(conn, f["workspace_id"])
-    out, seen = [], set()
-    for r in conn.execute(text(sql), params).mappings():
-        key = (tuple(sorted((str(r["a"]), str(r["b"])))), r["season"])
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
-                    "season": r["season"], "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])})
-    return out
+    return [{"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
+             "season": r["season"], "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])}
+            for r in conn.execute(text(sql), params).mappings()]
 
 
 def best_bowling_in_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
