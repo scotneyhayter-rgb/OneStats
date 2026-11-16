@@ -26,6 +26,8 @@ const bowlerRow = {
   hat_tricks: null as number | null, bowling_type_raw: null, notes: null, evidence: null,
 };
 
+const bowlerRow2 = { ...bowlerRow, id: "b2", bowling_order: 2, overs_text: "3" };
+
 function ctx(onInningsPatch: (b: Record<string, unknown>) => void) {
   return {
     workspaceId: "w", inningsId: "i1", canManage: true,
@@ -58,5 +60,16 @@ describe("BowlingGrid hat-tricks and unassigned wickets", () => {
     await user.type(box, "2");
     box.blur();
     await waitFor(() => expect(onInningsPatch).toHaveBeenCalledWith({ unassigned_wickets: 2 }));
+  });
+
+  it("moves focus down a column on Enter, matching the batting grid's keyboard flow", async () => {
+    api.listBowling.mockResolvedValue([bowlerRow, bowlerRow2]);
+    const user = userEvent.setup();
+    render(<BowlingGrid {...ctx(() => {})} />);
+
+    const runs1 = await screen.findByLabelText("Runs conceded 1");
+    runs1.focus();
+    await user.keyboard("{Enter}");
+    expect(document.activeElement).toBe(screen.getByLabelText("Runs conceded 2"));
   });
 });
