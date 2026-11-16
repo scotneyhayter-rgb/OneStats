@@ -366,7 +366,7 @@ def full_profile(conn: Connection, workspace_id: UUID, person_id: UUID, *, compe
         "records": records_held(conn, workspace_id, person_id),
         "season_leaderships": season_leaderships(conn, workspace_id, person_id),
         "grand_finals": grand_finals(conn, workspace_id, person_id, organisation_id=organisation_id),
-        "milestones": milestones.person_milestones(conn, workspace_id, person_id),
+        "milestones": milestones.person_milestones(conn, workspace_id, person_id, organisation_id=organisation_id),
         "badges": badges.person_badges(conn, workspace_id, person_id),
         "honours": [{k: (str(v) if isinstance(v, UUID) else v) for k, v in h.items()}
                     for h in honours.list_honours(conn, workspace_id, person_id=person_id)],

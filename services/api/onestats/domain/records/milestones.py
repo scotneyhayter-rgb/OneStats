@@ -53,9 +53,15 @@ def _states(total: int, known_min: bool, thresholds: list[int], window: int) -> 
 
 
 def person_milestones(conn: Connection, workspace_id: UUID, person_id: UUID, *, window: int = 5,
-                      thresholds: dict[str, list[int]] | None = None) -> dict[str, Any]:
+                      thresholds: dict[str, list[int]] | None = None,
+                      organisation_id: UUID | None = None) -> dict[str, Any]:
+    """Career milestones for one person. ``organisation_id`` scopes every figure (runs, wickets,
+    matches, catches, stumpings, captaincy) to that club's teams, so a club-scoped profile shows the
+    milestones reached for that club alone — never another club's figures."""
     th = thresholds or DEFAULT_THRESHOLDS
-    f = {"workspace_id": workspace_id}
+    f: dict[str, Any] = {"workspace_id": workspace_id}
+    if organisation_id:
+        f["organisation_id"] = organisation_id
     bat = engine.person_batting(conn, f, person_id)
     bowl = engine.person_bowling(conn, f, person_id)
     field = engine.person_fielding(conn, f, person_id)
