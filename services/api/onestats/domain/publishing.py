@@ -495,6 +495,11 @@ _PROFILE_CSS = (
     ".h2h-k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}"
     ".h2h-n{font-size:15px;color:var(--ink)}.h2h-b{font-size:13px;color:var(--accent);font-weight:600}"
     ".h2h-s{font-size:11.5px;color:var(--muted)}"
+    ".hob-list{display:flex;flex-direction:column;gap:7px;margin:6px 0 10px;max-width:520px}"
+    ".hob-l{display:flex;justify-content:space-between;font-size:13px}"
+    ".hob-l b{color:var(--ink);font-variant-numeric:tabular-nums}"
+    ".hob-bar{height:8px;border-radius:999px;background:var(--chart-soft);margin-top:3px;overflow:hidden}"
+    ".hob-bar i{display:block;height:100%;background:var(--accent)}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -606,6 +611,22 @@ def _milestone_progress(milestones: dict[str, Any] | None) -> str:
     if not rows:
         return ""
     return "<h3 class='sub'>Milestone progress</h3><div class='ms-list'>" + "".join(rows) + "</div>"
+
+
+def _how_out_bars(how_out: list[dict[str, Any]] | None) -> str:
+    """How-out breakdown as proportional bars — clearer at a glance than a bare count table. Each dismissal
+    type shows its share of all dismissals and the count, in the order given (most common first)."""
+    if not how_out:
+        return ""
+    total = sum(int(r.get("count") or 0) for r in how_out) or 1
+    rows: list[str] = []
+    for r in how_out:
+        cnt = int(r.get("count") or 0)
+        pct = max(2, round(cnt / total * 100))        # min width so a one-off is still a visible sliver
+        label = escape(str(r.get("type") or "—").title())
+        rows.append(f"<div class='hob'><div class='hob-l'><span>{label}</span><b>{_num(cnt)}</b></div>"
+                    f"<div class='hob-bar'><i style='width:{pct}%'></i></div></div>")
+    return "<div class='hob-list'>" + "".join(rows) + "</div>"
 
 
 def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
@@ -921,9 +942,7 @@ def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None
     if how or by:
         dh: list[str] = []
         if how:
-            rows = ["<tr><td>" + escape(str(r.get("type") or "").title()) + "</td><td class='r'>"
-                    + _num(r.get("count")) + "</td></tr>" for r in how]
-            dh.append("<h3 class='sub'>How out</h3>" + _table([("Dismissal", ""), ("Count", "r")], rows))
+            dh.append("<h3 class='sub'>How out</h3>" + _how_out_bars(how))
         if by:
             rows = ["<tr><td>" + escape(str(r.get("player") or "—")) + "</td><td class='r'>"
                     + _num(r.get("count")) + "</td></tr>" for r in by]
