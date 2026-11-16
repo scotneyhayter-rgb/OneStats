@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
-  profileFull: vi.fn(), getProfile: vi.fn(), profileMatches: vi.fn(), personPhotoUrl: vi.fn(), profilePdfUrl: vi.fn(),
+  profileFull: vi.fn(), getProfile: vi.fn(), profileMatches: vi.fn().mockResolvedValue([]), personPhotoUrl: vi.fn(), profilePdfUrl: vi.fn(),
   profileAnalysis: vi.fn().mockResolvedValue(null), orgLogoObjectUrl: vi.fn().mockResolvedValue(null),
 }));
 

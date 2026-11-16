@@ -430,3 +430,20 @@ def test_by_season_chart_labels_peak_and_guards_short_input():
     rc = publishing._chart_by_season(seasons, "runs", "Runs by season")
     assert rc.startswith("<svg") and ">300<" in rc and "2021/22: 300" in rc           # peak label + tooltip
     assert publishing._chart_by_season([{"label": "x", "runs": 10}], "runs", "x") == ""  # needs >= 2
+
+
+def test_recent_form_shows_last_matches_oldest_first_with_accents():
+    """The form guide shows the last N matches chronologically (oldest → newest), stars a not-out score,
+    and accents fifties/hundreds and 3-/5-wicket hauls. No matches → nothing rendered."""
+    ms = [  # newest-first, as match_history returns
+        {"match_date": "2025-02-01", "runs": 120, "out": False, "wickets": 0, "opposition": "Aradale"},
+        {"match_date": "2025-01-01", "runs": 40, "out": True, "wickets": 5, "opposition": "Navarre"},
+        {"match_date": "2024-12-01", "runs": None, "out": None, "wickets": 3, "opposition": "Pomonal"},
+    ]
+    html = publishing._recent_form(ms)
+    # rendered oldest-first (Dec → Jan → Feb)
+    assert html.index("2024-12-01") < html.index("2025-01-01") < html.index("2025-02-01")
+    assert "f100" in html and ">120*<" in html        # not-out hundred: accented and starred
+    assert "f5w" in html and ">5w<" in html            # five-for accented
+    assert "f3w" in html                               # three-for accented
+    assert publishing._recent_form([]) == "" and publishing._recent_form(None) == ""

@@ -174,7 +174,7 @@ export function PlayerProfile() {
 
   useEffect(() => {
     // match data backs both the Matches table and the per-match charts on Batting/Bowling
-    if (!current || !personId || matches || !["matches", "batting", "bowling"].includes(tab)) return;
+    if (!current || !personId || matches || !["overview", "matches", "batting", "bowling"].includes(tab)) return;
     api.profileMatches(current.id, personId, clubFilter || undefined).then(setMatches).catch(() => setMatches([]));
   }, [tab, current, personId, matches, clubFilter]);
 
@@ -219,6 +219,21 @@ export function PlayerProfile() {
       wickets: ordered.map((r, i) => ({ label: label(r, i), value: n(r.wickets) })),
       cumRuns: ordered.map((r, i) => { cum += Number(r.runs ?? 0); return { label: label(r, i), value: cum }; }),
     };
+  }, [matches]);
+
+  // Form guide for the Overview tab: the last 10 matches, oldest → newest, batting score + wickets.
+  const recentForm = useMemo(() => {
+    const rows = (matches ?? []).filter(Boolean);
+    const ordered = [...rows].sort((a, b) => String(b.match_date ?? "").localeCompare(String(a.match_date ?? "")));
+    return ordered.slice(0, 10).reverse().map((r) => {
+      const runs = r.runs == null ? null : Number(r.runs);
+      const wk = r.wickets == null ? null : Number(r.wickets);
+      return {
+        runs, wk, notOut: r.out === false && runs != null,
+        date: r.match_date ? String(r.match_date).slice(0, 10) : "",
+        opp: r.opposition ? String(r.opposition) : "",
+      };
+    });
   }, [matches]);
 
   useEffect(() => {
@@ -503,6 +518,26 @@ export function PlayerProfile() {
                     ))}
                   </ul>
                 </section>
+              )}
+
+              {recentForm.length > 0 && (
+                <div className="border-t border-border/50 pt-3">
+                  <h3 className="text-sm font-semibold">Recent form</h3>
+                  <p className="text-xs text-muted-foreground">Last {recentForm.length} matches — batting score, and wickets below</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {recentForm.map((f, i) => (
+                      <div key={i} title={[f.date, f.opp && `v ${f.opp}`].filter(Boolean).join(" · ")}
+                        className={`min-w-[42px] rounded-lg border px-2 py-1 text-center leading-tight ${
+                          f.runs != null && f.runs >= 100 ? "border-brand bg-brand/10"
+                            : f.runs != null && f.runs >= 50 ? "border-brand" : "border-border"
+                        } ${f.wk != null && f.wk >= 5 ? "border-b-[3px] !border-b-brand"
+                          : f.wk != null && f.wk >= 3 ? "border-b-[3px] !border-b-brand/40" : ""}`}>
+                        <b className="block text-[15px]">{f.runs == null ? "·" : `${f.runs}${f.notOut ? "*" : ""}`}</b>
+                        <span className="block min-h-[13px] text-[11px] text-muted-foreground">{f.wk ? `${f.wk}w` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {(full?.badges.calculated.length ?? 0) > 0 && (
