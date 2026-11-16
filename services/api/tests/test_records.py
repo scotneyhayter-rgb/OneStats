@@ -190,6 +190,39 @@ def test_club_lens_and_new_records(conn):
     assert any(u["player"] == "Home One" and u["threshold"] == 100 for u in up)
 
 
+def test_individual_innings_records_respect_the_club_lens(conn):
+    """Regression: the Club filter was silently ignored for 'Top Run Scores (innings)' and 'Most Runs in
+    a Match' — records_detail._scope() only applied organisation_id when a team column was passed, and
+    these functions passed none. A player's big score for one club must NOT appear under another club's
+    lens (the bug: Jeremy Rowlings' innings showed under a club he never played for)."""
+    from onestats.domain.stats import records_detail
+    wid = _ws(conn, "REC IND LENS")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    alpha, beta, opp = _team(conn, wid, "Alpha"), _team(conn, wid, "Beta"), _team(conn, wid, "Opp")
+    org_alpha, org_beta = _org_of(conn, alpha), _org_of(conn, beta)
+    big = people.create_person(conn, wid, ACTOR, display_name="Big Hitter")     # 150 for Beta only
+    small = people.create_person(conn, wid, ACTOR, display_name="Alpha Bat")    # 40 for Alpha only
+    for team, person, runs in ((beta, big, 150), (alpha, small, 40)):
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=team, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=opp, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=team, bowling_team_id=opp)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=person, batting_position=1,
+                             runs=runs, balls_faced=runs, dismissal_type="not_out")
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    whole = records_detail.highest_individual_innings(conn, {"workspace_id": wid})
+    assert whole[0]["player"] == "Big Hitter" and whole[0]["runs"] == 150        # tops the unscoped list
+
+    alpha_lens = records_detail.highest_individual_innings(conn, {"workspace_id": wid, "organisation_id": org_alpha})
+    assert [r["player"] for r in alpha_lens] == ["Alpha Bat"]                     # Big Hitter's Beta 150 excluded
+    beta_lens = records_detail.highest_individual_innings(conn, {"workspace_id": wid, "organisation_id": org_beta})
+    assert [r["player"] for r in beta_lens] == ["Big Hitter"]
+
+    match_alpha = records_detail.most_runs_in_a_match(conn, {"workspace_id": wid, "organisation_id": org_alpha})
+    assert [r["player"] for r in match_alpha] == ["Alpha Bat"]                    # same lens on 'Most Runs in a Match'
+
+
 def test_best_bowling_in_a_match_record_uses_runs_tiebreak(conn):
     """The 'Best Bowling in a Match' all-time record is a figure ranked by most wickets THEN fewest runs
     conceded — not the bare wicket count. Two bowlers on equal wickets must be split by runs, and the

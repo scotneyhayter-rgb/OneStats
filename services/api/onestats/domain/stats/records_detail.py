@@ -50,7 +50,7 @@ def best_single_season(conn: Connection, f: dict[str, Any], *, discipline: str =
     """Highest single-season run (or wicket) aggregates across all players and seasons (all-time list)."""
     calc = "player_batting" if discipline == "batting" else "player_bowling"
     metric = "runs" if discipline == "batting" else "wickets"
-    where, params = _scope({k: v for k, v in f.items() if k != "season_id"})  # season is the grouping, not a filter
+    where, params = _scope({k: v for k, v in f.items() if k != "season_id"}, team_col="c.team_id")  # season is the grouping, not a filter
     params["cal"] = calc
     sql = (f"SELECT {_CANON} AS subject_id, s.label AS season, "
            f"       sum((c.metrics->>'{metric}')::int) AS value "
@@ -68,7 +68,7 @@ def best_single_season(conn: Connection, f: dict[str, Any], *, discipline: str =
 # --- individual innings / match records (from raw approved entries) -------------------------------
 
 def highest_individual_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.batting_team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.balls_faced AS balls, be.dismissal_type AS dt, "
            "       m.match_date AS d "
@@ -88,7 +88,7 @@ def highest_individual_innings(conn: Connection, f: dict[str, Any], *, limit: in
 
 def most_runs_in_a_match(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Highest runs by a player across all innings of a single match (from the per-match ledger)."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="c.team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, max((c.metrics->>'match_runs')::int) AS runs "
            "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
@@ -121,7 +121,7 @@ def best_bowling_in_match(conn: Connection, f: dict[str, Any], *, limit: int = 5
 
 
 def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, be.runs_conceded AS runs, be.wickets AS wkts, m.match_date AS d "
            "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -235,13 +235,15 @@ _DUCK = ("be.runs = 0 AND be.dismissal_type IS NOT NULL AND be.dismissal_type NO
 def most_feats_in_a_season(conn: Connection, f: dict[str, Any], *, feat: str, limit: int = 50) -> list[dict[str, Any]]:
     """Each player's best single-season count of a feat — ``centuries`` / ``fifties`` / ``ducks`` (from the
     batting card) or ``catches`` (from the fielding ledger) — ranked. Seasons are never combined."""
-    where, params = _scope({k: v for k, v in f.items() if k != "season_id"})   # season is the grouping
+    base_f = {k: v for k, v in f.items() if k != "season_id"}   # season is the grouping, not a filter
     if feat == "catches":
+        where, params = _scope(base_f, team_col="c.team_id")    # fielding ledger — scope on the contribution's team
         src = (f"SELECT {_CANON} AS sid, s.label AS season, sum((c.metrics->>'catches')::int) AS n "
                "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
                f"JOIN season s ON s.id = c.season_id WHERE c.calculator = 'player_fielding' AND {where} "
                f"GROUP BY {_CANON}, s.label")
     else:
+        where, params = _scope(base_f, team_col="i.batting_team_id")   # batting card — scope on the batting side
         cond = {"centuries": "be.runs >= 100", "fifties": "be.runs >= 50 AND be.runs < 100", "ducks": _DUCK}[feat]
         src = (f"SELECT {_CANON} AS sid, s.label AS season, count(*) AS n "
                "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -317,7 +319,7 @@ def highest_pct_of_innings_total(conn: Connection, f: dict[str, Any], *, limit: 
 def most_scores_in_range(conn: Connection, f: dict[str, Any], *, lo: int, hi: int,
                          limit: int = 50) -> list[dict[str, Any]]:
     """Count innings with a score in [lo, hi] per player (e.g. 40s = 40–49, 90s = 90–99)."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.batting_team_id")
     params.update({"lo": lo, "hi": hi, "lim": limit})
     sql = (f"SELECT {_CANON} AS sid, count(*) AS n FROM batting_entry be "
            "JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -331,7 +333,7 @@ def most_scores_in_range(conn: Connection, f: dict[str, Any], *, lo: int, hi: in
 
 def most_ducks_inflicted(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Count dismissals where the bowler dismissed a batter for 0 (bowler credited; run outs excluded)."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
     sql = (f"SELECT coalesce(p.merged_into_id, p.id) AS sid, count(*) AS n FROM batting_entry be "
            "JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -351,7 +353,7 @@ def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit:
     when it is a stumping, a caught-behind, or a catch by a recorded keeper of that side (primary OR second
     keeper); outfield catches are never counted. A keeper dismissal whose fielder is unknown is NOT guessed
     or attributed to the primary keeper — it is left out (unknown ≠ invented). No double counting."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
     sql = (
         "SELECT coalesce(p.merged_into_id, p.id) AS sid, be.innings_id AS inn, m.match_date AS d, "
@@ -381,7 +383,7 @@ def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit:
 def captaincy_by_season(conn: Connection, f: dict[str, Any], *, limit: int = 500) -> list[dict[str, Any]]:
     """Per-season captaincy breakdown (one row per season × captain): results, win %, finals and grand
     finals, and premierships (grand finals won as captain — verified). From the captaincy ledger."""
-    where, params = _scope({k: v for k, v in f.items() if k != "season_id"})
+    where, params = _scope({k: v for k, v in f.items() if k != "season_id"}, team_col="c.team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, s.label AS season, s.start_date AS sd, "
            "  sum((c.metrics->>'captained')::int) AS captained, sum((c.metrics->>'win')::int) AS wins, "
@@ -430,7 +432,7 @@ def captaincy_comparison(conn: Connection, workspace_id: UUID, person_ids: list[
 
 def fielder_bowler_combinations(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Dismissals crediting a specific (fielder, bowler) pair (catches/stumpings). No double counting."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
     sql = ("SELECT be.fielder_person_id AS fid, be.bowler_person_id AS bid, count(*) AS n "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -446,7 +448,7 @@ def fielder_bowler_combinations(conn: Connection, f: dict[str, Any], *, limit: i
 
 def most_matches_together(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Unordered pairs of players by matches both appeared in (from the appearance ledger). No double count."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="c.team_id")
     # appearance contributions carry the match; pair up players within each match
     sql = (f"SELECT c.match_id AS mid, {_CANON} AS sid FROM match_stat_contribution c "
            "JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
@@ -554,7 +556,7 @@ def highest_partnership_by_wicket(conn: Connection, f: dict[str, Any]) -> list[d
 
 def longest_serving(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     """Span from first to last appearance per player — seasons represented and years (from appearances)."""
-    where, params = _scope(f)
+    where, params = _scope(f, team_col="c.team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, count(DISTINCT c.season_id) AS seasons, "
            "       min(m.match_date) AS first_d, max(m.match_date) AS last_d "
