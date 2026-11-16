@@ -474,6 +474,14 @@ _PROFILE_CSS = (
     ".chart .ref{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3;opacity:.55}"
     ".chart text{fill:var(--muted);font-size:11px}.chart .val{fill:var(--ink);font-weight:600}"
     ".caption{font-size:11.5px;color:var(--muted);margin:2px 0 0;max-width:760px}"
+    ".form{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}"
+    ".fcell{min-width:42px;padding:5px 8px;border:1px solid var(--line);border-radius:10px;"
+    "background:var(--card);text-align:center;line-height:1.2}"
+    ".fcell b{display:block;font-size:15px;color:var(--ink)}"
+    ".fcell span{font-size:11px;color:var(--muted);min-height:13px;display:block}"
+    ".fcell.f50{border-color:var(--accent)}.fcell.f50 b{color:var(--accent)}"
+    ".fcell.f100{border-color:var(--accent);background:var(--chart-soft)}"
+    ".fcell.f3w{border-bottom:3px solid var(--chart-soft)}.fcell.f5w{border-bottom:3px solid var(--chart)}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -488,6 +496,36 @@ _PROFILE_JS = (
     "var h=location.hash.replace('#','');"
     "show(h&&document.getElementById(h)?h:(t[0]&&t[0].dataset.target));})();"
 )
+
+
+def _recent_form(matches: list[dict[str, Any]] | None, limit: int = 10) -> str:
+    """A compact 'form guide': the player's last ``limit`` matches, oldest→newest left→right, each a small
+    tile with the batting score (``*`` = not out) and any wickets taken. Fifties/hundreds and 3-/5-wicket
+    hauls are accented so a run of form reads at a glance. Empty when there is no match history."""
+    if not matches:
+        return ""
+    recent = list(reversed(matches[:limit]))        # match_history is newest-first; show chronologically
+    cells: list[str] = []
+    for m in recent:
+        runs, wk = m.get("runs"), m.get("wickets")
+        not_out = m.get("out") is False and runs is not None
+        cls = "fcell"
+        if runs is not None and runs >= 100:
+            cls += " f100"
+        elif runs is not None and runs >= 50:
+            cls += " f50"
+        if wk is not None and wk >= 5:
+            cls += " f5w"
+        elif wk is not None and wk >= 3:
+            cls += " f3w"
+        bat = f"{runs}{'*' if not_out else ''}" if runs is not None else "·"
+        bowl = f"{wk}w" if wk else ""
+        opp, date = m.get("opposition"), m.get("match_date")
+        tip = escape(" · ".join(x for x in (str(date) if date else None, f"v {opp}" if opp else None) if x))
+        cells.append(f"<div class='{cls}' title='{tip}'><b>{escape(bat)}</b><span>{escape(bowl)}</span></div>")
+    return ("<h3 class='sub'>Recent form</h3>"
+            f"<p class='muted' style='margin:2px 0 6px'>Last {len(recent)} matches — batting score, "
+            "and wickets below</p><div class='form'>" + "".join(cells) + "</div>")
 
 
 def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
@@ -532,6 +570,7 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
                       + (f" v {escape(str(opp))}" if opp else ""))
     if hl:
         ov.append("<p class='muted' style='margin:2px 0 8px'>" + " &nbsp;·&nbsp; ".join(hl) + "</p>")
+    ov.append(_recent_form(snap.get("matches")))
     clubs = snap.get("clubs") or []
     if clubs:
         rows = []
