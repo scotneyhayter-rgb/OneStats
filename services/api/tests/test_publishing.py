@@ -472,3 +472,25 @@ def test_milestone_progress_shows_the_next_target_per_discipline():
           "next": {"threshold": 500, "to_go": 20, "known_minimum": True}}}}
     kmhtml = publishing._milestone_progress(km)
     assert "≥ 480" in kmhtml and "≤ 20 to go" in kmhtml
+
+
+def test_head_to_head_highlights_favourite_opponents_and_ground():
+    """The Splits head-to-head surfaces the top run-scoring opponent, the top wicket opponent (by wickets,
+    not runs order) and the most productive ground; 'Unknown' is skipped and empty input shows nothing."""
+    splits = {
+        "opposition": {
+            "batting": [{"label": "Navarre", "runs": 420, "average": 42.0, "innings": 12},
+                        {"label": "Unknown", "runs": 999, "average": 10, "innings": 50},
+                        {"label": "Pomonal", "runs": 100, "average": 20, "innings": 6}],
+            "bowling": [{"label": "Pomonal", "wickets": 8, "average": 15.0, "best": "3-10"},
+                        {"label": "Navarre", "wickets": 20, "average": 22.0, "best": "5-30"}],
+        },
+        "ground": {"batting": [{"label": "Home Oval", "runs": 500, "average": 50.0}]},
+    }
+    html = publishing._head_to_head(splits)
+    assert "Most runs vs" in html and "Navarre" in html and "420 runs" in html       # Unknown (999) skipped
+    assert "Most wickets vs" in html and "20 wkts" in html and "5-30" in html          # picked by wickets
+    assert "Favourite ground" in html and "Home Oval" in html and "500 runs" in html
+    assert "Unknown" not in html
+    assert publishing._head_to_head(None) == "" and publishing._head_to_head({}) == ""
+    assert publishing._head_to_head({"opposition": {"batting": [{"label": "X", "runs": 0}]}}) == ""

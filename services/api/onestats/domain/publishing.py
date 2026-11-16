@@ -489,6 +489,12 @@ _PROFILE_CSS = (
     ".ms-bar{height:7px;border-radius:999px;background:var(--chart-soft);margin:6px 0 4px;overflow:hidden}"
     ".ms-bar i{display:block;height:100%;background:var(--accent)}"
     ".ms-go{font-size:11.5px;color:var(--muted)}"
+    ".h2h{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:4px 0 12px}"
+    ".h2h-c{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card);"
+    "display:flex;flex-direction:column;gap:1px}"
+    ".h2h-k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}"
+    ".h2h-n{font-size:15px;color:var(--ink)}.h2h-b{font-size:13px;color:var(--accent);font-weight:600}"
+    ".h2h-s{font-size:11.5px;color:var(--muted)}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -533,6 +539,40 @@ def _recent_form(matches: list[dict[str, Any]] | None, limit: int = 10) -> str:
     return ("<h3 class='sub'>Recent form</h3>"
             f"<p class='muted' style='margin:2px 0 6px'>Last {len(recent)} matches — batting score, "
             "and wickets below</p><div class='form'>" + "".join(cells) + "</div>")
+
+
+def _h2h_card(kicker: str, name: str, big: str, sub: str) -> str:
+    return (f"<div class='h2h-c'><span class='h2h-k'>{escape(kicker)}</span>"
+            f"<b class='h2h-n'>{name}</b><span class='h2h-b'>{big}</span><span class='h2h-s'>{sub}</span></div>")
+
+
+def _head_to_head(splits: dict[str, Any] | None) -> str:
+    """Glanceable 'favourites' from the opposition/ground splits — the opponent the player has made the most
+    runs against, the opponent they have taken the most wickets against, and their most productive ground.
+    'Unknown' opponents/grounds are skipped. Empty when there is nothing to highlight."""
+    if not splits:
+        return ""
+    def _named(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [r for r in rows if str(r.get("label") or "Unknown") != "Unknown"]
+    opp_bat = _named((splits.get("opposition") or {}).get("batting") or [])
+    opp_bowl = _named((splits.get("opposition") or {}).get("bowling") or [])
+    grd_bat = _named((splits.get("ground") or {}).get("batting") or [])
+    cards: list[str] = []
+    top_bat = next((r for r in opp_bat if (r.get("runs") or 0) > 0), None)   # batting splits sorted by runs desc
+    if top_bat:
+        cards.append(_h2h_card("Most runs vs", escape(str(top_bat.get("label"))),
+                               f"{_num(top_bat.get('runs'))} runs",
+                               f"avg {_num(top_bat.get('average'), 2)} · {_num(top_bat.get('innings'))} inns"))
+    top_bowl = max(opp_bowl, default=None, key=lambda r: (r.get("wickets") or 0))
+    if top_bowl and (top_bowl.get("wickets") or 0) > 0:
+        cards.append(_h2h_card("Most wickets vs", escape(str(top_bowl.get("label"))),
+                               f"{_num(top_bowl.get('wickets'))} wkts",
+                               f"avg {_num(top_bowl.get('average'), 2)} · BB {escape(str(top_bowl.get('best') or '—'))}"))
+    top_grd = next((r for r in grd_bat if (r.get("runs") or 0) > 0), None)
+    if top_grd:
+        cards.append(_h2h_card("Favourite ground", escape(str(top_grd.get("label"))),
+                               f"{_num(top_grd.get('runs'))} runs", f"avg {_num(top_grd.get('average'), 2)}"))
+    return ("<div class='h2h'>" + "".join(cards) + "</div>") if cards else ""
 
 
 _MILESTONE_ORDER = ("runs", "wickets", "matches", "catches", "stumpings")
@@ -851,7 +891,8 @@ def _analysis_tabs(an: dict[str, Any], tabs: list[tuple[str, str, str]]) -> None
                 [(head, ""), ("M", "r"), ("Overs", "r"), ("Mdns", "r"), ("Runs", "r"), ("Wkts", "r"),
                  ("Avg", "r"), ("Econ", "r"), ("BB", "r")], rows))
     if sp:
-        tabs.append(("splits", "Splits", "".join(sp)))
+        h2h = _head_to_head(splits)
+        tabs.append(("splits", "Splits", h2h + "".join(sp)))
 
     # ---- Partnerships ----
     parts_rows, totals = an.get("partnerships") or [], an.get("partnership_totals") or []
