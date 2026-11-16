@@ -4,6 +4,28 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.12 — 2026-11-16
+
+Report depth and scorecards — richer player profiles, and a printable scorecard with faster entry.
+
+**Changed since beta.11:**
+- **Club-scoped reports.** A single-club published profile now carries the full report set (Seasons, Best,
+  Charts, Splits, Partnerships, Dismissals, Matches) scoped to that club — no more missing tabs, and no
+  other club's figures ever mixed in.
+- **Recent form.** The profile Overview (export and in-app) shows a form guide: the last ~10 matches, with
+  the batting score and any wickets, fifties/hundreds and 3-/5-wicket hauls accented.
+- **Milestone progress.** The Overview shows how close the player is to their next career milestone in each
+  discipline (e.g. "914 / 1000 career runs, 86 to go"), with a progress bar.
+- **Head-to-head.** The Splits tab leads with the favourite opponents (most runs / most wickets against) and
+  the most productive ground.
+- **Clearer dismissals & leadership.** "How out" now reads as proportional bars; Captaincy gains a
+  Won/Lost/Drawn bar and Grand Finals a premiership-rate bar.
+- **Consistent badges & crest.** In-app badges collapse to the highest milestone per ladder (matching the
+  export), and the club crest fills the profile hero circle.
+- **Printable scorecard.** A new read-only, print-friendly scorecard (batting with standard dismissal
+  notation, extras, totals, bowling, result), opened from a *Print scorecard* button in the editor.
+- **Faster scoring.** The bowling grid now moves between cells with Enter / ↑ / ↓, matching the batting grid.
+
 ## 1.0.0-beta.11 — 2026-11-15
 
 Profile polish — richer in-app analysis, cleaner exports, and keyboard-friendly scoring.
