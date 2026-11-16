@@ -223,6 +223,39 @@ def test_individual_innings_records_respect_the_club_lens(conn):
     assert [r["player"] for r in match_alpha] == ["Alpha Bat"]                    # same lens on 'Most Runs in a Match'
 
 
+def test_partnership_aggregate_sums_both_slot_orders(conn):
+    """Regression: a pair's career partnership aggregate must sum stands stored in EITHER slot order.
+    The record card (top_partnership_aggregates) grouped on the raw slots and kept only the larger
+    direction, so it disagreed with the per-partner total on the player profile (e.g. 1776 vs 2089)."""
+    from onestats.domain.records import player_analysis
+    from onestats.domain.stats import records_detail
+    wid = _ws(conn, "REC PAIR SUM")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    home, away = _team(conn, wid, "H"), _team(conn, wid, "A")
+    a = people.create_person(conn, wid, ACTOR, display_name="A Bat")
+    b = people.create_person(conn, wid, ACTOR, display_name="B Bat")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    i2 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=2, batting_team_id=home, bowling_team_id=away)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=a, batting_position=1, runs=500, dismissal_type="not_out")
+    batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=b, batting_position=2, runs=500, dismissal_type="not_out")
+    ins = ("INSERT INTO partnership(workspace_id, innings_id, wicket_number, runs, "
+           "player1_person_id, player2_person_id, unbroken) VALUES (:w,:i,:wk,:r,:p1,:p2,false)")
+    conn.execute(text(ins), {"w": wid, "i": i1, "wk": 1, "r": 1000, "p1": a, "p2": b})   # A as player1
+    conn.execute(text(ins), {"w": wid, "i": i2, "wk": 1, "r": 800, "p1": b, "p2": a})    # same pair, slots reversed
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    agg = records_detail.top_partnership_aggregates(conn, {"workspace_id": wid})
+    assert len(agg) == 1                                                  # one unordered pair, not two
+    assert agg[0]["total_runs"] == 1800 and agg[0]["partnerships"] == 2   # both slot orders summed (was 1000)
+
+    # the record now agrees with the per-partner total shown on the player profile
+    pt = {r["partner"]: r for r in player_analysis.player_analysis(conn, wid, a)["partnership_totals"]}
+    assert pt["B Bat"]["runs"] == 1800
+
+
 def test_best_bowling_in_a_match_record_uses_runs_tiebreak(conn):
     """The 'Best Bowling in a Match' all-time record is a figure ranked by most wickets THEN fewest runs
     conceded — not the bare wicket count. Two bowlers on equal wickets must be split by runs, and the
