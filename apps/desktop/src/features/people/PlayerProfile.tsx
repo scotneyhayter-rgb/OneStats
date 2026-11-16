@@ -822,8 +822,17 @@ export function PlayerProfile() {
                   )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div><h4 className="mb-1 text-xs font-semibold">How out</h4>
-                      {analysis.dismissals.how_out.length === 0 ? <p className="text-xs text-muted-foreground">No dismissals recorded.</p> :
-                        analysis.dismissals.how_out.map((h, i) => (<div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm"><span className="capitalize">{h.type}</span><span className="tabular-nums">{h.count}</span></div>))}</div>
+                      {analysis.dismissals.how_out.length === 0 ? <p className="text-xs text-muted-foreground">No dismissals recorded.</p> : (() => {
+                        const total = analysis.dismissals.how_out.reduce((s, h) => s + (Number(h.count) || 0), 0) || 1;
+                        return (<div className="flex flex-col gap-1.5">
+                          {analysis.dismissals.how_out.map((h, i) => (
+                            <div key={i}>
+                              <div className="flex justify-between text-sm"><span className="capitalize">{h.type}</span><span className="tabular-nums">{h.count}</span></div>
+                              <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-brand" style={{ width: `${Math.max(2, Math.round(((Number(h.count) || 0) / total) * 100))}%` }} /></div>
+                            </div>
+                          ))}
+                        </div>);
+                      })()}</div>
                     <div><h4 className="mb-1 text-xs font-semibold">Dismissed by (most)</h4>
                       {analysis.dismissals.dismissed_by.length === 0 ? <p className="text-xs text-muted-foreground">—</p> :
                         analysis.dismissals.dismissed_by.map((d, i) => (<div key={i} className="flex justify-between border-b border-border/50 py-1 text-sm"><span>{d.player}</span><span className="tabular-nums">{d.count}</span></div>))}</div>

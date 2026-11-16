@@ -494,3 +494,12 @@ def test_head_to_head_highlights_favourite_opponents_and_ground():
     assert "Unknown" not in html
     assert publishing._head_to_head(None) == "" and publishing._head_to_head({}) == ""
     assert publishing._head_to_head({"opposition": {"batting": [{"label": "X", "runs": 0}]}}) == ""
+
+
+def test_how_out_bars_render_a_proportional_breakdown():
+    """The how-out breakdown renders as proportional bars (type-cased label, count, width = share)."""
+    how = [{"type": "caught", "count": 60}, {"type": "bowled", "count": 30}, {"type": "lbw", "count": 10}]
+    html = publishing._how_out_bars(how)
+    assert "Caught" in html and ">60<" in html and "Bowled" in html and "Lbw" in html
+    assert "width:60%" in html and "width:30%" in html and "width:10%" in html
+    assert publishing._how_out_bars([]) == "" and publishing._how_out_bars(None) == ""
