@@ -447,3 +447,28 @@ def test_recent_form_shows_last_matches_oldest_first_with_accents():
     assert "f5w" in html and ">5w<" in html            # five-for accented
     assert "f3w" in html                               # three-for accented
     assert publishing._recent_form([]) == "" and publishing._recent_form(None) == ""
+
+
+def test_milestone_progress_shows_the_next_target_per_discipline():
+    """The milestone-progress panel shows each started discipline's next career target with a gap, hides
+    disciplines not started (total 0) or already topped out (no next), and shows a known-minimum gap as an
+    upper bound (≤)."""
+    ms = {"metrics": {
+        "runs": {"label": "Career runs", "total": 914, "known_minimum": False,
+                 "next": {"threshold": 1000, "to_go": 86, "known_minimum": False}},
+        "wickets": {"label": "Career wickets", "total": 151, "known_minimum": False,
+                    "next": {"threshold": 200, "to_go": 49, "known_minimum": False}},
+        "stumpings": {"label": "Stumpings", "total": 0, "known_minimum": False,
+                      "next": {"threshold": 10, "to_go": 10, "known_minimum": False}},
+        "catches": {"label": "Catches", "total": 120, "known_minimum": False, "next": None},
+    }}
+    html = publishing._milestone_progress(ms)
+    assert "Career runs" in html and "914 / 1000" in html and "86 to go" in html
+    assert "Career wickets" in html and "49 to go" in html
+    assert "Stumpings" not in html          # total 0 → not started → hidden
+    assert "Catches" not in html            # no next milestone → hidden
+    assert publishing._milestone_progress(None) == ""
+    km = {"metrics": {"runs": {"label": "Career runs", "total": 480, "known_minimum": True,
+          "next": {"threshold": 500, "to_go": 20, "known_minimum": True}}}}
+    kmhtml = publishing._milestone_progress(km)
+    assert "≥ 480" in kmhtml and "≤ 20 to go" in kmhtml
