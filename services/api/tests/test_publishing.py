@@ -515,3 +515,35 @@ def test_result_bar_segments_only_non_zero_outcomes():
     assert "res-tied" not in html and "Tied" not in html          # zero outcome omitted
     assert "width:64.286%" in html                                 # 45 / 70 decided
     assert publishing._result_bar(0, 0, 0, 0) == ""
+
+
+def test_scorecard_page_renders_batting_bowling_extras_and_result():
+    """The read-only scorecard page is a self-contained document with the teams/result in the hero, a
+    batting card (dismissal text, not-out, did-not-bat list), the extras/total, and the bowling card."""
+    view = {
+        "home_team": "Alpha", "away_team": "Beta", "match_date": "2020-01-01", "format": "T20",
+        "result": "Alpha won by 25 runs", "toss": "Alpha won the toss and chose to bat",
+        "innings": [{
+            "batting_team": "Alpha", "bowling_team": "Beta", "status": "all_out", "declared": False,
+            "batting": [
+                {"name": "J Smith", "how_out": "b X", "runs": 50, "balls": 40, "fours": 5, "sixes": 1,
+                 "strike_rate": 125.0, "out": True, "did_not_bat": False},
+                {"name": "K Jones", "how_out": "not out", "runs": 20, "balls": 15, "fours": 2, "sixes": 0,
+                 "strike_rate": 133.3, "out": False, "did_not_bat": False},
+                {"name": "L Brown", "how_out": "did not bat", "runs": None, "balls": None, "fours": None,
+                 "sixes": None, "strike_rate": None, "out": False, "did_not_bat": True},
+            ],
+            "bowling": [{"name": "P Pace", "overs": "4.0", "maidens": 0, "runs": 30, "wickets": 2,
+                         "wides": 1, "noballs": 0, "economy": 7.5}],
+            "extras": {"byes": 1, "legbyes": 2, "wides": 3, "noballs": 0, "penalty": 0},
+            "extras_total": 6, "total": 96, "official_total": 96, "wickets": 3,
+        }],
+    }
+    html = publishing._render_scorecard_page(view, {"club": "RMCC"})
+    assert html.startswith("<!doctype html>")
+    assert "Alpha v Beta" in html and "Alpha won by 25 runs" in html
+    assert "J Smith" in html and "not out" in html
+    assert "Did not bat: L Brown" in html          # non-batters listed, not in the table
+    assert "P Pace" in html and "Bowling" in html
+    assert "96/3" in html and "Extras" in html
+    assert publishing._render_scorecard_page({"innings": []}) .count("No innings") == 1

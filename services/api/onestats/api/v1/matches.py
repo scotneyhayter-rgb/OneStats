@@ -11,13 +11,21 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
-from onestats.domain import match_formats, match_sources, matches, results, seasons, validation
+from onestats.domain import (
+    match_formats,
+    match_sources,
+    matches,
+    publishing,
+    results,
+    seasons,
+    validation,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/matches", tags=["matches"])
 
@@ -169,6 +177,17 @@ def get_match(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: Ma
         d["season_warnings"] = seasons.season_warnings(conn, match_id)  # Phase 7.4
         d["validation"] = validation.match_validation(conn, match_id)   # Phase 7.1
         return _ids(d)
+
+
+@router.get("/{match_id}/scorecard.html")
+def scorecard_html(workspace_id: UUID, match_id: UUID, settings: SettingsDep, ctx: MatchCtx) -> Response:
+    """Self-contained, printable read-only scorecard page for a match — batting and bowling cards with
+    standard dismissal notation, extras, totals and result. Approved public data only."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        if matches.get_match(conn, match_id) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "match_not_found")
+        html = publishing.render_scorecard_html(conn, workspace_id, match_id)
+    return Response(content=html, media_type="text/html")
 
 
 @router.patch("/{match_id}")
