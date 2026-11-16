@@ -405,7 +405,7 @@ _PROFILE_CSS = (
     ".avatar{width:92px;height:92px;border-radius:50%;overflow:hidden;background:#fff;flex:0 0 auto;"
     "display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,.3)}"
     ".avatar img{width:100%;height:100%;object-fit:cover}"
-    ".avatar.crest img{object-fit:contain;padding:8px}"
+    ".avatar.crest img{object-fit:cover;padding:0}"
     ".avatar.mono{background:rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:33px;"
     "border:2px solid rgba(255,255,255,.4)}"
     ".id{flex:1 1 240px;min-width:200px}"
