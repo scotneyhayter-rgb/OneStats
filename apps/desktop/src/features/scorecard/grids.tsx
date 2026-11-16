@@ -142,8 +142,8 @@ function NumCell({
         setText(parsed === null ? "" : String(parsed));
         if (parsed !== value) onCommit(parsed);
       }}
-      className={`${width} h-8 rounded-[var(--radius-app)] border px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50 ${
-        invalid ? "border-danger/60 bg-danger/5 text-danger" : "border-border bg-card"
+      className={`${width} h-8 rounded-[var(--radius-app)] border px-2 text-center text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50 ${
+        invalid ? "border-danger/60 bg-danger/5 text-danger" : "border-border bg-card focus:border-brand focus:bg-brand/5"
       }`}
     />
   );
@@ -267,24 +267,24 @@ export function BattingGrid(ctx: GridCtx) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
-          <tr className="text-left text-xs uppercase text-muted-foreground">
+          <tr className="border-b border-border bg-muted/40 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {canManage && <th className="w-6" />}
             <th className="w-8 px-1 py-1">#</th>
             <th className="px-1 py-1">Batter</th>
             <th className="px-1 py-1">How out</th>
             <th className="px-1 py-1">Fielder</th>
             <th className="px-1 py-1">Bowler</th>
-            <th className="px-1 py-1">R</th>
-            <th className="px-1 py-1">B</th>
-            <th className="px-1 py-1">4s</th>
-            <th className="px-1 py-1">6s</th>
+            <th className="px-1 py-1 text-center">R</th>
+            <th className="px-1 py-1 text-center">B</th>
+            <th className="px-1 py-1 text-center">4s</th>
+            <th className="px-1 py-1 text-center">6s</th>
             {canManage && <th className="w-14 px-1 py-1 text-center">Order</th>}
             {canManage && <th className="w-8" />}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className={`border-t border-border ${dragIndex === i ? "opacity-50" : ""}`}
+            <tr key={r.id} className={`border-t border-border transition-colors hover:bg-muted/30 ${dragIndex === i ? "opacity-50" : ""}`}
               onDragOver={canManage ? (e) => e.preventDefault() : undefined}
               onDrop={canManage ? () => dropOn(i) : undefined}>
               {canManage && (
@@ -348,13 +348,13 @@ export function BattingGrid(ctx: GridCtx) {
                     aria-label={`Bowler not applicable for batter ${i + 1}`}>—</span>
                 )}
               </td>
-              <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
+              <td className="px-1 py-1 text-center"><NumCell value={r.runs} ariaLabel={`Runs ${i + 1}`} disabled={!canManage}
                 inputRef={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)} onCommit={(v) => void commit(r.id, { runs: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.balls_faced} ariaLabel={`Balls ${i + 1}`} disabled={!canManage}
+              <td className="px-1 py-1 text-center"><NumCell value={r.balls_faced} ariaLabel={`Balls ${i + 1}`} disabled={!canManage}
                 inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { balls_faced: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.fours} ariaLabel={`Fours ${i + 1}`} disabled={!canManage} width="w-12"
+              <td className="px-1 py-1 text-center"><NumCell value={r.fours} ariaLabel={`Fours ${i + 1}`} disabled={!canManage} width="w-12"
                 inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { fours: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.sixes} ariaLabel={`Sixes ${i + 1}`} disabled={!canManage} width="w-12"
+              <td className="px-1 py-1 text-center"><NumCell value={r.sixes} ariaLabel={`Sixes ${i + 1}`} disabled={!canManage} width="w-12"
                 inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { sixes: v })} /></td>
               {canManage && (
                 <td className="px-1 py-1">
@@ -471,47 +471,47 @@ export function BowlingGrid(ctx: GridCtx) {
   // Wickets reconciliation: bowler-credited wickets + run-outs/unassigned = wickets fallen (max 10).
   const unassigned = ctx.unassignedWickets ?? null;
   const wicketsFallen = tW != null ? tW + (unassigned ?? 0) : null;
-  const tdTot = "px-1 py-1 tabular-nums";
+  const tdTot = "px-1 py-1 text-center tabular-nums";
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         <thead>
-          <tr className="text-left text-xs uppercase text-muted-foreground">
+          <tr className="border-b border-border bg-muted/40 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             <th className="px-1 py-1">Bowler</th>
-            <th className="px-1 py-1">Overs</th>
-            <th className="px-1 py-1">M</th>
-            <th className="px-1 py-1">R</th>
-            <th className="px-1 py-1">W</th>
-            <th className="px-1 py-1">Wd</th>
-            <th className="px-1 py-1">Nb</th>
-            <th className="px-1 py-1" title="Hat-tricks taken by this bowler in the innings">HT</th>
+            <th className="px-1 py-1 text-center">Overs</th>
+            <th className="px-1 py-1 text-center">M</th>
+            <th className="px-1 py-1 text-center">R</th>
+            <th className="px-1 py-1 text-center">W</th>
+            <th className="px-1 py-1 text-center">Wd</th>
+            <th className="px-1 py-1 text-center">Nb</th>
+            <th className="px-1 py-1 text-center" title="Hat-tricks taken by this bowler in the innings">HT</th>
             {canManage && <th className="w-8" />}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className="border-t border-border">
+            <tr key={r.id} className="border-t border-border transition-colors hover:bg-muted/30">
               <td className="min-w-[180px] px-1 py-1">
                 <PlayerSelect workspaceId={workspaceId} value={r.person_id} nameOf={nameOf} onPersonLoaded={onPersonLoaded}
                   disabled={!canManage} aria-label={`Bowler ${i + 1}`} organisationId={ctx.bowlingOrgId} scopeLabel={ctx.bowlingTeamName}
                   onChange={(pid) => void commit(r.id, { person_id: pid })} />
               </td>
-              <td className="px-1 py-1">
+              <td className="px-1 py-1 text-center">
                 <input aria-label={`Overs ${i + 1}`} disabled={!canManage}
                   ref={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)}
                   value={overs[r.id] ?? r.overs_text ?? ""} placeholder="—"
                   onChange={(e) => setOvers((o) => ({ ...o, [r.id]: e.target.value }))}
                   onBlur={() => { const t = (overs[r.id] ?? r.overs_text ?? "").trim(); if (t !== (r.overs_text ?? "")) void commit(r.id, { overs_text: t || null }); }}
                   title="Cricket-over notation e.g. 5.3 = 5 overs 3 balls (never a decimal)"
-                  className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50" />
+                  className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-center text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] focus:border-brand focus:bg-brand/5 disabled:opacity-50" />
               </td>
-              <td className="px-1 py-1"><NumCell value={r.maidens} ariaLabel={`Maidens ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { maidens: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.runs_conceded} ariaLabel={`Runs conceded ${i + 1}`} disabled={!canManage} inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { runs_conceded: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.wickets} ariaLabel={`Wickets ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { wickets: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.wides} ariaLabel={`Wides ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 4)} onKeyDown={nav.onKeyDown(i, 4)} onCommit={(v) => void commit(r.id, { wides: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.noballs} ariaLabel={`No-balls ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 5)} onKeyDown={nav.onKeyDown(i, 5)} onCommit={(v) => void commit(r.id, { noballs: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.hat_tricks} ariaLabel={`Hat-tricks ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 6)} onKeyDown={nav.onKeyDown(i, 6)} onCommit={(v) => void commit(r.id, { hat_tricks: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.maidens} ariaLabel={`Maidens ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { maidens: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.runs_conceded} ariaLabel={`Runs conceded ${i + 1}`} disabled={!canManage} inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { runs_conceded: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.wickets} ariaLabel={`Wickets ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { wickets: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.wides} ariaLabel={`Wides ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 4)} onKeyDown={nav.onKeyDown(i, 4)} onCommit={(v) => void commit(r.id, { wides: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.noballs} ariaLabel={`No-balls ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 5)} onKeyDown={nav.onKeyDown(i, 5)} onCommit={(v) => void commit(r.id, { noballs: v })} /></td>
+              <td className="px-1 py-1 text-center"><NumCell value={r.hat_tricks} ariaLabel={`Hat-tricks ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 6)} onKeyDown={nav.onKeyDown(i, 6)} onCommit={(v) => void commit(r.id, { hat_tricks: v })} /></td>
               {canManage && (
                 <td className="px-1 py-1">
                   <button aria-label={`Remove bowler ${i + 1}`} onClick={() => void remove(r.id)}
@@ -528,7 +528,7 @@ export function BowlingGrid(ctx: GridCtx) {
         </tbody>
         {rows.length > 0 && (
           <tfoot>
-            <tr className="border-t-2 border-border font-semibold">
+            <tr className="border-t-2 border-border bg-muted/30 font-semibold">
               <td className="px-1 py-1 text-xs uppercase text-muted-foreground">Total</td>
               <td className={tdTot}>{tOvers ?? "—"}</td>
               <td className={tdTot}>{tM ?? "—"}</td>
@@ -553,7 +553,7 @@ export function BowlingGrid(ctx: GridCtx) {
                 const v = s === "" ? null : /^\d+$/.test(s) ? Number.parseInt(s, 10) : null;
                 if (v !== unassigned) void ctx.onInningsPatch?.({ unassigned_wickets: v });
               }}
-              className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50" />
+              className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-center text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] focus:border-brand focus:bg-brand/5 disabled:opacity-50" />
           </label>
           <span className="text-xs text-muted-foreground opacity-70">wickets not credited to a bowler (run-outs, etc.)</span>
         </div>
@@ -612,7 +612,7 @@ export function FowGrid(ctx: GridCtx) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[520px] border-collapse text-sm">
         <thead>
-          <tr className="text-left text-xs uppercase text-muted-foreground">
+          <tr className="border-b border-border bg-muted/40 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             <th className="px-1 py-1">Wkt</th>
             <th className="px-1 py-1">Score</th>
             <th className="px-1 py-1">Batter out</th>
@@ -621,7 +621,7 @@ export function FowGrid(ctx: GridCtx) {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className="border-t border-border">
+            <tr key={r.id} className="border-t border-border transition-colors hover:bg-muted/30">
               <td className="px-1 py-1"><NumCell value={r.wicket_number} ariaLabel={`Wicket number ${i + 1}`} disabled={!canManage} width="w-12"
                 invalid={issues.duplicateWicketIds.has(r.id)} invalidTitle="This wicket number is used by another fall of wicket."
                 onCommit={(v) => void commit(r.id, { wicket_number: v })} /></td>
@@ -690,7 +690,7 @@ export function PartnershipsGrid(ctx: GridCtx) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
-          <tr className="text-left text-xs uppercase text-muted-foreground">
+          <tr className="border-b border-border bg-muted/40 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             <th className="px-1 py-1">Wkt</th>
             <th className="px-1 py-1">Runs</th>
             <th className="px-1 py-1">Batter 1</th>
@@ -703,7 +703,7 @@ export function PartnershipsGrid(ctx: GridCtx) {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className="border-t border-border">
+            <tr key={r.id} className="border-t border-border transition-colors hover:bg-muted/30">
               <td className="px-1 py-1"><NumCell value={r.wicket_number} ariaLabel={`Partnership wicket ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wicket_number: v })} /></td>
               <td className="px-1 py-1"><NumCell value={r.runs} ariaLabel={`Partnership runs ${i + 1}`} disabled={!canManage} onCommit={(v) => void commit(r.id, { runs: v })} /></td>
               <td className="min-w-[150px] px-1 py-1">
