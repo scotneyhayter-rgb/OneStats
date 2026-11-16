@@ -859,7 +859,7 @@ function InningsSection({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {innings.map((i) => (
           <button key={i.id} onClick={() => setActiveInnings(i.id)}
-            className={`flex flex-col items-start rounded-[var(--radius-app)] border px-3 py-1 text-sm ${i.id === activeInnings ? "border-brand bg-brand/10 text-brand" : "border-border hover:bg-muted"}`}>
+            className={`flex flex-col items-start rounded-[var(--radius-app)] border px-3 py-1 text-sm transition-colors ${i.id === activeInnings ? "border-brand bg-brand/10 text-brand shadow-sm" : "border-border hover:border-brand/40 hover:bg-muted"}`}>
             <span>Innings {i.inns_number} <span className="text-xs text-muted-foreground">{teamName(i.batting_team_id) ?? "—"}</span></span>
             <span className="font-semibold tabular-nums">{tabScore(i.id, i.status)}</span>
           </button>
