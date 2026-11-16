@@ -251,6 +251,23 @@ export function PlayerProfile() {
       });
   }, [full]);
 
+  // Head-to-head favourites from the opposition/ground splits — top run-scoring & wicket-taking opponents
+  // and the most productive ground. Mirrors the export's Splits highlight.
+  const headToHead = useMemo(() => {
+    const sp = analysis?.splits as Record<string, { batting?: Record<string, unknown>[]; bowling?: Record<string, unknown>[] }> | undefined;
+    if (!sp) return null;
+    const named = (rows?: Record<string, unknown>[]) => (rows ?? []).filter((r) => String(r.label ?? "Unknown") !== "Unknown");
+    const topBat = named(sp.opposition?.batting).find((r) => Number(r.runs ?? 0) > 0);
+    const topBowl = named(sp.opposition?.bowling).reduce<Record<string, unknown> | null>(
+      (a, b) => (Number(b.wickets ?? 0) > Number(a?.wickets ?? 0) ? b : a), null);
+    const topGrd = named(sp.ground?.batting).find((r) => Number(r.runs ?? 0) > 0);
+    const cards: { k: string; n: string; b: string; s: string }[] = [];
+    if (topBat) cards.push({ k: "Most runs vs", n: String(topBat.label), b: `${num(topBat.runs)} runs`, s: `avg ${num(topBat.average, 2)} · ${num(topBat.innings)} inns` });
+    if (topBowl && Number(topBowl.wickets ?? 0) > 0) cards.push({ k: "Most wickets vs", n: String(topBowl.label), b: `${num(topBowl.wickets)} wkts`, s: `avg ${num(topBowl.average, 2)} · BB ${String(topBowl.best ?? "—")}` });
+    if (topGrd) cards.push({ k: "Favourite ground", n: String(topGrd.label), b: `${num(topGrd.runs)} runs`, s: `avg ${num(topGrd.average, 2)}` });
+    return cards.length ? cards : null;
+  }, [analysis]);
+
   useEffect(() => {
     if (!current || tab !== "media" || photos.length === 0) return;
     let revoked = false;
@@ -719,6 +736,18 @@ export function PlayerProfile() {
                   <option value="grade">By grade</option><option value="format">By format</option>
                 </select>
               </div>
+              {headToHead && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {headToHead.map((card, i) => (
+                    <div key={i} className="flex flex-col gap-0.5 rounded-xl border border-border bg-card px-3 py-2">
+                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{card.k}</span>
+                      <b className="text-[15px]">{card.n}</b>
+                      <span className="text-[13px] font-semibold text-brand">{card.b}</span>
+                      <span className="text-[11.5px] text-muted-foreground">{card.s}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {!analysis ? <p className="text-xs text-muted-foreground">Loading…</p> : (() => {
                 const dl = splitDim[0].toUpperCase() + splitDim.slice(1);
                 return (<div className="flex flex-col gap-4">
