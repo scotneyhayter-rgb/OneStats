@@ -656,11 +656,33 @@ export function PlayerProfile() {
           )}
 
           {tab === "captaincy" && c?.has_captaincy && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {statCard("Captained", capt.captained)}{statCard("Wins", capt.wins)}{statCard("Losses", capt.losses)}
-              {statCard("Draws", capt.draws)}{statCard("Ties", capt.ties)}{statCard("GF captained", capt.gf_captained)}
-              {statCard("GF wins", capt.gf_wins)}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {statCard("Captained", capt.captained)}{statCard("Wins", capt.wins)}{statCard("Losses", capt.losses)}
+                {statCard("Draws", capt.draws)}{statCard("Ties", capt.ties)}{statCard("GF captained", capt.gf_captained)}
+                {statCard("GF wins", capt.gf_wins)}
+              </div>
+              {(() => {
+                const segs = [
+                  { k: "won", label: "Won", v: Number(capt.wins) || 0, cls: "bg-brand" },
+                  { k: "lost", label: "Lost", v: Number(capt.losses) || 0, cls: "bg-[#c0504d]" },
+                  { k: "drawn", label: "Drawn", v: Number(capt.draws) || 0, cls: "bg-[#7e8794]" },
+                  { k: "tied", label: "Tied", v: Number(capt.ties) || 0, cls: "bg-[#caa63d]" },
+                ].filter((s) => s.v > 0);
+                const total = segs.reduce((s, x) => s + x.v, 0);
+                if (total === 0) return null;
+                return (
+                  <div className="mt-3 max-w-[520px]">
+                    <div className="flex h-3.5 overflow-hidden rounded-full bg-muted">
+                      {segs.map((s) => <div key={s.k} className={`h-full ${s.cls}`} style={{ width: `${(s.v / total) * 100}%` }} />)}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      {segs.map((s) => <span key={s.k} className="flex items-center gap-1.5"><i className={`inline-block h-2.5 w-2.5 rounded-[3px] ${s.cls}`} />{s.label} {s.v}</span>)}
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
           )}
           {tab === "captaincy" && !c?.has_captaincy && <p className="text-xs text-muted-foreground">No captaincy history recorded.</p>}
 
@@ -683,6 +705,17 @@ export function PlayerProfile() {
                   {gf.has_captaincy && statCard("GF captained", gfc.captained)}
                   {gf.has_captaincy && statCard("GF won as captain", gfc.gf_wins)}
                 </div>
+                {(() => {
+                  const app = Number(gf.appearances) || 0, prem = Number(gf.premierships) || 0;
+                  const pct = app ? Math.min(100, Math.round((prem / app) * 100)) : 0;
+                  return (
+                    <div className="mt-3 max-w-[360px] rounded-xl border border-border bg-card px-3 py-2">
+                      <div className="flex justify-between text-[13px]"><span>Premiership rate</span><b className="tabular-nums">{num(prem)} / {num(app)}</b></div>
+                      <div className="mt-1.5 h-[7px] overflow-hidden rounded-full bg-muted"><div className="h-full bg-brand" style={{ width: `${pct}%` }} /></div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{pct}% of grand finals won</div>
+                    </div>
+                  );
+                })()}
                 <p className="text-xs text-muted-foreground">
                   Premierships count grand finals {name}&rsquo;s team won while they featured — a recorded result, never inferred.
                 </p>
