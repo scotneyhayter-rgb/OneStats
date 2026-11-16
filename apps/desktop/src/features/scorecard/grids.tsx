@@ -414,6 +414,9 @@ export function BowlingGrid(ctx: GridCtx) {
   const { workspaceId, inningsId, canManage, nameOf, onPersonLoaded, onDirty, onChanged } = ctx;
   const { rows, refresh } = useRows<BowlingEntry>(() => api.listBowling(workspaceId, inningsId), onDirty, ctx.refreshKey);
   const [overs, setOvers] = useState<Record<string, string>>({});
+  // Keyboard navigation across the bowling cells (Enter / ↑ / ↓ move between rows), matching the batting
+  // grid. Columns: overs, maidens, runs, wickets, wides, no-balls, hat-tricks.
+  const nav = useFocusGrid(7, rows.length);
 
   const commit = async (id: string, body: Record<string, unknown>) => {
     try {
@@ -496,18 +499,19 @@ export function BowlingGrid(ctx: GridCtx) {
               </td>
               <td className="px-1 py-1">
                 <input aria-label={`Overs ${i + 1}`} disabled={!canManage}
+                  ref={nav.register(i, 0)} onKeyDown={nav.onKeyDown(i, 0)}
                   value={overs[r.id] ?? r.overs_text ?? ""} placeholder="—"
                   onChange={(e) => setOvers((o) => ({ ...o, [r.id]: e.target.value }))}
                   onBlur={() => { const t = (overs[r.id] ?? r.overs_text ?? "").trim(); if (t !== (r.overs_text ?? "")) void commit(r.id, { overs_text: t || null }); }}
                   title="Cricket-over notation e.g. 5.3 = 5 overs 3 balls (never a decimal)"
                   className="w-16 h-8 rounded-[var(--radius-app)] border border-border bg-card px-2 text-sm tabular-nums placeholder:italic placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50" />
               </td>
-              <td className="px-1 py-1"><NumCell value={r.maidens} ariaLabel={`Maidens ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { maidens: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.runs_conceded} ariaLabel={`Runs conceded ${i + 1}`} disabled={!canManage} onCommit={(v) => void commit(r.id, { runs_conceded: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.wickets} ariaLabel={`Wickets ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wickets: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.wides} ariaLabel={`Wides ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { wides: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.noballs} ariaLabel={`No-balls ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { noballs: v })} /></td>
-              <td className="px-1 py-1"><NumCell value={r.hat_tricks} ariaLabel={`Hat-tricks ${i + 1}`} disabled={!canManage} width="w-12" onCommit={(v) => void commit(r.id, { hat_tricks: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.maidens} ariaLabel={`Maidens ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 1)} onKeyDown={nav.onKeyDown(i, 1)} onCommit={(v) => void commit(r.id, { maidens: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.runs_conceded} ariaLabel={`Runs conceded ${i + 1}`} disabled={!canManage} inputRef={nav.register(i, 2)} onKeyDown={nav.onKeyDown(i, 2)} onCommit={(v) => void commit(r.id, { runs_conceded: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.wickets} ariaLabel={`Wickets ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 3)} onKeyDown={nav.onKeyDown(i, 3)} onCommit={(v) => void commit(r.id, { wickets: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.wides} ariaLabel={`Wides ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 4)} onKeyDown={nav.onKeyDown(i, 4)} onCommit={(v) => void commit(r.id, { wides: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.noballs} ariaLabel={`No-balls ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 5)} onKeyDown={nav.onKeyDown(i, 5)} onCommit={(v) => void commit(r.id, { noballs: v })} /></td>
+              <td className="px-1 py-1"><NumCell value={r.hat_tricks} ariaLabel={`Hat-tricks ${i + 1}`} disabled={!canManage} width="w-12" inputRef={nav.register(i, 6)} onKeyDown={nav.onKeyDown(i, 6)} onCommit={(v) => void commit(r.id, { hat_tricks: v })} /></td>
               {canManage && (
                 <td className="px-1 py-1">
                   <button aria-label={`Remove bowler ${i + 1}`} onClick={() => void remove(r.id)}
