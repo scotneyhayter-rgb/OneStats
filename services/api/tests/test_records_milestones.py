@@ -87,6 +87,36 @@ def test_upcoming_excludes_incomplete(conn):
     assert any(u["person_id"] == str(confirmed) and u["metric"] == "runs" and u["to_go"] == 380 for u in up)
 
 
+def test_milestones_scope_to_one_club(conn):
+    """A player at two clubs: unscoped milestones are the career total; scoped to one club's
+    organisation_id they reflect that club's figures ALONE — never the other club's (parity with the
+    rest of the club-scoped profile)."""
+    wid = _ws(conn, "MS SCOPE")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="L")
+    team_a, team_b, opp = _team(conn, wid, "Alpha"), _team(conn, wid, "Beta"), _team(conn, wid, "Opp")
+    org_a = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": team_a}).scalar_one()
+    org_b = conn.execute(text("SELECT organisation_id FROM team WHERE id = :t"), {"t": team_b}).scalar_one()
+    player = people.create_person(conn, wid, ACTOR, display_name="Dual Club")
+    for team, runs in ((team_a, 120), (team_b, 30)):
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=team, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=opp, is_home=False)
+        i = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=team, bowling_team_id=opp)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i, person_id=player, batting_position=1,
+                             runs=runs, balls_faced=runs, dismissal_type="not_out")
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    whole = milestones.person_milestones(conn, wid, player)
+    assert whole["metrics"]["runs"]["total"] == 150 and whole["metrics"]["matches"]["total"] == 2
+
+    alpha = milestones.person_milestones(conn, wid, player, organisation_id=org_a)
+    assert alpha["metrics"]["runs"]["total"] == 120 and alpha["metrics"]["matches"]["total"] == 1
+    assert {m["threshold"]: m["state"] for m in alpha["metrics"]["runs"]["milestones"]}[100] == "achieved_confirmed"
+
+    beta = milestones.person_milestones(conn, wid, player, organisation_id=org_b)
+    assert beta["metrics"]["runs"]["total"] == 30 and beta["metrics"]["matches"]["total"] == 1   # never Alpha's 120
+
+
 def test_runs_milestone_window_is_fifty_by_default(conn):
     """The runs flagging window is 50 by default (runs accumulate faster than wickets): a batter 40 from
     their next 100 is flagged, one 60 away is not. The old single window of 10 flagged neither."""

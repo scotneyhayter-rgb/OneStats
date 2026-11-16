@@ -905,21 +905,41 @@ export function PlayerProfile() {
             </>
           )}
 
-          {tab === "awards" && (
-            <>
-              <h3 className="text-sm font-semibold">Awards & Honours</h3>
-              {(full?.honours.length ?? 0) === 0 ? <p className="text-xs text-muted-foreground">None recorded.</p> :
-                full!.honours.map((h, i) => (
-                  <div key={i} className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm first:border-0">
-                    <Medal className="h-4 w-4 text-brand" aria-hidden />
-                    <span className="font-medium">{String(h.title)}</span>
-                    <Badge variant="muted">{String(h.award_category ?? h.honour_type).replace(/_/g, " ")}</Badge>
-                    {h.awarded_season ? <span className="text-xs text-muted-foreground">{String(h.awarded_season)}</span> : null}
-                  </div>
-                ))}
-              <p className="text-xs text-muted-foreground">Honours are explicitly recorded and authorised — never inferred from statistics.</p>
-            </>
-          )}
+          {tab === "awards" && (() => {
+            // Honour-grade memberships (Life Member, Honorary Member) are recorded as recognition, not
+            // honour rows, so surface them here too — otherwise a Life Member's Awards tab, which reads
+            // only the honour table, would read "None recorded". The hero shows these as gold chips.
+            const memberships = (full?.detail?.recognition ?? []).filter((r) => /life member|honorary member/i.test(r.label));
+            const honoursList = full?.honours ?? [];
+            return (
+              <>
+                <h3 className="text-sm font-semibold">Awards & Honours</h3>
+                {honoursList.length === 0 && memberships.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">None recorded.</p>
+                ) : (
+                  <>
+                    {memberships.map((r, i) => (
+                      <div key={`m${i}`} className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm first:border-0">
+                        <Medal className="h-4 w-4 text-[#d4af37]" aria-hidden />
+                        <span className="font-medium">{r.label}</span>
+                        <Badge variant="muted">Membership</Badge>
+                        {r.seasons.length > 0 ? <span className="text-xs text-muted-foreground">{r.seasons.join(", ")}</span> : null}
+                      </div>
+                    ))}
+                    {honoursList.map((h, i) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm first:border-0">
+                        <Medal className="h-4 w-4 text-brand" aria-hidden />
+                        <span className="font-medium">{String(h.title)}</span>
+                        <Badge variant="muted">{String(h.award_category ?? h.honour_type).replace(/_/g, " ")}</Badge>
+                        {h.awarded_season ? <span className="text-xs text-muted-foreground">{String(h.awarded_season)}</span> : null}
+                      </div>
+                    ))}
+                  </>
+                )}
+                <p className="text-xs text-muted-foreground">Honours are explicitly recorded and authorised — never inferred from statistics.</p>
+              </>
+            );
+          })()}
 
           {tab === "media" && (
             <>
