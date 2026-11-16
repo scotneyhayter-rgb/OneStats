@@ -9,7 +9,7 @@
 
 import {
   AlertTriangle, Check, ChevronLeft, ClipboardCheck, ClipboardList, Coins, Info, Layers, ListOrdered,
-  Maximize2, Minimize2, Save, Target, TrendingDown, Trophy, Users,
+  Maximize2, Minimize2, Printer, Save, Target, TrendingDown, Trophy, Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
@@ -223,6 +223,23 @@ export function ScorecardEditor({
     setTimeout(() => setMsg(null), 2500);
   };
 
+  // Open the read-only, printable scorecard page in a new tab (the user prints from there).
+  const [printBusy, setPrintBusy] = useState(false);
+  const openScorecard = async () => {
+    setPrintBusy(true);
+    setErr(null);
+    try {
+      const url = await api.scorecardHtmlUrl(workspaceId, matchId);
+      const w = window.open(url, "_blank");
+      if (!w) window.location.href = url;          // popup blocked → navigate instead
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not open the scorecard.");
+    } finally {
+      setPrintBusy(false);
+    }
+  };
+
   // Focus Mode: a distraction-free entry layout. It collapses the sidebar and hides the secondary
   // match sections (without unmounting them, so unsaved edits are preserved), leaving the scorecard
   // expanded. It never saves, navigates or changes match data/status.
@@ -283,6 +300,10 @@ export function ScorecardEditor({
         <div className="flex-1" />
         {msg && <span className="text-sm text-success">{msg}</span>}
         {err && <span className="text-sm text-danger">{err}</span>}
+        <Button variant="outline" size="sm" onClick={() => void openScorecard()} disabled={printBusy}
+          title="Open a read-only, printable scorecard">
+          <Printer className="h-4 w-4" aria-hidden /> {printBusy ? "Opening…" : "Print scorecard"}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => (focus ? exitFocus() : enterFocus())}
           aria-pressed={focus} title={focus ? "Exit Focus Mode (Esc)" : "Focus Mode"}>
           {focus ? <Minimize2 className="h-4 w-4" aria-hidden /> : <Maximize2 className="h-4 w-4" aria-hidden />}

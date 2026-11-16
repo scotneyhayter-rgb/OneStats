@@ -1795,6 +1795,15 @@ export const api = {
     if (!resp.ok) throw new ApiError(`Profile PDF failed (${resp.status})`, resp.status);
     return URL.createObjectURL(await resp.blob());
   },
+  // Read-only, printable scorecard page for a match (text/html) → a blob URL to open/print.
+  scorecardHtmlUrl: async (w: string, matchId: string): Promise<string> => {
+    const headers: Record<string, string> = {};
+    const t = getToken();
+    if (t) headers["Authorization"] = `Bearer ${t}`;
+    const resp = await fetch(`${getApiBase()}/api/v1/workspaces/${w}/matches/${matchId}/scorecard.html`, { headers });
+    if (!resp.ok) throw new ApiError(`Scorecard failed (${resp.status})`, resp.status);
+    return URL.createObjectURL(await resp.blob());
+  },
   upsertProfile: (w: string, id: string, body: Record<string, unknown>) =>
     request<Record<string, unknown>>(`/api/v1/workspaces/${w}/people/${id}/profile`, { method: "PUT", body }),
   personPhotos: (w: string, id: string) =>

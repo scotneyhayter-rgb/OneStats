@@ -507,6 +507,15 @@ _PROFILE_CSS = (
     ".res-key i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}"
     ".res-won{background:var(--accent)}.res-lost{background:#c0504d}"
     ".res-drawn{background:#7e8794}.res-tied{background:#caa63d}"
+    ".sc-inns{margin:0 0 22px}"
+    ".sc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;"
+    "border-bottom:2px solid var(--brand);padding-bottom:4px;margin:18px 0 8px}"
+    ".sc-head h2{font-size:17px;margin:0}"
+    ".sc-score{font-size:20px;font-weight:800;color:var(--brand);font-variant-numeric:tabular-nums}"
+    ".sc-line{display:flex;gap:8px;align-items:baseline;padding:4px 2px;font-size:13.5px;max-width:720px}"
+    ".sc-line b{margin-left:auto;font-variant-numeric:tabular-nums}"
+    ".sc-total{border-top:1px solid var(--line);font-weight:700;margin-top:2px}"
+    "@media print{.tabs{display:none}.panel{display:block!important}body{background:#fff}}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -1096,6 +1105,85 @@ def _render_profile_page(snap: dict[str, Any], title: str, public_base: str, slu
         f"<footer>Published by OneStats · {gen}{foot_link} · Approved statistics only — "
         "unknown values are never shown as zero.</footer>"
         f"<script>{_PROFILE_JS}</script></body></html>")
+
+
+def _scorecard_innings(iv: dict[str, Any]) -> str:
+    bt = escape(str(iv.get("batting_team") or "Batting"))
+    wkts = iv.get("wickets")
+    decl = " dec" if iv.get("declared") else ""
+    score = f"{_num(iv.get('total'))}/{_num(wkts)}{decl}" if wkts is not None else f"{_num(iv.get('total'))}{decl}"
+    batted = [b for b in (iv.get("batting") or []) if not b.get("did_not_bat")]
+    dnb = [b for b in (iv.get("batting") or []) if b.get("did_not_bat")]
+    brows = ["<tr>"
+             f"<td><b>{escape(str(b.get('name') or '—'))}</b></td>"
+             f"<td class='muted'>{escape(str(b.get('how_out') or ''))}</td>"
+             f"<td class='r'><b>{_num(b.get('runs'))}</b></td><td class='r'>{_num(b.get('balls'))}</td>"
+             f"<td class='r'>{_num(b.get('fours'))}</td><td class='r'>{_num(b.get('sixes'))}</td>"
+             f"<td class='r'>{_num(b.get('strike_rate'), 2)}</td></tr>" for b in batted]
+    bat_tbl = _table([("Batter", ""), ("", ""), ("R", "r"), ("B", "r"), ("4s", "r"), ("6s", "r"), ("SR", "r")], brows)
+    ex = iv.get("extras") or {}
+    ex_bits = [f"{lbl} {ex[k]}" for k, lbl in (("byes", "b"), ("legbyes", "lb"), ("wides", "w"),
+                                               ("noballs", "nb"), ("penalty", "pen")) if ex.get(k)]
+    extras_line = ("<div class='sc-line'><span>Extras</span>"
+                   + (f"<span class='muted'>({escape(', '.join(ex_bits))})</span>" if ex_bits else "")
+                   + f"<b>{_num(iv.get('extras_total'))}</b></div>")
+    total_line = f"<div class='sc-line sc-total'><span>Total</span><b>{score}</b></div>"
+    dnb_line = (f"<p class='muted'>Did not bat: {escape(', '.join(str(b.get('name') or '') for b in dnb))}</p>"
+                if dnb else "")
+    wrows = ["<tr>"
+             f"<td><b>{escape(str(w.get('name') or '—'))}</b></td>"
+             f"<td class='r'>{escape(str(w.get('overs') or '—'))}</td><td class='r'>{_num(w.get('maidens'))}</td>"
+             f"<td class='r'>{_num(w.get('runs'))}</td><td class='r'><b>{_num(w.get('wickets'))}</b></td>"
+             f"<td class='r'>{_num(w.get('economy'), 2)}</td></tr>" for w in (iv.get("bowling") or [])]
+    bowl = ("<h3 class='sub'>Bowling</h3>"
+            + _table([("Bowler", ""), ("O", "r"), ("M", "r"), ("R", "r"), ("W", "r"), ("Econ", "r")], wrows)) if wrows else ""
+    return (f"<section class='sc-inns'><div class='sc-head'><h2>{bt}</h2><div class='sc-score'>{score}</div></div>"
+            + bat_tbl + extras_line + total_line + dnb_line + bowl + "</section>")
+
+
+def _render_scorecard_page(view: dict[str, Any], brand: dict[str, Any] | None = None,
+                           public_base: str = "", slug: str = "") -> str:
+    """A self-contained, printable read-only match scorecard — hero (teams, date, format, result, toss)
+    then an innings-by-innings batting and bowling card. Shares the profile page's theme and table styling;
+    all CSS inline, no database access, approved public data only."""
+    brand = brand or {}
+    primary = escape(str(brand.get("primary") or "#0b5e3b"))
+    accent = escape(str(brand.get("accent") or brand.get("secondary") or brand.get("primary") or "#0b5e3b"))
+    club = escape(str(brand.get("club") or "OneStats"))
+    theme = str(brand.get("theme") or "system")
+    theme_class = "theme-" + (theme if theme in ("light", "dark") else "system")
+    home = escape(str(view.get("home_team") or "Home"))
+    away = escape(str(view.get("away_team") or "Away"))
+    meta_bits = [b for b in (escape(str(view.get("match_date"))) if view.get("match_date") else None,
+                             escape(str(view.get("format"))) if view.get("format") else None) if b]
+    meta_html = f"<div class='meta'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
+    result_html = (f"<div class='honours'><span class='hon-badge'>★ {escape(str(view.get('result')))}</span></div>"
+                   if view.get("result") else "")
+    toss_html = f"<p class='muted' style='margin:4px 0 0'>{escape(str(view.get('toss')))}</p>" if view.get("toss") else ""
+    sections = "".join(_scorecard_innings(iv) for iv in (view.get("innings") or []))
+    if not sections:
+        sections = "<p class='muted'>No innings have been recorded for this match yet.</p>"
+    gen = datetime.now(UTC).strftime("%d %b %Y")
+    foot_link = (" · " + escape(public_base) + "/m/" + escape(slug)) if public_base else ""
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{home} v {away} — {club}</title>"
+        f"<style>:root{{--brand:{primary};--accent:{accent}}}</style>"
+        f"<style>{_PROFILE_CSS}</style></head><body class='{theme_class}'>"
+        f"<header class='hero'><div class='hero-in'><div class='id'><div class='club'>{club} · Scorecard</div>"
+        f"<h1>{home} v {away}</h1>{meta_html}{result_html}{toss_html}</div></div></header>"
+        f"<main>{sections}</main>"
+        f"<footer>Published by OneStats · {gen}{foot_link} · Approved statistics only — "
+        "unknown values are never shown as zero.</footer></body></html>")
+
+
+def render_scorecard_html(conn: Connection, workspace_id: UUID, match_id: UUID) -> str:
+    """Public entry point: assemble a match's read-only scorecard and render the printable page, branded
+    with the workspace's colours and name."""
+    from onestats.domain.records import scorecard as _scorecard
+    view = _scorecard.scorecard_view(conn, workspace_id, match_id)
+    return _render_scorecard_page(view, _branding(conn, workspace_id))
 
 
 def _render_html(snap: dict[str, Any], title: str, public_base: str, slug: str) -> str:
