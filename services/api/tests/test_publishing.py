@@ -503,3 +503,15 @@ def test_how_out_bars_render_a_proportional_breakdown():
     assert "Caught" in html and ">60<" in html and "Bowled" in html and "Lbw" in html
     assert "width:60%" in html and "width:30%" in html and "width:10%" in html
     assert publishing._how_out_bars([]) == "" and publishing._how_out_bars(None) == ""
+
+
+def test_result_bar_segments_only_non_zero_outcomes():
+    """The captaincy win/loss bar renders a segment + key entry for each non-zero outcome, sized by share,
+    and nothing at all when there are no decided results."""
+    html = publishing._result_bar(won=45, lost=20, drawn=5, tied=0)
+    assert "res-won" in html and "Won 45" in html
+    assert "res-lost" in html and "Lost 20" in html
+    assert "res-drawn" in html and "Drawn 5" in html
+    assert "res-tied" not in html and "Tied" not in html          # zero outcome omitted
+    assert "width:64.286%" in html                                 # 45 / 70 decided
+    assert publishing._result_bar(0, 0, 0, 0) == ""

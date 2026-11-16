@@ -500,6 +500,13 @@ _PROFILE_CSS = (
     ".hob-l b{color:var(--ink);font-variant-numeric:tabular-nums}"
     ".hob-bar{height:8px;border-radius:999px;background:var(--chart-soft);margin-top:3px;overflow:hidden}"
     ".hob-bar i{display:block;height:100%;background:var(--accent)}"
+    ".res{max-width:520px;margin:10px 0 4px}"
+    ".res-bar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--chart-soft)}"
+    ".res-bar i{display:block;height:100%}"
+    ".res-key{display:flex;flex-wrap:wrap;gap:12px;margin-top:7px;font-size:12px;color:var(--muted)}"
+    ".res-key i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}"
+    ".res-won{background:var(--accent)}.res-lost{background:#c0504d}"
+    ".res-drawn{background:#7e8794}.res-tied{background:#caa63d}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -611,6 +618,19 @@ def _milestone_progress(milestones: dict[str, Any] | None) -> str:
     if not rows:
         return ""
     return "<h3 class='sub'>Milestone progress</h3><div class='ms-list'>" + "".join(rows) + "</div>"
+
+
+def _result_bar(won: int, lost: int, drawn: int, tied: int) -> str:
+    """A segmented win/loss/draw(/tie) bar with a count legend — the captaincy record at a glance. Only
+    non-zero outcomes get a segment and a key entry; empty when there are no decided results."""
+    segs = (("won", "Won", int(won or 0)), ("lost", "Lost", int(lost or 0)),
+            ("drawn", "Drawn", int(drawn or 0)), ("tied", "Tied", int(tied or 0)))
+    total = sum(v for _, _, v in segs if v > 0)
+    if total <= 0:
+        return ""
+    bar = "".join(f"<i class='res-{k}' style='width:{v / total * 100:.3f}%'></i>" for k, _, v in segs if v > 0)
+    key = "".join(f"<span><i class='res-{k}'></i>{escape(lbl)} {v}</span>" for k, lbl, v in segs if v > 0)
+    return f"<div class='res'><div class='res-bar'>{bar}</div><div class='res-key'>{key}</div></div>"
 
 
 def _how_out_bars(how_out: list[dict[str, Any]] | None) -> str:
@@ -739,11 +759,13 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
         cp = int(capt.get("captained", 0) or 0)
         won = int(capt.get("wins", 0) or 0)
         win_pct = f"{(won * 100 / cp):.0f}%" if cp else "—"
-        tabs.append(("captaincy", "Captaincy", _tiles([
+        tiles = _tiles([
             ("Captained", _num(capt.get("captained"))), ("Won", _num(capt.get("wins"))),
             ("Lost", _num(capt.get("losses"))), ("Drawn", _num(capt.get("draws"))),
             ("Tied", _num(capt.get("ties"))), ("Win %", win_pct),
-            ("GF captained", _num(capt.get("gf_captained"))), ("GF won", _num(capt.get("gf_wins")))])))
+            ("GF captained", _num(capt.get("gf_captained"))), ("GF won", _num(capt.get("gf_wins")))])
+        rbar = _result_bar(won, capt.get("losses"), capt.get("draws"), capt.get("ties"))
+        tabs.append(("captaincy", "Captaincy", tiles + rbar))
 
     # ---- Seasons ----
     seasons = snap.get("seasons") or []
@@ -769,11 +791,18 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
     # ---- Grand Finals ----
     if int(gf.get("appearances", 0) or 0) > 0:
         gfb, gfw, gff = gf.get("batting") or {}, gf.get("bowling") or {}, gf.get("fielding") or {}
-        tabs.append(("grandfinals", "Grand Finals", _tiles([
+        app, prem = int(gf.get("appearances") or 0), int(gf.get("premierships") or 0)
+        pct = min(100, round(prem / app * 100)) if app else 0
+        gf_rate = (f"<div class='ms' style='max-width:360px;margin:8px 0'><div class='ms-top'>"
+                   f"<span>Premiership rate</span><b>{_num(prem)} / {_num(app)}</b></div>"
+                   f"<div class='ms-bar'><i style='width:{pct}%'></i></div>"
+                   f"<div class='ms-go'>{pct}% of grand finals won</div></div>")
+        tiles = _tiles([
             ("Appearances", _num(gf.get("appearances"))), ("Premierships", _num(gf.get("premierships"))),
             ("GF runs", _num(gfb.get("runs"))), ("GF bat avg", _num(gfb.get("average"), 2)),
             ("GF wickets", _num(gfw.get("wickets"))), ("GF bowl avg", _num(gfw.get("average"), 2)),
-            ("GF catches", _num(gff.get("catches")))])))
+            ("GF catches", _num(gff.get("catches")))])
+        tabs.append(("grandfinals", "Grand Finals", tiles + gf_rate))
 
     # ---- Honours & records ----
     hon: list[str] = []
