@@ -236,6 +236,21 @@ export function PlayerProfile() {
     });
   }, [matches]);
 
+  // Next career milestone per discipline (career-wide, like the badges) — only started disciplines (total
+  // > 0) with a target still ahead. Mirrors the export's milestone-progress panel.
+  const milestoneProgress = useMemo(() => {
+    const order = ["runs", "wickets", "matches", "catches", "stumpings"] as const;
+    const metrics = full?.milestones?.metrics ?? {};
+    return order
+      .map((k) => metrics[k])
+      .filter((m) => m && m.total > 0 && m.next)
+      .map((m) => {
+        const threshold = m!.next!.threshold;
+        const pct = threshold ? Math.max(0, Math.min(100, Math.round((m!.total / threshold) * 100))) : 0;
+        return { label: m!.label, total: m!.total, threshold, toGo: m!.next!.to_go, km: m!.known_minimum, pct };
+      });
+  }, [full]);
+
   useEffect(() => {
     if (!current || tab !== "media" || photos.length === 0) return;
     let revoked = false;
@@ -534,6 +549,26 @@ export function PlayerProfile() {
                           : f.wk != null && f.wk >= 3 ? "border-b-[3px] !border-b-brand/40" : ""}`}>
                         <b className="block text-[15px]">{f.runs == null ? "·" : `${f.runs}${f.notOut ? "*" : ""}`}</b>
                         <span className="block min-h-[13px] text-[11px] text-muted-foreground">{f.wk ? `${f.wk}w` : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {milestoneProgress.length > 0 && (
+                <div className="border-t border-border/50 pt-3">
+                  <h3 className="text-sm font-semibold">Milestone progress</h3>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {milestoneProgress.map((m, i) => (
+                      <div key={i} className="rounded-xl border border-border bg-card px-3 py-2">
+                        <div className="flex justify-between gap-2 text-[13px]">
+                          <span>{m.label}</span>
+                          <b className="tabular-nums">{m.km ? "≥ " : ""}{num(m.total)} / {num(m.threshold)}</b>
+                        </div>
+                        <div className="mt-1.5 h-[7px] overflow-hidden rounded-full bg-muted">
+                          <div className="h-full bg-brand" style={{ width: `${m.pct}%` }} />
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">{m.km ? "≤ " : ""}{num(m.toGo)} to go</div>
                       </div>
                     ))}
                   </div>

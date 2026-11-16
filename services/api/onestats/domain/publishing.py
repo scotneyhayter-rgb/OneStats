@@ -206,7 +206,7 @@ def _profile_snapshot(conn: Connection, workspace_id: UUID, person_id: UUID, bra
             "detail": public_detail, "span": prof.get("span"), "scope_club": scope_club, "photo": photo,
             "analysis": analysis, "matches": matches,
             "career": prof["career"], "seasons": seasons, "records": records, "clubs": clubs,
-            "grand_finals": prof.get("grand_finals"), "badges": badges,
+            "grand_finals": prof.get("grand_finals"), "badges": badges, "milestones": prof.get("milestones"),
             "honours": [{"title": h.get("title"), "category": h.get("award_category") or h.get("honour_type"),
                          "season": h.get("awarded_season")} for h in prof["honours"]],
             "branding": brand, "qualifications": quals}
@@ -482,6 +482,13 @@ _PROFILE_CSS = (
     ".fcell.f50{border-color:var(--accent)}.fcell.f50 b{color:var(--accent)}"
     ".fcell.f100{border-color:var(--accent);background:var(--chart-soft)}"
     ".fcell.f3w{border-bottom:3px solid var(--chart-soft)}.fcell.f5w{border-bottom:3px solid var(--chart)}"
+    ".ms-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:6px 0}"
+    ".ms{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card)}"
+    ".ms-top{display:flex;justify-content:space-between;gap:8px;font-size:13px}"
+    ".ms-top b{font-variant-numeric:tabular-nums;color:var(--ink)}"
+    ".ms-bar{height:7px;border-radius:999px;background:var(--chart-soft);margin:6px 0 4px;overflow:hidden}"
+    ".ms-bar i{display:block;height:100%;background:var(--accent)}"
+    ".ms-go{font-size:11.5px;color:var(--muted)}"
     "footer{max-width:1040px;margin:0 auto;padding:16px 20px 36px;color:var(--muted);font-size:11.5px}"
     "@media(max-width:560px){.id h1{font-size:24px}.hero-in{gap:14px}.key b{font-size:19px}}"
 )
@@ -528,6 +535,39 @@ def _recent_form(matches: list[dict[str, Any]] | None, limit: int = 10) -> str:
             "and wickets below</p><div class='form'>" + "".join(cells) + "</div>")
 
 
+_MILESTONE_ORDER = ("runs", "wickets", "matches", "catches", "stumpings")
+
+
+def _milestone_progress(milestones: dict[str, Any] | None) -> str:
+    """How close the player is to their next career milestone in each discipline — e.g. "128 to go" toward
+    5000 career runs — with a progress bar. Career-wide (like the badges), so the labels say "career". Only
+    disciplines the player has actually started (total > 0) with a milestone still ahead are shown; a
+    known-minimum total shows the gap as an upper bound (≤), never a confirmed prediction."""
+    if not milestones:
+        return ""
+    metrics = milestones.get("metrics") or {}
+    rows: list[str] = []
+    for key in _MILESTONE_ORDER:
+        m = metrics.get(key)
+        nxt = m.get("next") if m else None
+        total = int((m or {}).get("total") or 0)
+        if not nxt or total <= 0:
+            continue
+        threshold = int(nxt.get("threshold") or 0)
+        to_go = int(nxt.get("to_go") or 0)
+        km = bool(nxt.get("known_minimum"))
+        pct = max(0, min(100, round(total / threshold * 100))) if threshold else 0
+        label = escape(str((m or {}).get("label") or key))
+        rows.append(
+            f"<div class='ms'><div class='ms-top'><span>{label}</span>"
+            f"<b>{'≥ ' if km else ''}{_num(total)} / {_num(threshold)}</b></div>"
+            f"<div class='ms-bar'><i style='width:{pct}%'></i></div>"
+            f"<div class='ms-go'>{'≤ ' if km else ''}{_num(to_go)} to go</div></div>")
+    if not rows:
+        return ""
+    return "<h3 class='sub'>Milestone progress</h3><div class='ms-list'>" + "".join(rows) + "</div>"
+
+
 def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
     """Build the (id, label, html) for each profile tab that has data to show."""
     c = snap.get("career") or {}
@@ -571,6 +611,7 @@ def _profile_tabs(snap: dict[str, Any]) -> list[tuple[str, str, str]]:
     if hl:
         ov.append("<p class='muted' style='margin:2px 0 8px'>" + " &nbsp;·&nbsp; ".join(hl) + "</p>")
     ov.append(_recent_form(snap.get("matches")))
+    ov.append(_milestone_progress(snap.get("milestones")))
     clubs = snap.get("clubs") or []
     if clubs:
         rows = []
