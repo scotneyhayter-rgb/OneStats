@@ -96,7 +96,7 @@ _BOWL_COLS = [_C("rank", "#", "right"), _C("player", "Player"), _C("matches", "M
 _FIELD_COLS = [_C("rank", "#", "right"), _C("player", "Player"), _C("matches", "M", "right"),
                _C("catches", "Ct", "right"), _C("field_catches", "Ct (field)", "right"),
                _C("keeper_catches", "Ct (wk)", "right"), _C("stumpings", "St", "right"),
-               _C("run_outs", "RO", "right"), _C("keeper_dismissals", "WK Dis", "right")]
+               _C("run_out_involvements", "RO", "right"), _C("keeper_dismissals", "WK Dis", "right")]
 _CAPT_COLS = [_C("rank", "#", "right"), _C("player", "Captain"), _C("captained", "M", "right"),
               _C("wins", "W", "right"), _C("losses", "L", "right"), _C("draws", "D", "right"),
               _C("ties", "T", "right"), _C("win_pct", "Win %", "right", 1),
@@ -198,7 +198,8 @@ REPORTS: dict[str, dict[str, Any]] = {
         "fn": lambda conn, f, **kw: records_detail.most_matches_together(conn, f)},
     "partnership_aggregates": {"title": "Top Partnership Aggregates (Pairs)", "columns": [
         _C("rank", "#", "right"), _C("player1_name", "Batter 1"), _C("player2_name", "Batter 2"),
-        _C("total_runs", "Total Runs", "right"), _C("partnerships", "Partnerships", "right")],
+        _C("total_runs", "Total Runs", "right"), _C("partnerships", "Partnerships", "right"),
+        _C("average", "Average", "right", 2)],
         "fn": lambda conn, f, **kw: records_detail.top_partnership_aggregates(conn, f)},
     "longest_serving": {"title": "Longest-Serving Players", "columns": [
         _C("rank", "#", "right"), _C("player", "Player"), _C("seasons", "Seasons", "right"),
@@ -423,8 +424,8 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("field_most_outfield", "Most Outfield Catches", "Fielding", "Most catches taken in the field (non-keeper).",
              "fielding", {"order_by": "field_catches"}, _SCOPE_NO_VENUE),
     CatEntry("field_most_run_outs", "Most Run Outs", "Fielding", "Most run-out involvements credited.",
-             "fielding", {"order_by": "run_outs"}, _SCOPE_NO_VENUE,
-             limitations="One fielder is credited per run out; shared involvements are not separately recorded."),
+             "fielding", {"order_by": "run_out_involvements"}, _SCOPE_NO_VENUE,
+             limitations="Counts run-out involvements (direct run outs + recorded assists), matching the player profile."),
     CatEntry("field_bowler_combos", "Top Fielder–Bowler Combinations", "Fielding",
              "Most dismissals crediting a specific fielder and bowler together (catches/stumpings).",
              "fielder_bowler", {}, ("season", "grade", "competition", "split"),
