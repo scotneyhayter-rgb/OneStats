@@ -50,7 +50,8 @@ def batting_partnerships(conn: Connection, filters: dict[str, Any], *, by_wicket
         best: dict[Any, dict[str, Any]] = {}
         for r in out:
             w = r["wicket"]
-            if w is not None and (w not in best or r["runs"] > best[w]["runs"]):
+            # a side has at most 10 partnerships (wickets 1–10); an 11th is a data artifact
+            if w is not None and 1 <= w <= 10 and (w not in best or r["runs"] > best[w]["runs"]):
                 best[w] = r
         return [best[w] for w in sorted(best)]
     out.sort(key=lambda r: -r["runs"])
