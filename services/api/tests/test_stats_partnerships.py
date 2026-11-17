@@ -97,3 +97,25 @@ def test_batting_partnerships(conn):
     assert top and top[0]["runs"] == 120 and {top[0]["batter1"], top[0]["batter2"]} == {str(p1), str(p2)}
     by_w = partnerships.batting_partnerships(conn, {"workspace_id": wid}, by_wicket=True)
     assert by_w[0]["wicket"] == 1 and by_w[0]["runs"] == 120
+
+
+def test_by_wicket_caps_at_tenth_wicket(conn):
+    # a side has at most 10 partnerships; an 11th-wicket row is a data artifact and must not show
+    wid = _ws(conn, "PT CAP")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    p1 = people.create_person(conn, wid, ACTOR, display_name="Opener")
+    p2 = people.create_person(conn, wid, ACTOR, display_name="Partner")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    for wkt, runs in ((10, 50), (11, 2)):
+        conn.execute(text("INSERT INTO partnership(workspace_id, innings_id, wicket_number, runs, unbroken, "
+                          "player1_person_id, player2_person_id, origin) "
+                          "VALUES (:w,:i,:wk,:r,false,:a,:b,'calculated')"),
+                     {"w": wid, "i": i1, "wk": wkt, "r": runs, "a": p1, "b": p2})
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+    by_w = partnerships.batting_partnerships(conn, {"workspace_id": wid}, by_wicket=True)
+    wickets = [r["wicket"] for r in by_w]
+    assert 11 not in wickets and 10 in wickets and max(wickets) == 10
