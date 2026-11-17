@@ -485,7 +485,8 @@ def top_partnership_aggregates(conn: Connection, f: dict[str, Any], *, limit: in
     params["lim"] = limit
     names = _names(conn, f["workspace_id"])
     return [{"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
-             "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])}
+             "total_runs": int(r["total"] or 0), "partnerships": int(r["n"]),
+             "average": round(int(r["total"] or 0) / int(r["n"]), 2) if r["n"] else 0.0}
             for r in conn.execute(text(sql), params).mappings()]
 
 
@@ -504,7 +505,8 @@ def top_partnership_aggregates_by_season(conn: Connection, f: dict[str, Any], *,
     params["lim"] = limit
     names = _names(conn, f["workspace_id"])
     return [{"player1_name": names.get(str(r["a"]), "Unknown"), "player2_name": names.get(str(r["b"]), "Unknown"),
-             "season": r["season"], "total_runs": int(r["total"] or 0), "partnerships": int(r["n"])}
+             "season": r["season"], "total_runs": int(r["total"] or 0), "partnerships": int(r["n"]),
+             "average": round(int(r["total"] or 0) / int(r["n"]), 2) if r["n"] else 0.0}
             for r in conn.execute(text(sql), params).mappings()]
 
 
