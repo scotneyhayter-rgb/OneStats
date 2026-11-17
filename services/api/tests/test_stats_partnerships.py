@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import bowling, competitions, matches, people
+from onestats.domain import batting, bowling, competitions, matches, people
 from onestats.domain import innings as inn
 from onestats.domain.stats import partnerships
 
@@ -76,6 +76,32 @@ def test_bowling_groups_d12(conn):
     # run outs are never counted; a combination where a member never played together has fewer matches
     bc = next((g for g in res["groups"] if set(g["members"]) == {str(b), str(c)}), None)
     assert bc is None or bc["matches_together"] == 0 or set(bc["members"]) == {str(b), str(c)}
+
+
+def test_bowling_groups_require_all_members_bowled(conn):
+    # a match where a member only appeared (batted) and did not bowl must NOT count for the group
+    wid = _ws(conn, "PT BOWLED")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    a = people.create_person(conn, wid, ACTOR, display_name="A")
+    b = people.create_person(conn, wid, ACTOR, display_name="B")
+
+    # M1: both bowl -> counts for {A,B}
+    _bowl_match(conn, wid, comp, home, away, {a: 3, b: 2})
+
+    # M2: A bowls; B is in the match but only bats (no bowling entry) -> must be excluded for {A,B}
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=comp)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+    bowling.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=a, legal_balls=24, runs_conceded=20, wickets=4)
+    i2 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=2, batting_team_id=away, bowling_team_id=home)
+    batting.create_entry(conn, wid, ACTOR, innings_id=i2, person_id=b, batting_position=1, runs=30, dismissal_type="bowled")
+    matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    res = partnerships.bowling_groups(conn, {"workspace_id": wid}, size=2)
+    ab = next(g for g in res["groups"] if set(g["members"]) == {str(a), str(b)})
+    assert ab["matches_together"] == 1 and ab["total_wickets"] == 5  # only M1; M2 excluded (B did not bowl)
 
 
 def test_batting_partnerships(conn):

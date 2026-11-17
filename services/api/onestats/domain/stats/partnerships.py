@@ -61,33 +61,30 @@ def batting_partnerships(conn: Connection, filters: dict[str, Any], *, by_wicket
 # ---- bowling partnership groups (D12) -----------------------------------------------------------
 def bowling_groups(conn: Connection, filters: dict[str, Any], *, size: int = 2, limit: int = 50,
                    max_candidates: int = 40) -> dict[str, Any]:
-    """Rank 2/3/4-player bowling groups by combined wickets taken in matches they all played. To stay
-    efficient on large datasets, candidates are the top ``max_candidates`` wicket-takers in scope (the
-    report notes when the candidate set was capped)."""
+    """Rank 2/3/4-player bowling groups by combined wickets taken in matches they all **bowled** in. To
+    stay efficient on large datasets, candidates are the top ``max_candidates`` wicket-takers in scope
+    (the report notes when the candidate set was capped)."""
     if size not in (2, 3, 4):
         raise ValueError("invalid_group_size")
     where, params = _where(filters)
 
-    # per (person, match) bowler-credited wickets + an incomplete-figures flag, in scope
+    # per (person, match) bowler-credited wickets + an incomplete-figures flag, in scope. A
+    # player_bowling contribution exists only for a player who actually bowled in that match, so these
+    # rows also define who bowled where — a group's qualifying matches are those every member bowled in
+    # (merely appearing/batting/fielding does not qualify).
     wk_rows = conn.execute(
         text(f"SELECT c.subject_id AS pid, c.match_id, (c.metrics->>'wickets')::int AS w, "
              f"((c.metrics->>'balls_known')::int < (c.metrics->>'innings')::int) AS incomplete "
              f"FROM match_stat_contribution c JOIN match m ON m.id = c.match_id "
              f"WHERE c.calculator = 'player_bowling' AND {where}"), params).mappings().all()
-    # participation (appeared) per (person, match) in scope
-    ap_rows = conn.execute(
-        text(f"SELECT c.subject_id AS pid, c.match_id FROM match_stat_contribution c "
-             f"JOIN match m ON m.id = c.match_id WHERE c.calculator = 'player_appearance' AND {where}"),
-        params).mappings().all()
 
-    appeared: dict[str, set] = {}
-    for r in ap_rows:
-        appeared.setdefault(str(r["pid"]), set()).add(str(r["match_id"]))
+    bowled: dict[str, set] = {}
     wkts: dict[tuple, int] = {}
     incomplete_matches: set = set()
     total_wk: dict[str, int] = {}
     for r in wk_rows:
         pid, mid = str(r["pid"]), str(r["match_id"])
+        bowled.setdefault(pid, set()).add(mid)
         wkts[(pid, mid)] = int(r["w"] or 0)
         total_wk[pid] = total_wk.get(pid, 0) + int(r["w"] or 0)
         if r["incomplete"]:
@@ -100,7 +97,7 @@ def bowling_groups(conn: Connection, filters: dict[str, Any], *, size: int = 2, 
 
     groups = []
     for combo in combinations(candidates, size):
-        qualifying = set.intersection(*[appeared.get(p, set()) for p in combo]) if all(p in appeared for p in combo) else set()
+        qualifying = set.intersection(*[bowled.get(p, set()) for p in combo]) if all(p in bowled for p in combo) else set()
         if not qualifying:
             continue
         total = 0
@@ -115,5 +112,5 @@ def bowling_groups(conn: Connection, filters: dict[str, Any], *, size: int = 2, 
                        "known_minimum": known_min})
     groups.sort(key=lambda g: -g["total_wickets"])
     return {"size": size, "groups": groups[:limit], "candidates_capped": capped,
-            "note": "Same-match bowling group: combined bowler-credited wickets in matches all members "
-                    "played (run outs excluded). Not a consecutive-over partnership."}
+            "note": "Same-match bowling group: combined bowler-credited wickets in matches every member "
+                    "bowled in (run outs excluded). Not a consecutive-over partnership."}
