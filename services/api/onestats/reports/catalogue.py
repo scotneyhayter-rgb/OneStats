@@ -62,10 +62,16 @@ def _seasonal_rows(conn: Connection, f: dict[str, Any], **kw: Any) -> list[dict[
 
 
 def _honours_rows(conn: Connection, f: dict[str, Any], **kw: Any) -> list[dict[str, Any]]:
+    # Read from BOTH stores (the dedicated `honour` table AND per-person `person_recognition` entries the
+    # People screen writes), matching the Records "Life Members & honorary recognition" list and the
+    # player profile. Reading `honour` alone showed nothing, because recognitions live in person_recognition.
     out = []
-    for h in honours_mod.list_honours(conn, f["workspace_id"], honour_type=kw.get("honour_type")):
-        out.append({"person_id": str(h["person_id"]) if h.get("person_id") else None, "title": h.get("title"),
-                    "category": h.get("award_category") or (h.get("honour_type") or "").replace("_", " "),
+    for h in honours_mod.list_honorary_members(conn, f["workspace_id"]):
+        category = (h.get("honour_type") or "").replace("_", " ").title() or "—"
+        out.append({"person_id": str(h["person_id"]) if h.get("person_id") else None,
+                    "person_name": h.get("person") or "Unknown",
+                    "title": h.get("title") or "—",     # a specific award title, blank for a bare membership
+                    "category": category,
                     "awarded_season": h.get("awarded_season") or "—"})
     return out
 

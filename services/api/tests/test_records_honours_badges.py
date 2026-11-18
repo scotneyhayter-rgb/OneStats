@@ -78,6 +78,20 @@ def test_honorary_members_merges_honour_table_and_person_recognition(conn):
     assert bob["awarded_season"] == "2019/20"
 
 
+def test_awards_and_honours_report_reads_recognition(conn):
+    """The Awards & Honours catalogue report must surface recognition-based honours (person_recognition),
+    not only the dedicated honour table — which is empty in practice, so the report showed nothing even
+    though the Records list and the player profile display the recognitions."""
+    from onestats.reports import catalogue
+    wid = _ws(conn, "HONREPORT")
+    p = people.create_person(conn, wid, ACTOR, display_name="Reco Member")
+    profiles.add_recognition(conn, wid, ACTOR, p, recognition_type="Life Member", season_label="2016")
+    data = catalogue.report_rows(conn, wid, "honours_all", {"workspace_id": wid})
+    row = next(r for r in data["rows"] if r["person_name"] == "Reco Member")
+    assert row["category"] == "Life Member" and row["awarded_season"] == "2016"
+    assert "person_name" in [c["key"] for c in data["columns"]]   # Recipient column is populated
+
+
 def test_honorary_members_does_not_double_count(conn):
     wid = _ws(conn, "HONDUP")
     p = people.create_person(conn, wid, ACTOR, display_name="Dup Member")
