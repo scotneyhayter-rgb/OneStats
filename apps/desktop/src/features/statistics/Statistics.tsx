@@ -23,6 +23,7 @@ const REPORTS: { key: string; label: string; cats: string[] }[] = [
   { key: "batting", label: "Batting", cats: ["Batting"] },
   { key: "bowling", label: "Bowling", cats: ["Bowling"] },
   { key: "partnerships", label: "Partnerships", cats: ["Partnerships"] },
+  { key: "rankings", label: "Rankings", cats: ["Rankings"] },
   { key: "fielding", label: "Fielding & WK", cats: ["Fielding", "Wicketkeeping"] },
   { key: "captaincy", label: "Captaincy", cats: ["Captaincy"] },
   { key: "participation", label: "Appearances", cats: ["Player Participation"] },

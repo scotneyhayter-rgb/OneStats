@@ -33,6 +33,7 @@ from onestats.domain.stats import (
     engine,
     integrity,
     partnerships,
+    rankings,
     records_detail,
     streaks,
 )
@@ -271,6 +272,23 @@ REPORTS: dict[str, dict[str, Any]] = {
         _C("player", "Captain"), _C("captained", "M", "right"), _C("wins", "W", "right"),
         _C("losses", "L", "right"), _C("win_pct", "Win %", "right", 1), _C("consecutive_wins", "Streak", "right")],
         "fn": lambda conn, f, **kw: []},  # interactive: see the Captaincy Comparison tool / compare endpoint
+    # --- player rankings (transparent weighted index; points are absolute across any time/team filter) ---
+    "rankings_batting": {"title": "Batting Rankings (Index)", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("points", "Index", "right", 1),
+        _C("matches", "M", "right"), _C("innings", "Inns", "right"), _C("average", "Avg", "right", 2),
+        _C("rpm", "RPM", "right", 2), _C("strike_rate", "SR", "right", 2), _C("status", "Status")],
+        "fn": lambda conn, f, **kw: rankings.player_rankings(conn, f, board="batting", limit=kw.get("limit", 100))},
+    "rankings_bowling": {"title": "Bowling Rankings (Index)", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("points", "Index", "right", 1),
+        _C("matches", "M", "right"), _C("overs", "Overs", "right", 1), _C("wickets", "Wkts", "right"),
+        _C("average", "Avg", "right", 2), _C("economy", "Econ", "right", 2), _C("wpm", "WPM", "right", 2),
+        _C("strike_rate", "SR", "right", 2), _C("status", "Status")],
+        "fn": lambda conn, f, **kw: rankings.player_rankings(conn, f, board="bowling", limit=kw.get("limit", 100))},
+    "rankings_allrounder": {"title": "Allrounder Rankings (Index)", "columns": [
+        _C("rank", "#", "right"), _C("player", "Player"), _C("points", "Index", "right", 1),
+        _C("batting_points", "Bat", "right", 1), _C("bowling_points", "Bowl", "right", 1),
+        _C("matches", "M", "right"), _C("status", "Status")],
+        "fn": lambda conn, f, **kw: rankings.player_rankings(conn, f, board="allrounder", limit=kw.get("limit", 100))},
 }
 
 
@@ -298,6 +316,9 @@ class CatEntry:
 # honours it (the report screen offers a Club selector for these).
 _SCOPE = ("organisation", "season", "grade", "competition", "team", "date_range", "format", "venue", "split")
 _SCOPE_NO_VENUE = ("organisation", "season", "grade", "competition", "team", "date_range", "split")
+# Rankings: time (season/year + date range) and team, plus club, grade/competition and format (format
+# selects the benchmark family). No home/away or classification split — the index is a career-shape score.
+_RANK_SCOPE = ("organisation", "season", "grade", "competition", "team", "date_range", "format")
 _QUAL_BAT = "Average/strike-rate reports qualify players by a minimum run threshold; others are kept but flagged unqualified."
 _QUAL_BOWL = "Average/economy/strike-rate reports qualify players by a minimum wicket threshold; others are kept but flagged."
 _KNOWN_MIN = "Totals from scorecards with unknown balls/runs are a known-minimum; unknown is never treated as zero."
@@ -537,6 +558,27 @@ CATALOGUE: list[CatEntry] = [
     CatEntry("part_aggregates", "Top Partnership Aggregates (Pairs)", "Partnerships",
              "Σ partnership runs for an unordered batting pair across matches (no double counting).",
              "partnership_aggregates", {}, ("season", "grade", "competition")),
+    # ---- Rankings (transparent weighted index) ----
+    CatEntry("rank_batting", "Batting Rankings (Index)", "Rankings",
+             "Weighted batting index (average, runs/match, strike rate, milestones) scored against fixed "
+             "benchmarks, so points are absolute and comparable across any time/team filter.",
+             "rankings_batting", {}, _RANK_SCOPE,
+             limitations="Index points are absolute (fixed, format-aware benchmarks); the volume term is a "
+                         "per-match rate. Qualify: ≥5 innings or ≥30% of the team's matches in the window "
+                         "(whichever is smaller). Sub-threshold players show as unranked, not hidden."),
+    CatEntry("rank_bowling", "Bowling Rankings (Index)", "Rankings",
+             "Weighted bowling index (average, wickets/match, economy, strike rate) scored against fixed "
+             "benchmarks, so points are absolute and comparable across any time/team filter.",
+             "rankings_bowling", {}, _RANK_SCOPE,
+             limitations="Index points are absolute (fixed, format-aware benchmarks); the volume term is a "
+                         "per-match rate. Qualify: ≥20 overs in the window. Sub-threshold players show as "
+                         "unranked, not hidden."),
+    CatEntry("rank_allrounder", "Allrounder Rankings (Index)", "Rankings",
+             "Allrounder index = batting index × bowling index ÷ 100 (stays 0–100). Must qualify for both "
+             "disciplines; points are absolute and comparable across any time/team filter.",
+             "rankings_allrounder", {}, _RANK_SCOPE,
+             limitations="Candidates must have batted and bowled in scope and qualify for both boards; "
+                         "others show as unranked."),
     # ---- Seasons ----
     CatEntry("seasonal_leaders", "Seasonal Leaders", "Seasons",
              "Leading run scorer and wicket taker for each season (seasons never combined).",
@@ -582,9 +624,9 @@ CATALOGUE: list[CatEntry] = [
 ]
 
 CAT_BY_ID = {e.id: e for e in CATALOGUE}
-CATEGORY_ORDER = ["Batting", "Bowling", "Fielding", "Wicketkeeping", "Captaincy", "Partnerships",
-                  "Player Participation", "Teams", "Matches", "Competitions & Ladders", "Seasons",
-                  "Finals & Grand Finals", "Historical Records", "Awards & Achievements",
+CATEGORY_ORDER = ["Batting", "Bowling", "Partnerships", "Rankings", "Fielding", "Wicketkeeping",
+                  "Captaincy", "Player Participation", "Teams", "Matches", "Competitions & Ladders",
+                  "Seasons", "Finals & Grand Finals", "Historical Records", "Awards & Achievements",
                   "Data Integrity & Audit", "Custom Reports"]
 
 
