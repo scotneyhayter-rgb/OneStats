@@ -145,11 +145,26 @@ _TODAY = ("AND m.match_date IS NOT NULL "
           "AND extract(day from m.match_date) = extract(day from current_date)")
 
 
+def _anniversary_clause(params: dict[str, Any], month: int | None, day: int | None) -> str:
+    """The 'On This Day' day filter: match a calendar month+day across all years. With an explicit
+    month+day it keys off that day (e.g. Tomorrow, or any chosen day); otherwise it uses today's date,
+    the default so nothing changes unless the day filter is touched."""
+    if month is not None and day is not None:
+        params["anniv_m"] = int(month)
+        params["anniv_d"] = int(day)
+        return ("AND m.match_date IS NOT NULL "
+                "AND extract(month from m.match_date) = :anniv_m "
+                "AND extract(day from m.match_date) = :anniv_d")
+    return _TODAY
+
+
 def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo: int, hi: int | None = None,
-                                     today: bool = False, limit: int = 2000) -> list[dict[str, Any]]:
+                                     today: bool = False, month: int | None = None, day: int | None = None,
+                                     limit: int = 2000) -> list[dict[str, Any]]:
     """Every batting innings scoring at least ``lo`` (and at most ``hi`` when given), oldest first — e.g.
     centuries (lo=100) or half-centuries (lo=50, hi=99). ``today`` restricts to this calendar day (On This
-    Day) and orders most recent first."""
+    Day) and orders most recent first; an explicit ``month``+``day`` keys off that anniversary day instead
+    (year-agnostic — Tomorrow or any chosen day)."""
     where, params = _scope(f, team_col="i.batting_team_id")
     params["lo"] = lo
     params["lim"] = limit
@@ -157,13 +172,15 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
     if hi is not None:
         hi_clause = "AND be.runs <= :hi"
         params["hi"] = hi
-    order = "DESC" if today else "ASC"
+    anniversary = today or (month is not None and day is not None)
+    anniv_clause = _anniversary_clause(params, month, day) if anniversary else ""
+    order = "DESC" if anniversary else "ASC"
     sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BAT} AS opp "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
            f"WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs >= :lo {hi_clause} "
-           f"{_TODAY if today else ''} AND {where} "
+           f"{anniv_clause} AND {where} "
            f"ORDER BY m.match_date {order} NULLS LAST, be.runs DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
     out: list[dict[str, Any]] = []
@@ -176,19 +193,23 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
 
 
 def bowling_innings_hauls_chronological(conn: Connection, f: dict[str, Any], *, min_wickets: int,
-                                        today: bool = False, limit: int = 2000) -> list[dict[str, Any]]:
+                                        today: bool = False, month: int | None = None, day: int | None = None,
+                                        limit: int = 2000) -> list[dict[str, Any]]:
     """Every bowling innings taking at least ``min_wickets`` wickets, oldest first (e.g. five-wicket hauls).
-    ``today`` restricts to this calendar day (On This Day), most recent first."""
+    ``today`` restricts to this calendar day (On This Day), most recent first; an explicit ``month``+``day``
+    keys off that anniversary day instead (year-agnostic)."""
     where, params = _scope(f, team_col="i.bowling_team_id")
     params["mw"] = min_wickets
     params["lim"] = limit
-    order = "DESC" if today else "ASC"
+    anniversary = today or (month is not None and day is not None)
+    anniv_clause = _anniversary_clause(params, month, day) if anniversary else ""
+    order = "DESC" if anniversary else "ASC"
     sql = (f"SELECT {_CANON} AS sid, be.wickets AS w, be.runs_conceded AS r, m.match_date AS d, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BOWL} AS opp "
            "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
            f"WHERE be.person_id IS NOT NULL AND be.wickets IS NOT NULL AND be.wickets >= :mw "
-           f"{_TODAY if today else ''} AND {where} "
+           f"{anniv_clause} AND {where} "
            f"ORDER BY m.match_date {order} NULLS LAST, be.wickets DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
     out: list[dict[str, Any]] = []

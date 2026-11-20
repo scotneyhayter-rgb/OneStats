@@ -75,6 +75,9 @@ export function Statistics() {
   const [seasonLabels, setSeasonLabels] = useState<string[]>([]);
   const [minThreshold, setMinThreshold] = useState("");
   const [minInnings, setMinInnings] = useState("");   // user-adjustable qualification (batting/bowling)
+  // "On This Day" day filter: which calendar day (month+day, year-agnostic) the anniversary report keys off.
+  const [dayMode, setDayMode] = useState<"today" | "tomorrow" | "specific">("today");
+  const [specificDay, setSpecificDay] = useState("");   // yyyy-mm-dd from a date input; only month+day used
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [busy, setBusy] = useState(false);
@@ -202,6 +205,9 @@ export function Statistics() {
     if (!genreReports.some((r) => r.id === reportId)) setReportId(genreReports[0].id);
   }, [genreReports, reportId]);
 
+  // "On This Day" reports accept a year-agnostic day filter (Today / Tomorrow / a chosen month+day).
+  const isOnThisDay = reportId === "bat_on_this_day" || reportId === "bowl_on_this_day";
+
   const query = useMemo(() => {
     const q: Record<string, string | number | undefined> = {
       competition_id: competitionId || undefined, organisation_id: organisationId || undefined,
@@ -216,8 +222,27 @@ export function Statistics() {
       else if (report === "captaincy") q.min_eligible = Number(minThreshold);
     }
     if (minInnings && (report === "batting" || report === "bowling")) q.min_innings = Number(minInnings);
+    // On This Day: a year-agnostic month+day. "Today" (default) sends nothing, so behaviour is unchanged.
+    if (isOnThisDay && dayMode !== "today") {
+      let m: number | undefined;
+      let d: number | undefined;
+      if (dayMode === "tomorrow") {
+        const t = new Date();
+        t.setDate(t.getDate() + 1);
+        m = t.getMonth() + 1;
+        d = t.getDate();
+      } else if (dayMode === "specific" && specificDay) {
+        const parts = specificDay.split("-");   // yyyy-mm-dd
+        m = Number(parts[1]);
+        d = Number(parts[2]);
+      }
+      if (m && d) {
+        q.month = m;
+        q.day = d;
+      }
+    }
     return q;
-  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, venueId, seasonId, seasonLabel, split, venue, format, minThreshold, minInnings, report]);
+  }, [competitionId, organisationId, gradeId, teamId, oppositionOrgId, venueId, seasonId, seasonLabel, split, venue, format, minThreshold, minInnings, report, reportId, dayMode, specificDay]);
 
   const load = useCallback(async () => {
     if (!current) return;
@@ -475,6 +500,23 @@ export function Statistics() {
                   <option value="">All years</option>
                   {seasonLabels.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
+              </label>
+            )}
+            {isOnThisDay && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Day</span>
+                <Select value={dayMode} onChange={(e) => setDayMode(e.target.value as typeof dayMode)} className="w-32">
+                  <option value="today">Today</option>
+                  <option value="tomorrow">Tomorrow</option>
+                  <option value="specific">A specific day…</option>
+                </Select>
+              </label>
+            )}
+            {isOnThisDay && dayMode === "specific" && (
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Pick a day (year ignored)</span>
+                <input value={specificDay} onChange={(e) => setSpecificDay(e.target.value)} type="date"
+                  className="w-40 rounded-[var(--radius-app)] border border-border bg-background px-2 py-1" />
               </label>
             )}
             {(report === "batting" || report === "bowling") && (
