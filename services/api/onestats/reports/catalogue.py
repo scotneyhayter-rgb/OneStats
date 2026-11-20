@@ -239,7 +239,8 @@ REPORTS: dict[str, dict[str, Any]] = {
         _C("rank", "#", "right"), _C("player", "Player"), _C("score", "Score", "right"),
         _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
         "fn": lambda conn, f, **kw: records_detail.batting_milestones_chronological(
-            conn, f, lo=kw.get("lo", 100), hi=kw.get("hi"), today=bool(kw.get("today")))},
+            conn, f, lo=kw.get("lo", 100), hi=kw.get("hi"), today=bool(kw.get("today")),
+            month=kw.get("month"), day=kw.get("day"))},
     "bowl_haul_chrono": {"title": "Bowling Hauls (Chronological)", "columns": [
         _C("rank", "#", "right"), _C("player", "Player"), _C("figures", "Figures", "right"),
         _C("opposition", "Opposition"), _C("ground", "Ground"), _C("season", "Season"), _C("match_date", "Date")],
@@ -247,7 +248,8 @@ REPORTS: dict[str, dict[str, Any]] = {
             records_detail.bowling_match_hauls_chronological(conn, f, min_wickets=kw.get("min_wickets", 10))
             if kw.get("scope") == "match"
             else records_detail.bowling_innings_hauls_chronological(
-                conn, f, min_wickets=kw.get("min_wickets", 5), today=bool(kw.get("today"))))},
+                conn, f, min_wickets=kw.get("min_wickets", 5), today=bool(kw.get("today")),
+                month=kw.get("month"), day=kw.get("day")))},
     "season_feat_count": {"title": "Best Single-Season Count", "columns": [
         _C("rank", "#", "right"), _C("player", "Player"), _C("season", "Season"), _C("count", "Count", "right")],
         "fn": lambda conn, f, **kw: records_detail.most_feats_in_a_season(conn, f, feat=kw.get("feat", "centuries"))},

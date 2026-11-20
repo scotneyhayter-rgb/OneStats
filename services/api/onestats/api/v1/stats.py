@@ -350,13 +350,14 @@ def report_data(workspace_id: UUID, report: str, settings: SettingsDep, ctx: Vie
                 format: str | None = None, order_by: str | None = None, min_runs: int | None = None,
                 min_wickets: int | None = None, over_length: int | None = None,
                 min_eligible: int | None = None, min_innings: int | None = None,
+                month: int | None = None, day: int | None = None,
                 season_label: str | None = None) -> dict[str, Any]:
     """On-screen report data (columns + rows) from the one engine — matches the PDF export exactly."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
                  organisation_id, opposition_team_id, opposition_organisation_id, venue_id, season_label)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible,
-                            "min_innings": min_innings}.items() if v is not None}
+                            "min_innings": min_innings, "month": month, "day": day}.items() if v is not None}
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
             return catalogue.report_rows(conn, workspace_id, report, f, **kw)
@@ -373,13 +374,14 @@ def report_export(workspace_id: UUID, report: str, settings: SettingsDep, ctx: V
                   venue: str | None = None, format: str | None = None, order_by: str | None = None,
                   min_runs: int | None = None, min_wickets: int | None = None, over_length: int | None = None,
                   min_eligible: int | None = None, min_innings: int | None = None,
+                  month: int | None = None, day: int | None = None,
                   season_label: str | None = None, period: str | None = None, cover: bool = False) -> Response:
     """Export the report as a print-ready, branded A4 PDF (same figures as on-screen)."""
     f = _filters(workspace_id, season_id, grade_id, competition_id, team_id, split, venue, format, None, None,
                  organisation_id, opposition_team_id, opposition_organisation_id, venue_id, season_label)
     kw = {k: v for k, v in {"order_by": order_by, "min_runs": min_runs, "min_wickets": min_wickets,
                             "over_length": over_length, "min_eligible": min_eligible,
-                            "min_innings": min_innings}.items() if v is not None}
+                            "min_innings": min_innings, "month": month, "day": day}.items() if v is not None}
     labels = [lbl for lbl in (f"Season: {season_label}" if season_label else None,
                               f"Split: {split}" if split else None, f"Venue: {venue}" if venue else None,
                               f"Format: {format}" if format else None) if lbl]

@@ -228,6 +228,34 @@ def test_grand_final_split_and_qualification(conn):
     assert wp == [] or all("win_pct" in r for r in wp)
 
 
+def test_on_this_day_accepts_a_year_agnostic_day_filter(conn):
+    """On This Day keys off a calendar month+day across all years. With no day params it uses today
+    (unchanged default); an explicit month+day selects that anniversary (e.g. Tomorrow or any chosen day)."""
+    wid = _ws(conn, "ONTHISDAY")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    ace = people.create_person(conn, wid, ACTOR, display_name="Anniversary Ace")
+
+    def _fifty_on(d, runs):
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp, match_date=d)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+        i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1, batting_team_id=home, bowling_team_id=away)
+        batting.create_entry(conn, wid, ACTOR, innings_id=i1, person_id=ace, batting_position=1,
+                             runs=runs, balls_faced=runs, dismissal_type="bowled")
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    _fifty_on(dt.date(2020, 3, 15), 80)
+    _fifty_on(dt.date(2021, 7, 20), 90)
+    f = {"workspace_id": wid}
+
+    march = catalogue.report_rows(conn, wid, "bat_on_this_day", f, month=3, day=15)["rows"]
+    assert [r["score"] for r in march] == ["80"]          # only the 15 March anniversary (any year)
+    july = catalogue.report_rows(conn, wid, "bat_on_this_day", f, month=7, day=20)["rows"]
+    assert [r["score"] for r in july] == ["90"]
+    assert catalogue.report_rows(conn, wid, "bat_on_this_day", f, month=1, day=1)["rows"] == []   # a day with no match
+
+
 def test_chronological_milestone_reports(conn):
     """Centuries / half-centuries / five-fors / ten-wicket-match reports list each qualifying feat with
     the right threshold and the chronological columns (player, score/figures, opposition, ground, season,
