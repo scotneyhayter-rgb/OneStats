@@ -122,6 +122,41 @@ def test_dismissal_taxonomy_and_attribution(conn):
     assert bat.get_entry(conn, runout)["dismissal_source_code"] == "7"
 
 
+def test_dnb_default_stamped_on_submit_with_guardrails(conn):
+    """Submitting a scorecard defaults non-batted lineup rows to DNB, under strict guardrails: only a
+    named player with NO figures and NO dismissal is stamped; an explicit 'unknown', an existing
+    dismissal, a scored-0 batter (who DID bat) and an empty spare row are all left untouched."""
+    wid = _ws(conn, "BAT DNB")
+    cid = competitions.create_competition(conn, wid, ACTOR, name="League")
+    org = _org(conn, wid, "Club")
+    home, away = _team(conn, wid, org, "Home"), _team(conn, wid, org, "Away")
+    mid = matches.create_match(conn, wid, ACTOR, competition_id=cid)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+    matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+    iid = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1,
+                             batting_team_id=home, bowling_team_id=away)
+
+    a = bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Did Not Bat"),
+                         batting_position=8)                                  # named, no figures, no dismissal
+    b = bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Explicit Unknown"),
+                         batting_position=9, dismissal_type="unknown")        # explicit unknown -> keep
+    c = bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Batted"),
+                         batting_position=1, runs=50, balls_faced=60, dismissal_type="bowled")  # real dismissal -> keep
+    d = bat.create_entry(conn, wid, ACTOR, innings_id=iid, person_id=_person(conn, wid, "Golden Duck"),
+                         batting_position=2, runs=0)                          # scored 0 -> batted, not dnb
+    spare = conn.execute(
+        text("INSERT INTO batting_entry(workspace_id, innings_id, batting_position) VALUES (:w,:i,11) RETURNING id"),
+        {"w": wid, "i": iid}).scalar_one()                                    # empty spare row -> untouched
+
+    matches.set_approval(conn, wid, ACTOR, mid, status="awaiting_approval")   # the deliberate save
+
+    assert bat.get_entry(conn, a)["dismissal_type"] == "dnb"       # stamped
+    assert bat.get_entry(conn, b)["dismissal_type"] == "unknown"   # explicit unknown preserved
+    assert bat.get_entry(conn, c)["dismissal_type"] == "bowled"    # existing dismissal preserved
+    assert bat.get_entry(conn, d)["dismissal_type"] is None        # a recorded 0 is batting -> not dnb
+    assert bat.get_entry(conn, spare)["dismissal_type"] is None    # empty spare row untouched
+
+
 def test_not_out_dnb_and_wicket_counting(conn):
     wid = _ws(conn, "BAT WS3")
     iid = _innings(conn, wid)
