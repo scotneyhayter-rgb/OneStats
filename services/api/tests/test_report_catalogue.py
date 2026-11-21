@@ -161,6 +161,22 @@ def test_records_detail_reference(conn):
     assert next(r for r in bnd if r["player"] == "Big Hitter")["boundaries"] == 20
 
 
+def test_opposition_column_shows_team_not_club(conn):
+    """The Opposition column must show the specific team fielded, not its parent club/organisation.
+    In _build the away TEAM is "Pomonal"; its organisation is "Pomonal CC". Reports with an Opposition
+    column (batting milestones via _OPP_BAT, bowling hauls via _OPP_BOWL) must read the team name."""
+    d = _build(conn)
+    wid, f = d["wid"], {"workspace_id": d["wid"]}
+    # Big Hitter's 120 was made for Rhymney against the away side -> opposition is the team "Pomonal".
+    cents = catalogue.report_rows(conn, wid, "bat_milestone_chrono", f)["rows"]   # lo defaults to 100
+    big = next(r for r in cents if r["player"] == "Big Hitter")
+    assert big["opposition"] == "Pomonal" and big["opposition"] != "Pomonal CC"
+    # Demon's grand-final five-for was bowled for Rhymney against the away side -> same opposition team.
+    hauls = catalogue.report_rows(conn, wid, "bowl_haul_chrono", f)["rows"]       # min_wickets defaults to 5
+    demon = next(r for r in hauls if r["player"] == "Demon Bowler")
+    assert demon["opposition"] == "Pomonal" and demon["opposition"] != "Pomonal CC"
+
+
 def test_new_reports_reference(conn):
     """The six completed reports + the best-bowling runs tie-break, hand-computed."""
     d = _build(conn)
