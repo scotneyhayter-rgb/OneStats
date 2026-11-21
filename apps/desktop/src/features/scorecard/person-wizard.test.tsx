@@ -37,6 +37,7 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>, typed: strin
 const CLUBS = [
   { id: "c1", name: "Northside CC", short_name: null, kind: "club", is_historical: false, status: "active", notes: null, merged_into_id: null, source_system: null, source_ref: null },
   { id: "c2", name: "Riverside CC", short_name: null, kind: "club", is_historical: false, status: "active", notes: null, merged_into_id: null, source_system: null, source_ref: null },
+  { id: "a1", name: "District Association", short_name: null, kind: "association", is_historical: false, status: "active", notes: null, merged_into_id: null, source_system: null, source_ref: null },
 ];
 beforeEach(() => {
   Object.values(H).forEach((fn) => fn.mockReset());
@@ -96,6 +97,22 @@ describe("universal Create Person wizard", () => {
     await waitFor(() => expect(H.createAffiliation).toHaveBeenCalled());
     const body = H.createAffiliation.mock.calls[0][1] as { person_id: string; organisation_id: string; role: string };
     expect(body).toMatchObject({ person_id: "new1", organisation_id: "c1", role: "player" });
+  });
+
+  it("lists association organisations alongside clubs in the affiliation picker", async () => {
+    H.listPeople.mockResolvedValue([]);
+    H.identityCandidates.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<Harness onChange={() => {}} roleLabel="Player" />);
+    const dialog = await openCreate(user, "Tony Cacciola");
+    // the association appears as a selectable affiliation, tagged so it is distinguishable from a club
+    const assoc = await within(dialog).findByRole("button", { name: /District Association/i });
+    expect(assoc).toBeTruthy();
+    expect(within(dialog).getByText(/^association$/i)).toBeTruthy();
+    // and it still filters by the same substring box
+    await user.type(within(dialog).getByLabelText(/Filter clubs/i), "district");
+    await waitFor(() => expect(within(dialog).queryByRole("button", { name: /Northside CC/i })).toBeNull());
+    expect(within(dialog).queryByRole("button", { name: /District Association/i })).toBeTruthy();
   });
 
   it("cancelling creates nothing", async () => {
