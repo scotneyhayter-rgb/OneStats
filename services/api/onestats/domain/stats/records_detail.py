@@ -135,10 +135,17 @@ def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 
             for r in conn.execute(text(sql), params).mappings()]
 
 
-_OPP_BAT = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
-            " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.batting_team_id LIMIT 1)")
-_OPP_BOWL = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
-             " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = m.id AND mt.team_id <> i.bowling_team_id LIMIT 1)")
+# Opposition = the specific TEAM fielded (t.short_name/t.name), NOT the parent club/organisation.
+# Falls back to the club name only if the team somehow has no name of its own, so the column is never
+# blank (team.name is NOT NULL in the schema, so this is a belt-and-braces guard for legacy data).
+_OPP_BAT = ("(SELECT coalesce(nullif(t.short_name,''), nullif(t.name,''), o.name) "
+            " FROM match_team mt JOIN team t ON t.id = mt.team_id "
+            " JOIN organisation o ON o.id = t.organisation_id "
+            " WHERE mt.match_id = m.id AND mt.team_id <> i.batting_team_id LIMIT 1)")
+_OPP_BOWL = ("(SELECT coalesce(nullif(t.short_name,''), nullif(t.name,''), o.name) "
+             " FROM match_team mt JOIN team t ON t.id = mt.team_id "
+             " JOIN organisation o ON o.id = t.organisation_id "
+             " WHERE mt.match_id = m.id AND mt.team_id <> i.bowling_team_id LIMIT 1)")
 # restrict to matches played on today's calendar day in any past season ("On This Day")
 _TODAY = ("AND m.match_date IS NOT NULL "
           "AND extract(month from m.match_date) = extract(month from current_date) "
@@ -228,8 +235,10 @@ def bowling_match_hauls_chronological(conn: Connection, f: dict[str, Any], *, mi
     where, params = _scope(f, team_col="c.team_id")
     params["mw"] = min_wickets
     params["lim"] = limit
-    opp = ("(SELECT coalesce(nullif(o.short_name,''), o.name) FROM match_team mt JOIN team t ON t.id = mt.team_id "
-           " JOIN organisation o ON o.id = t.organisation_id WHERE mt.match_id = c.match_id AND mt.team_id <> c.team_id LIMIT 1)")
+    opp = ("(SELECT coalesce(nullif(t.short_name,''), nullif(t.name,''), o.name) "
+           " FROM match_team mt JOIN team t ON t.id = mt.team_id "
+           " JOIN organisation o ON o.id = t.organisation_id "
+           " WHERE mt.match_id = c.match_id AND mt.team_id <> c.team_id LIMIT 1)")
     sql = (f"SELECT {_CANON} AS sid, max((c.metrics->>'match_wickets')::int) AS w, "
            "       sum((c.metrics->>'runs')::int) AS r, m.match_date AS d, v.name AS ground, "
            f"       (SELECT label FROM season WHERE id = m.season_id) AS season, {opp} AS opp "
