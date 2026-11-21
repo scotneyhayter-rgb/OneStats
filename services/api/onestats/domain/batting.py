@@ -48,6 +48,34 @@ FIELDER_CREDIT = ("caught", "caught_behind", "caught_and_bowled", "run_out", "st
 # Unresolved statuses that should be confirmed before use in statistics — flagged, never guessed.
 UNRESOLVED = ("retired", "unknown")
 
+
+def apply_dnb_defaults(conn: Connection, workspace_id: UUID, match_id: UUID) -> int:
+    """Stamp ``dnb`` (did not bat) on every batting-lineup row that is a NAMED player with NO batting
+    figures and NO dismissal recorded yet — the sensible default for a selected batter who did not reach
+    the crease. Called only at a deliberate save point (submitting/approving a scorecard), never on render,
+    so the factual DNB assertion is anchored to a user action.
+
+    Strict guardrails keep "unknown stays unknown, nothing invented":
+
+    * Only rows with a player (``person_id`` NOT NULL), EVERY batting figure null (runs, balls_faced,
+      fours, sixes, minutes) AND ``dismissal_type`` still NULL are stamped.
+    * An existing dismissal is NEVER overwritten — including an explicit ``unknown`` the user deliberately
+      set: that is a non-null value, so it is left untouched and takes precedence over this default.
+    * Empty spare rows (no player) are left alone.
+
+    Returns how many rows were stamped.
+    """
+    res = conn.execute(
+        text("UPDATE batting_entry SET dismissal_type = 'dnb', updated_at = now() "
+             "WHERE workspace_id = :w "
+             "  AND innings_id IN (SELECT id FROM innings WHERE match_id = :m) "
+             "  AND person_id IS NOT NULL AND dismissal_type IS NULL "
+             "  AND runs IS NULL AND balls_faced IS NULL AND fours IS NULL "
+             "  AND sixes IS NULL AND minutes IS NULL"),
+        {"w": workspace_id, "m": match_id},
+    )
+    return res.rowcount or 0
+
 _COLS = (
     "id, workspace_id, innings_id, person_id, batting_position, runs, balls_faced, fours, sixes, "
     "minutes, dismissal_type, dismissal_source_code, bowler_person_id, fielder_person_id, notes, "
