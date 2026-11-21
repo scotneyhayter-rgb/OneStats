@@ -71,7 +71,7 @@ def highest_individual_innings(conn: Connection, f: dict[str, Any], *, limit: in
     where, params = _scope(f, team_col="i.batting_team_id")
     params["lim"] = limit
     sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.balls_faced AS balls, be.dismissal_type AS dt, "
-           "       m.match_date AS d "
+           "       m.match_date AS d, i.match_id AS mid "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id "
            f"WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND {where} "
@@ -82,6 +82,7 @@ def highest_individual_innings(conn: Connection, f: dict[str, Any], *, limit: in
         not_out = r["dt"] in ("not_out", "retired_not_out")
         out.append({"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "runs": int(r["runs"]), "not_out": not_out, "balls": r["balls"],
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -116,6 +117,7 @@ def best_bowling_in_match(conn: Connection, f: dict[str, Any], *, limit: int = 5
     names = _names(conn, f["workspace_id"])
     return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
              "wickets": int(r["wkts"] or 0), "runs": int(r["runs"]) if r["runs"] is not None else None,
+             "match_id": str(r["mid"]) if r["mid"] else None,
              "match_date": r["d"].isoformat() if r["d"] else None}
             for r in conn.execute(text(sql), params).mappings()]
 
@@ -123,7 +125,8 @@ def best_bowling_in_match(conn: Connection, f: dict[str, Any], *, limit: int = 5
 def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 50) -> list[dict[str, Any]]:
     where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
-    sql = (f"SELECT {_CANON} AS sid, be.runs_conceded AS runs, be.wickets AS wkts, m.match_date AS d "
+    sql = (f"SELECT {_CANON} AS sid, be.runs_conceded AS runs, be.wickets AS wkts, m.match_date AS d, "
+           "       i.match_id AS mid "
            "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id "
            f"WHERE be.person_id IS NOT NULL AND be.runs_conceded IS NOT NULL AND {where} "
@@ -131,6 +134,7 @@ def most_expensive_innings(conn: Connection, f: dict[str, Any], *, limit: int = 
     names = _names(conn, f["workspace_id"])
     return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
              "runs": int(r["runs"]), "wickets": r["wkts"],
+             "match_id": str(r["mid"]) if r["mid"] else None,
              "match_date": r["d"].isoformat() if r["d"] else None}
             for r in conn.execute(text(sql), params).mappings()]
 
@@ -182,7 +186,7 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
     anniversary = today or (month is not None and day is not None)
     anniv_clause = _anniversary_clause(params, month, day) if anniversary else ""
     order = "DESC" if anniversary else "ASC"
-    sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, "
+    sql = (f"SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, i.match_id AS mid, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BAT} AS opp "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
@@ -195,7 +199,8 @@ def batting_milestones_chronological(conn: Connection, f: dict[str, Any], *, lo:
         not_out = r["dt"] in ("not_out", "retired_not_out")
         out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "score": f"{r['runs']}{'*' if not_out else ''}", "opposition": r["opp"], "ground": r["ground"],
-                    "season": r["season"], "match_date": r["d"].isoformat() if r["d"] else None})
+                    "season": r["season"], "match_id": str(r["mid"]) if r["mid"] else None,
+                    "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
 
@@ -211,7 +216,7 @@ def bowling_innings_hauls_chronological(conn: Connection, f: dict[str, Any], *, 
     anniversary = today or (month is not None and day is not None)
     anniv_clause = _anniversary_clause(params, month, day) if anniversary else ""
     order = "DESC" if anniversary else "ASC"
-    sql = (f"SELECT {_CANON} AS sid, be.wickets AS w, be.runs_conceded AS r, m.match_date AS d, "
+    sql = (f"SELECT {_CANON} AS sid, be.wickets AS w, be.runs_conceded AS r, m.match_date AS d, i.match_id AS mid, "
            f"       v.name AS ground, (SELECT label FROM season WHERE id = m.season_id) AS season, {_OPP_BOWL} AS opp "
            "FROM bowling_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
@@ -224,6 +229,7 @@ def bowling_innings_hauls_chronological(conn: Connection, f: dict[str, Any], *, 
         figs = f"{r['w']}-{r['r']}" if r["r"] is not None else f"{r['w']}-?"
         out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "figures": figs, "opposition": r["opp"], "ground": r["ground"], "season": r["season"],
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -239,7 +245,7 @@ def bowling_match_hauls_chronological(conn: Connection, f: dict[str, Any], *, mi
            " FROM match_team mt JOIN team t ON t.id = mt.team_id "
            " JOIN organisation o ON o.id = t.organisation_id "
            " WHERE mt.match_id = c.match_id AND mt.team_id <> c.team_id LIMIT 1)")
-    sql = (f"SELECT {_CANON} AS sid, max((c.metrics->>'match_wickets')::int) AS w, "
+    sql = (f"SELECT {_CANON} AS sid, c.match_id AS mid, max((c.metrics->>'match_wickets')::int) AS w, "
            "       sum((c.metrics->>'runs')::int) AS r, m.match_date AS d, v.name AS ground, "
            f"       (SELECT label FROM season WHERE id = m.season_id) AS season, {opp} AS opp "
            "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
@@ -254,6 +260,7 @@ def bowling_match_hauls_chronological(conn: Connection, f: dict[str, Any], *, mi
         figs = f"{r['w']}-{r['r']}" if r["r"] is not None else f"{r['w']}-?"
         out.append({"rank": i, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "figures": figs, "opposition": r["opp"], "ground": r["ground"], "season": r["season"],
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -298,7 +305,7 @@ def century_in_each_innings(conn: Connection, f: dict[str, Any], *, limit: int =
     """Matches where a player made a hundred in BOTH innings (a century in each innings of the same match)."""
     where, params = _scope(f, team_col="i.batting_team_id")
     params["lim"] = limit
-    sql = (f"SELECT {_CANON} AS sid, m.match_date AS d, v.name AS ground, "
+    sql = (f"SELECT {_CANON} AS sid, m.id AS mid, m.match_date AS d, v.name AS ground, "
            "       array_agg(be.runs ORDER BY i.inns_number) AS scores "
            "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
@@ -311,6 +318,7 @@ def century_in_each_innings(conn: Connection, f: dict[str, Any], *, limit: int =
         scores = " & ".join(str(s) for s in r["scores"])
         out.append({"rank": idx, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "scores": scores, "ground": r["ground"],
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -328,9 +336,9 @@ def highest_pct_of_innings_total(conn: Connection, f: dict[str, Any], *, limit: 
     # read as 100% of the total, which is a data gap, not a feat.
     complete = ("(i.official_total IS NOT NULL OR "
                 "(SELECT count(*) FROM batting_entry b3 WHERE b3.innings_id = i.id AND b3.runs IS NOT NULL) >= 7)")
-    sql = (f"SELECT sid, runs, dt, d, ground, opp, total, round(runs * 100.0 / total, 1) AS pct FROM ("
-           f"  SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, v.name AS ground, "
-           f"         {_OPP_BAT} AS opp, {total} AS total "
+    sql = (f"SELECT sid, runs, dt, d, mid, ground, opp, total, round(runs * 100.0 / total, 1) AS pct FROM ("
+           f"  SELECT {_CANON} AS sid, be.runs AS runs, be.dismissal_type AS dt, m.match_date AS d, i.match_id AS mid, "
+           f"         v.name AS ground, {_OPP_BAT} AS opp, {total} AS total "
            "  FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
            "  JOIN person p ON p.id = be.person_id LEFT JOIN venue v ON v.id = m.venue_id "
            f"  WHERE be.person_id IS NOT NULL AND be.runs IS NOT NULL AND be.runs > 0 AND {complete} AND {where}) q "
@@ -342,6 +350,7 @@ def highest_pct_of_innings_total(conn: Connection, f: dict[str, Any], *, limit: 
         out.append({"rank": idx, "subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "score": f"{r['runs']}{'*' if not_out else ''}", "pct": float(r["pct"]) if r["pct"] is not None else None,
                     "total": int(r["total"]), "opposition": r["opp"], "ground": r["ground"],
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -386,7 +395,7 @@ def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit:
     where, params = _scope(f, team_col="i.bowling_team_id")
     params["lim"] = limit
     sql = (
-        "SELECT coalesce(p.merged_into_id, p.id) AS sid, be.innings_id AS inn, m.match_date AS d, "
+        "SELECT coalesce(p.merged_into_id, p.id) AS sid, be.innings_id AS inn, m.id AS mid, m.match_date AS d, "
         "  count(*) FILTER (WHERE be.dismissal_type = 'stumped') AS st, "
         "  count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind')) AS ct "
         "FROM batting_entry be JOIN innings i ON i.id = be.innings_id JOIN match m ON m.id = i.match_id "
@@ -397,7 +406,7 @@ def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit:
         "  OR (be.dismissal_type = 'caught' AND be.fielder_person_id IN "
         "        (mt.wicketkeeper_person_id, mt.wicketkeeper2_person_id))) "
         f"AND {where} "
-        "GROUP BY be.innings_id, coalesce(p.merged_into_id, p.id), m.match_date "
+        "GROUP BY be.innings_id, coalesce(p.merged_into_id, p.id), m.id, m.match_date "
         "ORDER BY (count(*) FILTER (WHERE be.dismissal_type = 'stumped') + "
         "          count(*) FILTER (WHERE be.dismissal_type IN ('caught','caught_behind'))) DESC LIMIT :lim")
     names = _names(conn, f["workspace_id"])
@@ -406,6 +415,7 @@ def most_wk_dismissals_in_innings(conn: Connection, f: dict[str, Any], *, limit:
         ct, st = int(r["ct"]), int(r["st"])
         out.append({"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
                     "catches": ct, "stumpings": st, "total": ct + st,
+                    "match_id": str(r["mid"]) if r["mid"] else None,
                     "match_date": r["d"].isoformat() if r["d"] else None})
     return out
 
@@ -545,7 +555,7 @@ def best_bowling_in_innings(conn: Connection, f: dict[str, Any], *, limit: int =
     stored best-innings figure (bbi_wickets / bbi_runs); runs are never invented when incomplete."""
     where, params = _scope(f, team_col="c.team_id")
     params["lim"] = limit
-    sql = (f"SELECT {_CANON} AS sid, (c.metrics->>'bbi_wickets')::int AS wkts, "
+    sql = (f"SELECT {_CANON} AS sid, c.match_id AS mid, (c.metrics->>'bbi_wickets')::int AS wkts, "
            "       (c.metrics->>'bbi_runs')::int AS runs, m.match_date AS d "
            "FROM match_stat_contribution c JOIN match m ON m.id = c.match_id JOIN person p ON p.id = c.subject_id "
            f"WHERE c.calculator = 'player_bowling' AND (c.metrics->>'bbi_wickets') IS NOT NULL AND {where} "
@@ -553,6 +563,7 @@ def best_bowling_in_innings(conn: Connection, f: dict[str, Any], *, limit: int =
     names = _names(conn, f["workspace_id"])
     return [{"subject_id": str(r["sid"]), "player": names.get(str(r["sid"]), "Unknown"),
              "wickets": int(r["wkts"] or 0), "runs": int(r["runs"]) if r["runs"] is not None else None,
+             "match_id": str(r["mid"]) if r["mid"] else None,
              "match_date": r["d"].isoformat() if r["d"] else None}
             for r in conn.execute(text(sql), params).mappings()]
 
@@ -562,7 +573,7 @@ def highest_partnership_by_wicket(conn: Connection, f: dict[str, Any]) -> list[d
     match date. One row per wicket number present; wicket order ascending."""
     where, params = _scope(f, team_col="i.batting_team_id")
     sql = ("SELECT pt.wicket_number AS w, pt.runs AS runs, pt.unbroken AS unbroken, "
-           "       pt.player1_person_id AS a, pt.player2_person_id AS b, m.match_date AS d "
+           "       pt.player1_person_id AS a, pt.player2_person_id AS b, m.match_date AS d, i.match_id AS mid "
            "FROM partnership pt JOIN innings i ON i.id = pt.innings_id JOIN match m ON m.id = i.match_id "
            f"WHERE pt.runs IS NOT NULL AND pt.wicket_number BETWEEN 1 AND 10 AND {where} "
            "ORDER BY pt.wicket_number ASC, pt.runs DESC")
@@ -574,6 +585,7 @@ def highest_partnership_by_wicket(conn: Connection, f: dict[str, Any]) -> list[d
             best[w] = {"wicket": w, "runs": int(r["runs"]), "unbroken": bool(r["unbroken"]),
                        "player1_name": names.get(str(r["a"]), "Unknown") if r["a"] else "Unknown",
                        "player2_name": names.get(str(r["b"]), "Unknown") if r["b"] else "Unknown",
+                       "match_id": str(r["mid"]) if r["mid"] else None,
                        "match_date": r["d"].isoformat() if r["d"] else None}
     return [best[w] for w in sorted(best)]
 

@@ -4,7 +4,8 @@
  * numeric columns, fixed decimals, sticky header, client-side sorting, qualification-aware.
  */
 import { Download, RefreshCw, Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -14,7 +15,7 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { useToast } from "../../lib/toast";
 import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type Season, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
-import { openBlobUrl } from "../../lib/utils";
+import { matchScorecardPath, openBlobUrl, rowMatchId } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 // Each genre tab maps to one or more Report Catalogue categories, so opening a tab lists every report
@@ -87,6 +88,7 @@ export function Statistics() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const toast = useToast();
+  const navigate = useNavigate();
 
   const loadSaved = useCallback(() => {
     if (current) api.statsSavedList(current.id).then(setSaved).catch(() => {});
@@ -588,15 +590,26 @@ export function Statistics() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} className={`transition-colors hover:bg-brand/5 ${i % 2 ? "bg-muted/30" : ""}`}>
+                  {rows.map((r, i) => {
+                    const mid = rowMatchId(r);
+                    const go = () => { if (mid) navigate(matchScorecardPath(mid)); };
+                    return (
+                    <tr key={i}
+                      className={`transition-colors ${i % 2 ? "bg-muted/30" : ""} ${mid ? "cursor-pointer hover:bg-brand/10 focus-visible:bg-brand/10 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand" : "hover:bg-brand/5"}`}
+                      {...(mid ? {
+                        role: "button" as const, tabIndex: 0,
+                        title: "Open this match's scorecard", "aria-label": "Open this match's scorecard",
+                        onClick: go,
+                        onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } },
+                      } : {})}>
                       {data.columns.map((c) => (
                         <td key={c.key} className={`whitespace-nowrap px-2 py-1 tabular-nums ${c.align === "right" ? "text-right" : "text-left"}`}>
                           {fmt(r[c.key], c)}
                         </td>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
