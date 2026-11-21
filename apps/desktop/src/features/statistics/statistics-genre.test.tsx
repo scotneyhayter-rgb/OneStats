@@ -3,6 +3,7 @@
  *  leaderboard), and picking one loads that report with the current filters. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
   statsReport: vi.fn(), statsCatalogue: vi.fn(), statsSavedList: vi.fn(), statsUsedFormats: vi.fn(),
@@ -53,7 +54,7 @@ afterEach(() => { cleanup(); Object.values(H).forEach((fn) => fn.mockReset()); }
 describe("Statistics genre reports", () => {
   it("lists all reports in the open genre and loads the one picked", async () => {
     setup();
-    render(<Statistics />);
+    render(<MemoryRouter><Statistics /></MemoryRouter>);
     // The Batting genre now surfaces every batting report, not just the default leaderboard.
     await screen.findByText("Most Runs");
     expect(screen.getByText("Highest Batting Average")).toBeTruthy();

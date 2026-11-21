@@ -3,6 +3,7 @@
  *  view, and scopes it to a club (the filter the report declares is passed through to the engine). */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 const H = vi.hoisted(() => ({
   statsCatalogue: vi.fn(), statsReport: vi.fn(), statsUsedFormats: vi.fn(), statsUsedSeasons: vi.fn(),
@@ -61,7 +62,7 @@ afterEach(() => {
 describe("ReportCatalogue", () => {
   it("lists categorised reports, searches, and opens one in a focused view", async () => {
     setup();
-    render(<ReportCatalogue />);
+    render(<MemoryRouter><ReportCatalogue /></MemoryRouter>);
     await screen.findByText("Most Runs");
     expect(screen.getByText("Most Consecutive Wins as Captain")).toBeTruthy();
 
@@ -81,7 +82,7 @@ describe("ReportCatalogue", () => {
 
   it("scopes an opened report to a club and passes the filter to the engine", async () => {
     setup();
-    render(<ReportCatalogue />);
+    render(<MemoryRouter><ReportCatalogue /></MemoryRouter>);
     await screen.findByText("Most Runs");
     fireEvent.click(screen.getAllByText("View report")[0]);
     await waitFor(() => expect(screen.getByText("A G Steel")).toBeTruthy());
