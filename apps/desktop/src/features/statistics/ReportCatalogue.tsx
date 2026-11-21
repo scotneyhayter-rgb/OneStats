@@ -4,7 +4,8 @@
  * filtering and PDF / CSV export. Favourites and recently-used persist per viewer (localStorage).
  */
 import { Download, FileText, Search, Star, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppShell } from "../../components/layout/AppShell";
 import { TableSkeleton } from "../../components/states/States";
 import { Badge } from "../../components/ui/badge";
@@ -13,7 +14,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { api, ApiError, type CatalogueReport, type Competition, type Grade, type Organisation, type ReportCatalogue as Catalogue, type StatColumn, type StatReport, type Team, type Venue } from "../../lib/api";
-import { openBlobUrl } from "../../lib/utils";
+import { matchScorecardPath, openBlobUrl, rowMatchId } from "../../lib/utils";
 import { useWorkspace } from "../../lib/workspace-context";
 
 const FAV_KEY = "onestats.reportFavourites";
@@ -51,6 +52,7 @@ function fmt(value: unknown, col: StatColumn): string {
 
 export function ReportCatalogue() {
   const { current } = useWorkspace();
+  const navigate = useNavigate();
   const [cat, setCat] = useState<Catalogue | null>(null);
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -446,15 +448,26 @@ export function ReportCatalogue() {
                     ))}</tr>
                   </thead>
                   <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i} className={i % 2 ? "bg-muted/30" : ""}>
+                    {rows.map((r, i) => {
+                      const mid = rowMatchId(r);
+                      const go = () => { if (mid) navigate(matchScorecardPath(mid)); };
+                      return (
+                      <tr key={i}
+                        className={`transition-colors ${i % 2 ? "bg-muted/30" : ""} ${mid ? "cursor-pointer hover:bg-brand/10 focus-visible:bg-brand/10 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand" : ""}`}
+                        {...(mid ? {
+                          role: "button" as const, tabIndex: 0,
+                          title: "Open this match's scorecard", "aria-label": "Open this match's scorecard",
+                          onClick: go,
+                          onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } },
+                        } : {})}>
                         {data.columns.map((col) => (
                           <td key={col.key} className={`whitespace-nowrap px-2 py-1 tabular-nums ${col.align === "right" ? "text-right" : "text-left"}`}>
                             {fmt(r[col.key], col)}
                           </td>
                         ))}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>}

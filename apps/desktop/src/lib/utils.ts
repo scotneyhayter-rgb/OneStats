@@ -61,6 +61,22 @@ export async function compressImage(file: File, maxDim = 1280, quality = 0.85): 
   }
 }
 
+/**
+ * The match a report row links to, or null when the row maps to no single match. Match-level report rows
+ * (e.g. a five-wicket haul, best bowling in a match, a top score) carry a string `match_id`; aggregate or
+ * career rows (most wickets overall, best average, …) carry none — so the UI makes only genuinely
+ * match-level rows clickable and leaves aggregates inert.
+ */
+export function rowMatchId(row: Record<string, unknown>): string | null {
+  const v = row["match_id"];
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** Deep-link path that opens a match's scorecard (honoured by the Matches screen's `?open=` param). */
+export function matchScorecardPath(matchId: string): string {
+  return `/matches?open=${encodeURIComponent(matchId)}`;
+}
+
 export function openBlobUrl(url: string, filename: string): void {
   const a = document.createElement("a");
   a.href = url;

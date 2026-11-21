@@ -161,6 +161,27 @@ def test_records_detail_reference(conn):
     assert next(r for r in bnd if r["player"] == "Big Hitter")["boundaries"] == 20
 
 
+def test_match_level_reports_carry_a_resolvable_match_id(conn):
+    """Match-level report rows (one row = one specific match) carry a ``match_id`` that resolves to a real
+    match, so the UI can link the row to that match's scorecard. Aggregate/career rows must NOT carry one."""
+    d = _build(conn)
+    wid, f = d["wid"], {"workspace_id": d["wid"]}
+    valid = {str(r[0]) for r in conn.execute(
+        text("SELECT id FROM match WHERE workspace_id = :w"), {"w": wid})}
+    assert valid
+    # Match-level: highest individual innings, best bowling in a match, chronological hauls.
+    for rid in ("bat_top_scores", "best_bowling_match", "bowl_haul_chrono"):
+        rows = catalogue.report_rows(conn, wid, rid, f)["rows"]
+        assert rows, f"{rid} returned no rows"
+        for r in rows:
+            assert r.get("match_id") in valid, f"{rid} row has no resolvable match_id: {r.get('match_id')}"
+    # Aggregate/career rows must not carry a match_id (they don't map to a single game).
+    for rid in ("bowl_most_ducks_inflicted", "bat_most_runs_season"):
+        rows = catalogue.report_rows(conn, wid, rid, f)["rows"]
+        assert rows, f"{rid} returned no rows"
+        assert all("match_id" not in r for r in rows), f"{rid} unexpectedly carries match_id"
+
+
 def test_new_reports_reference(conn):
     """The six completed reports + the best-bowling runs tie-break, hand-computed."""
     d = _build(conn)
