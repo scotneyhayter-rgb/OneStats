@@ -67,11 +67,12 @@ export function PersonWizard({
     return () => clearTimeout(t);
   }, [name, workspaceId]);
 
-  // load selectable clubs once (organisations of kind "club")
+  // load selectable organisations once — clubs AND associations, so a person can be affiliated to either
+  // (a club-only list hid the association orgs the user also affiliates people to).
   useEffect(() => {
     let live = true;
-    api.listOrganisations(workspaceId, { kind: "club" })
-      .then((o) => { if (live) setClubs(o); })
+    api.listOrganisations(workspaceId)
+      .then((o) => { if (live) setClubs(o.filter((c) => c.kind === "club" || c.kind === "association")); })
       .catch(() => { /* non-fatal: affiliations are optional */ });
     return () => { live = false; };
   }, [workspaceId]);
@@ -214,6 +215,7 @@ export function PersonWizard({
                       className="flex w-full items-center gap-2 rounded-[var(--radius-app)] px-2 py-1.5 text-left text-sm hover:bg-muted">
                       <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                       <span className="truncate">{c.name}</span>
+                      {c.kind === "association" && <Badge variant="muted">association</Badge>}
                       {c.is_historical && <Badge variant="muted">historical</Badge>}
                     </button>
                   </li>

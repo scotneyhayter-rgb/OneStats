@@ -11,7 +11,7 @@
  */
 
 import { AlertTriangle, Check, Plus, Search, UserPlus, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "../../components/ui/badge";
 import { api, ApiError, type Person, type PersonDuplicateCandidate } from "../../lib/api";
@@ -85,6 +85,12 @@ export function PlayerSelect({
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Stable ids for ARIA combobox/listbox wiring (one set per instance).
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (i: number) => `${baseId}-opt-${i}`;
+  const createId = `${baseId}-create`;
+
   const label = nameOf(value);
   const canCreate = query.trim().length > 0;
   // priority people (e.g. this innings' batters) are always offered, filtered by the query and
@@ -127,9 +133,18 @@ export function PlayerSelect({
     };
   }, [open, reposition]);
 
+  // Reliably move focus into the search input once the panel is actually mounted (it only renders when
+  // `open && pos`, and `pos` is set a tick later by the layout effect — a bare setTimeout on `open` could
+  // fire before the input exists, leaving focus on the trigger so the arrow keys felt dead). Latched so a
+  // scroll/resize reposition never steals focus back mid-interaction.
+  const focusedForOpen = useRef(false);
+  useEffect(() => { if (!open) focusedForOpen.current = false; }, [open]);
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 0);
-  }, [open]);
+    if (open && pos && !focusedForOpen.current) {
+      focusedForOpen.current = true;
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [open, pos]);
 
   // ---- search (debounced) --------------------------------------------------------------------
   useEffect(() => {
@@ -288,6 +303,7 @@ export function PlayerSelect({
       {open && pos && createPortal(
         <div
           ref={panelRef}
+          id={listboxId}
           role="listbox"
           className="fixed z-[1000] flex flex-col rounded-[var(--radius-app)] border border-border bg-card p-2 shadow-lg"
           style={{ left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
@@ -298,6 +314,15 @@ export function PlayerSelect({
             placeholder={placeholder}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
+            autoFocus
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              optionCount === 0 ? undefined : active < options.length ? optionId(active) : (canCreate ? createId : undefined)
+            }
+            aria-label={rest["aria-label"] ?? "Search player"}
             className="mb-2 h-8 w-full shrink-0 rounded-[var(--radius-app)] border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
           />
           {organisationId && (
@@ -316,7 +341,8 @@ export function PlayerSelect({
                   <button
                     type="button"
                     role="option"
-                    aria-selected={value === p.id}
+                    id={optionId(i)}
+                    aria-selected={active === i}
                     onMouseEnter={() => setActive(i)}
                     onClick={() => pick(p)}
                     className={`flex w-full items-center gap-2 rounded-[var(--radius-app)] px-2 py-1.5 text-left text-sm ${active === i ? "bg-muted" : "hover:bg-muted"}`}
@@ -333,6 +359,7 @@ export function PlayerSelect({
             <button
               type="button"
               role="option"
+              id={createId}
               aria-selected={active === options.length}
               onMouseEnter={() => setActive(options.length)}
               onClick={launchWizard}
