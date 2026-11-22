@@ -266,6 +266,12 @@ def set_approval(
     )
     if verified:
         conn.execute(text("UPDATE match SET approved_at = now() WHERE id = :id"), {"id": match_id})
+    # Default non-batted lineup rows to DNB at this deliberate save point (submit for approval, or a
+    # verified decision) — a named batter with no figures and no dismissal yet "did not bat". Guarded so
+    # it never overwrites a recorded dismissal or an explicit "unknown", and never touches empty rows.
+    if submitting or verified:
+        from onestats.domain import batting  # local import avoids a module cycle
+        batting.apply_dnb_defaults(conn, workspace_id, match_id)
     after = get_match(conn, match_id)
     audit.write_audit(conn, workspace_id, actor, "match.approval", entity="match", entity_id=str(match_id),
                       before=before, after=after | {"self_approved": self_approved} if verified else after,
