@@ -37,6 +37,12 @@ def batting_partnerships(conn: Connection, filters: dict[str, Any], *, by_wicket
         if filters.get(key):
             base += f" AND {col} = :{key}"
             params[key] = filters[key]
+    # Season filter by YEAR (label), e.g. "2026/27" across every competition — the "Season (year)" chip on
+    # the Statistics screen / Report Catalogue. Previously only the leaderboard engine applied it, so this
+    # report ignored the year scope and returned all-time partnerships.
+    if filters.get("season_label"):
+        base += " AND m.season_id IN (SELECT id FROM season WHERE workspace_id = :w AND label = :season_label)"
+        params["season_label"] = filters["season_label"]
     # club lens: restrict to partnerships made for one of the selected club's teams
     if filters.get("organisation_id"):
         base += " AND i.batting_team_id IN (SELECT id FROM team WHERE organisation_id = :organisation_id)"
