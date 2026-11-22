@@ -4,6 +4,28 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.13 — 2026-11-22
+
+Report accuracy and a dependable publish — the reports now honour every filter, link to the match, and the
+"Publish to web" step regenerates everything with the current theme and tells you when it is actually live.
+
+**Changed since beta.12:**
+- **Opposition shows the team, not the club.** Report tables now name the specific team fielded (e.g.
+  "Tatyoon") instead of its parent club.
+- **Click a stat line to open the match.** Match-level report rows (top scores, best bowling, five-wicket
+  hauls, century-in-each-innings, record stands, etc.) are clickable and open that match's scorecard;
+  aggregate/career rows stay inert.
+- **Season (year) filter fixed on partnerships.** Highest Partnerships and Top Partnership Aggregates now
+  genuinely scope to the chosen year (they previously ignored it and showed all-time rows).
+- **Create Player.** The club-affiliation picker now lists associations alongside clubs, and the player
+  search typeahead has full keyboard navigation with proper combobox accessibility.
+- **Scorecard.** A selected batter with no figures now defaults to "did not bat" (DNB) when the card is
+  submitted — never overwriting a recorded dismissal or an explicit "unknown".
+- **Dependable publishing.** "Publish to GitHub" / "Refresh all" regenerate every published page from the
+  current data and current club theme before publishing, report anything they could not refresh, and
+  confirm a genuine "Live ✓" once GitHub Pages has deployed (with an honest note that caches can lag a few
+  minutes). A theme change now marks published pages as needing a refresh.
+
 ## 1.0.0-beta.12 — 2026-11-16
 
 Report depth and scorecards — richer player profiles, and a printable scorecard with faster entry.
