@@ -1530,6 +1530,10 @@ GitHub Pages
 
 When your statistics change, click "Refresh all" in OneStats, export this folder again, and re-upload it.
 Only approved, public, non-private data is ever included.
+
+Each page shows when it was generated (in the footer). After you upload, GitHub Pages rebuilds in about a
+minute, and its cache (and your browser's) can take up to ~10 minutes to show the newest version — a hard
+refresh (Ctrl/Cmd+Shift+R) forces the latest.
 """
 
 
