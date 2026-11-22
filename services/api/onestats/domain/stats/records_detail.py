@@ -32,6 +32,12 @@ def _scope(f: dict[str, Any], team_col: str | None = None) -> tuple[str, dict[st
         if f.get(key):
             clauses.append(f"{col} = :{key}")
             params[key] = f[key]
+    # Season filter by YEAR (label), e.g. "2026/27" across every competition — the "Season (year)" filter
+    # the Statistics screen / Report Catalogue use. Must be honoured here too (it was previously only
+    # applied by the leaderboard engine), or reports built on this scope silently ignore the year chip.
+    if f.get("season_label"):
+        clauses.append("m.season_id IN (SELECT id FROM season WHERE workspace_id = :w AND label = :season_label)")
+        params["season_label"] = f["season_label"]
     if team_col and f.get("organisation_id"):
         clauses.append(f"{team_col} IN (SELECT id FROM team WHERE organisation_id = :organisation_id)")
         params["organisation_id"] = f["organisation_id"]

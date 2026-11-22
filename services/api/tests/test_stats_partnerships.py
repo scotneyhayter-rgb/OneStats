@@ -5,6 +5,8 @@ run outs excluded, each match once). Rolled back; skipped without a live DB.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 from sqlalchemy import create_engine, text
 
@@ -12,7 +14,7 @@ from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import batting, bowling, competitions, matches, people
 from onestats.domain import innings as inn
-from onestats.domain.stats import partnerships
+from onestats.domain.stats import partnerships, records_detail
 
 settings = get_settings()
 pytestmark = pytest.mark.skipif(not settings.db_configured, reason="no live database credential configured")
@@ -123,6 +125,49 @@ def test_batting_partnerships(conn):
     assert top and top[0]["runs"] == 120 and {top[0]["batter1"], top[0]["batter2"]} == {str(p1), str(p2)}
     by_w = partnerships.batting_partnerships(conn, {"workspace_id": wid}, by_wicket=True)
     assert by_w[0]["wicket"] == 1 and by_w[0]["runs"] == 120
+
+
+def test_partnerships_scoped_by_season_year(conn):
+    """The 'Season (year)' filter (a season LABEL like 2026/27, across competitions) must genuinely scope
+    both Highest Partnerships (batting_partnerships) and Top Partnership Aggregates
+    (records_detail.top_partnership_aggregates) — previously only the leaderboard engine applied it, so
+    these reports returned all-time rows regardless of the year chip."""
+    wid = _ws(conn, "PT SEASON")
+    comp = competitions.create_competition(conn, wid, ACTOR, name="League")
+    home, away = _team(conn, wid, "Home"), _team(conn, wid, "Away")
+    p1 = people.create_person(conn, wid, ACTOR, display_name="Opener")
+    p2 = people.create_person(conn, wid, ACTOR, display_name="Partner")
+
+    def _season(label, y):
+        return conn.execute(
+            text("INSERT INTO season(workspace_id,competition_id,label,start_date) "
+                 "VALUES (:w,:c,:l,:d) RETURNING id"),
+            {"w": wid, "c": comp, "l": label, "d": dt.date(y, 10, 1)}).scalar_one()
+
+    def _stand(season_id, runs):
+        mid = matches.create_match(conn, wid, ACTOR, competition_id=comp, season_id=season_id)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=home, is_home=True)
+        matches.set_team(conn, wid, ACTOR, mid, team_id=away, is_home=False)
+        i1 = inn.create_innings(conn, wid, ACTOR, match_id=mid, inns_number=1,
+                                batting_team_id=home, bowling_team_id=away)
+        conn.execute(text("INSERT INTO partnership(workspace_id, innings_id, wicket_number, runs, unbroken, "
+                          "player1_person_id, player2_person_id, origin) "
+                          "VALUES (:w,:i,1,:r,false,:a,:b,'calculated')"),
+                     {"w": wid, "i": i1, "r": runs, "a": p1, "b": p2})
+        matches.set_approval(conn, wid, ACTOR, mid, status="approved")
+
+    s_old, s_new = _season("1990/91", 1990), _season("2026/27", 2026)
+    _stand(s_old, 200)   # all-time best, but in 1990/91
+    _stand(s_new, 60)    # the only 2026/27 stand
+
+    # Unfiltered: the 200 leads.
+    assert partnerships.batting_partnerships(conn, {"workspace_id": wid})[0]["runs"] == 200
+    # Scoped to the 2026/27 YEAR: only the 60 shows; the 1990/91 record is excluded.
+    scoped = partnerships.batting_partnerships(conn, {"workspace_id": wid, "season_label": "2026/27"})
+    assert [r["runs"] for r in scoped] == [60]
+    # Top Partnership Aggregates respects the same year filter (sums only the 2026/27 stand).
+    agg = records_detail.top_partnership_aggregates(conn, {"workspace_id": wid, "season_label": "2026/27"})
+    assert len(agg) == 1 and agg[0]["total_runs"] == 60 and agg[0]["partnerships"] == 1
 
 
 def test_by_wicket_caps_at_tenth_wicket(conn):
