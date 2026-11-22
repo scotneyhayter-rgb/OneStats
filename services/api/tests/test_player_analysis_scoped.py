@@ -14,9 +14,8 @@ from sqlalchemy import create_engine, text
 from onestats.core.config import get_settings
 from onestats.db.workspace import set_workspace
 from onestats.domain import batting as bat
-from onestats.domain import competitions
+from onestats.domain import competitions, matches, people
 from onestats.domain import innings as inn
-from onestats.domain import matches, people
 from onestats.domain.records import player_analysis as pa
 from onestats.domain.records import player_profile as pp
 
