@@ -7,12 +7,21 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
+import httpx
 import pytest
 from sqlalchemy import create_engine, text
 
 from onestats.core.config import Settings, get_settings
 from onestats.db.workspace import set_workspace
-from onestats.domain import batting, competitions, matches, people, publishing
+from onestats.domain import (
+    batting,
+    branding,
+    competitions,
+    matches,
+    people,
+    publishing,
+    publishing_github,
+)
 from onestats.domain import innings as inn
 
 settings = get_settings()
@@ -547,3 +556,64 @@ def test_scorecard_page_renders_batting_bowling_extras_and_result():
     assert "P Pace" in html and "Bowling" in html
     assert "96/3" in html and "Extras" in html
     assert publishing._render_scorecard_page({"innings": []}) .count("No innings") == 1
+
+
+def test_theme_change_marks_publications_stale(seeded, conn):
+    """Changing the club theme must flag published snapshots stale — branding is baked into each snapshot
+    at generation time, so the published pages carry the OLD theme until they are regenerated."""
+    wid = seeded["wid"]
+    pub = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="R", report_id="bat_most_runs")
+    assert conn.execute(text("SELECT stale FROM publication WHERE id=:i"), {"i": pub["id"]}).scalar_one() is False
+    branding.set_branding(conn, wid, UUID(ACTOR), {"primary_colour": "#0a0b0c"})
+    assert conn.execute(text("SELECT stale FROM publication WHERE id=:i"), {"i": pub["id"]}).scalar_one() is True
+
+
+def test_refresh_workspace_continues_past_a_failing_item_and_reports_skipped(seeded, conn, monkeypatch):
+    """One un-regenerable publication must not abort the whole refresh — it is reported in ``skipped`` with
+    a reason while every other item still refreshes."""
+    wid = seeded["wid"]
+    publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Good", report_id="bat_most_runs")
+    bad = publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Bad", report_id="bowl_most_wickets")
+    real = publishing._store_snapshot
+    def flaky(c, s, w, pid):
+        if str(pid) == str(bad["id"]):
+            raise RuntimeError("boom")
+        return real(c, s, w, pid)
+    monkeypatch.setattr(publishing, "_store_snapshot", flaky)
+    res = publishing.refresh_workspace(conn, TS, wid, ACTOR)
+    assert res["refreshed"] == 1
+    assert len(res["skipped"]) == 1
+    assert res["skipped"][0]["title"] == "Bad" and res["skipped"][0]["id"] == str(bad["id"])
+
+
+def test_github_publish_regenerates_snapshots_with_current_theme(seeded, conn):
+    """A publish regenerates every snapshot from CURRENT data + branding BEFORE pushing, so the pushed site
+    carries the current theme — not whatever was stored when the item was first published."""
+    wid = seeded["wid"]
+    publishing.create_publication(conn, TS, wid, ACTOR, kind="report", title="Runs", report_id="bat_most_runs")
+    publishing_github.set_settings(conn, wid, ACTOR, repo="owner/name", branch="main", token="ghp", token_provided=True)
+    # change the club theme AFTER publishing — the stored snapshot still has the old colour until regen
+    branding.set_branding(conn, wid, UUID(ACTOR), {"primary_colour": "#abc123"})
+
+    pushed: dict[str, str] = {}
+    def handler(request: httpx.Request) -> httpx.Response:
+        p, m = request.url.path, request.method
+        if m == "GET" and p.endswith("/git/ref/heads/main"):
+            return httpx.Response(404, json={"message": "Not Found"})
+        if m == "POST" and p.endswith("/git/trees"):
+            for f in json.loads(request.content)["tree"]:
+                pushed[f["path"]] = f["content"]
+            return httpx.Response(201, json={"sha": "treesha"})
+        if m == "POST" and p.endswith("/git/commits"):
+            return httpx.Response(201, json={"sha": "commitsha"})
+        if m == "POST" and p.endswith("/git/refs"):
+            return httpx.Response(201, json={"ref": "refs/heads/main"})
+        if p.endswith("/pages"):
+            return httpx.Response(404, json={"message": "Not Found"})
+        return httpx.Response(500, json={"message": f"unexpected {m} {p}"})
+
+    res = publishing_github.publish_to_github(conn, wid, ACTOR, settings=TS,
+                                              transport=httpx.MockTransport(handler))
+    assert res["refreshed"] == 1 and res["skipped"] == []
+    # the pushed site carries the NEW theme colour — proof the snapshots were regenerated before the push
+    assert any("#abc123" in c for c in pushed.values())

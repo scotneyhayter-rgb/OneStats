@@ -293,6 +293,11 @@ export interface GithubConnection {
   branch: string;
   token_set: boolean;
 }
+export interface SkippedPublication {
+  id: string;
+  title: string;
+  reason: string;
+}
 export interface GithubPublishResult {
   committed: boolean;
   commit: string;
@@ -300,6 +305,19 @@ export interface GithubPublishResult {
   repo: string;
   branch: string;
   pages_url: string | null;
+  refreshed: number;
+  skipped: SkippedPublication[];
+}
+export interface RefreshResult {
+  refreshed: number;
+  skipped: SkippedPublication[];
+}
+/** Best-effort GitHub Pages deploy status for Live-✓ polling. `state` 'unknown' = can't tell (degrade
+ *  to the time estimate). `built` means DEPLOYED at the origin — a CDN/browser-cache tail can remain. */
+export interface PagesStatus {
+  state: "building" | "built" | "errored" | "unknown";
+  commit?: string | null;
+  reason?: string;
 }
 export interface AskAnswer {
   question: string;
@@ -2171,7 +2189,7 @@ export const api = {
   publicationRefresh: (w: string, id: string) =>
     request<{ id: string; status: string }>(`/api/v1/workspaces/${w}/publications/${id}/refresh`, { method: "POST" }),
   publicationRefreshAll: (w: string) =>
-    request<{ refreshed: number }>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
+    request<RefreshResult>(`/api/v1/workspaces/${w}/publications/refresh`, { method: "POST" }),
   publicationExport: (w: string, id: string) =>
     request<{ files: Record<string, string> }>(`/api/v1/workspaces/${w}/publications/${id}/export`),
   publicationDelete: (w: string, id: string) =>
@@ -2194,6 +2212,8 @@ export const api = {
     request<GithubConnection>(`/api/v1/workspaces/${w}/publications/github`, { method: "PUT", body }),
   publicationGithubPublish: (w: string) =>
     request<GithubPublishResult>(`/api/v1/workspaces/${w}/publications/github/publish`, { method: "POST" }),
+  publicationGithubPagesStatus: (w: string) =>
+    request<PagesStatus>(`/api/v1/workspaces/${w}/publications/github/pages-status`),
   publicPreviewUrl: (path: string) => `${getApiBase()}${path}`,
   statsCaptaincyCompare: (w: string, personIds: string[]) =>
     request<{ captains: CaptaincyCompareRow[] }>(`/api/v1/workspaces/${w}/stats/captaincy/compare?person_ids=${personIds.join(",")}`),

@@ -90,6 +90,13 @@ def set_branding(
         ),
         params,
     )
+    # A theme/branding change makes every published snapshot stale — branding is baked into each snapshot
+    # at generation time, so the published pages keep the OLD theme until they are regenerated. Flag them
+    # so the "needs refresh" badge is honest and the next publish/refresh rebakes the current theme.
+    conn.execute(
+        text("UPDATE publication SET stale = true WHERE workspace_id = :w AND status = 'published'"),
+        {"w": workspace_id},
+    )
     after = get_branding(conn, workspace_id)
     audit.write_audit(
         conn, workspace_id, str(actor_user_id), "branding.update", entity="branding",
@@ -102,6 +109,11 @@ def set_branding(
 
 def reset_branding(conn: Connection, workspace_id: UUID, actor_user_id: UUID) -> None:
     conn.execute(text("DELETE FROM branding WHERE workspace_id = :w"), {"w": workspace_id})
+    # resetting the theme changes the look too — published snapshots are now stale (see set_branding)
+    conn.execute(
+        text("UPDATE publication SET stale = true WHERE workspace_id = :w AND status = 'published'"),
+        {"w": workspace_id},
+    )
     audit.write_audit(
         conn, workspace_id, str(actor_user_id), "branding.reset",
         entity="branding", entity_id=str(workspace_id),

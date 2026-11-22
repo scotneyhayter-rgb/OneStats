@@ -6,7 +6,7 @@
  * and club branding. Admin only.
  */
 import { Copy, Download, RefreshCw, Trash2, Upload } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -35,6 +35,11 @@ export function Publishing() {
   const [ghToken, setGhToken] = useState("");
   const [ghBusy, setGhBusy] = useState(false);
   const [ghResult, setGhResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // Live-✓ deploy tracking: after a push we poll GitHub Pages for a genuine "deployed" signal, degrading
+  // to an honest time-estimate when it can't be determined. pollRef supersedes a prior poll / cancels on unmount.
+  const [ghLive, setGhLive] = useState<"idle" | "checking" | "live" | "unknown" | "errored">("idle");
+  const pollRef = useRef(0);
+  useEffect(() => () => { pollRef.current++; }, []);   // cancel any in-flight poll on unmount
   const [toRemove, setToRemove] = useState<Publication | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,19 +112,57 @@ export function Publishing() {
 
   const publishGithub = useCallback(async () => {
     if (!current) return;
-    setError(null); setMsg(null); setGhResult(null); setGhBusy(true);
+    setError(null); setMsg(null); setGhResult(null); setGhLive("idle"); setGhBusy(true);
+    const myPoll = ++pollRef.current;   // supersede any earlier poll loop
     try {
       const r = await api.publicationGithubPublish(current.id);
-      const text = `Pushed ${r.files} file${r.files === 1 ? "" : "s"} to ${r.repo} (commit ${r.commit.slice(0, 7)}). `
-        + (r.pages_url
-          ? `Your site is live shortly at ${r.pages_url}`
-          : "GitHub Pages isn't enabled on the repo yet — turn it on at Settings → Pages → Deploy from a branch → "
-            + `${r.branch} → / (root). (Your token needs Pages: Read and write for OneStats to do that for you.)`);
-      setGhResult({ ok: true, text });
+      const skipNote = r.skipped.length
+        ? ` ${r.skipped.length} item${r.skipped.length === 1 ? "" : "s"} could not be refreshed: ${r.skipped.map((s) => s.title).join(", ")}.`
+        : "";
+      const pagesHint = r.pages_url
+        ? ""
+        : " GitHub Pages isn't enabled on the repo yet — turn it on at Settings → Pages → Deploy from a branch → "
+          + `${r.branch} → / (root). (Your token needs Pages: Read and write for OneStats to do that for you.)`;
+      setGhResult({
+        ok: r.skipped.length === 0,
+        text: `Regenerated ${r.refreshed} published item${r.refreshed === 1 ? "" : "s"} with the current data and theme, `
+          + `and pushed to ${r.repo} (commit ${r.commit.slice(0, 7)}).${skipNote}${pagesHint}`,
+      });
       await load();
+      // Best-effort "Live ✓": poll GitHub Pages for this commit's deploy. Never hangs or fails the publish —
+      // on any uncertainty (Pages off, API down, timeout) it degrades to the honest time estimate.
+      if (r.pages_url) {
+        setGhLive("checking");
+        for (let i = 0; i < 36 && pollRef.current === myPoll; i++) {
+          await new Promise((res) => setTimeout(res, 5000));
+          if (pollRef.current !== myPoll) return;   // superseded or unmounted
+          let st;
+          try { st = await api.publicationGithubPagesStatus(current.id); }
+          catch { setGhLive("unknown"); return; }
+          if (st.state === "errored") { setGhLive("errored"); return; }
+          if (st.state === "unknown") { setGhLive("unknown"); return; }
+          if (st.state === "built" && (!st.commit || st.commit === r.commit)) { setGhLive("live"); return; }
+          // "building", or a built OLDER commit — keep waiting for our commit
+        }
+        if (pollRef.current === myPoll) setGhLive("unknown");   // timed out → fall back to the estimate
+      }
     } catch (e) {
       setGhResult({ ok: false, text: e instanceof ApiError ? e.message : "GitHub publish failed — check the repo and token." });
     } finally { setGhBusy(false); }
+  }, [current, load]);
+
+  const refreshAll = useCallback(async () => {
+    if (!current) return;
+    setError(null); setMsg(null);
+    try {
+      const r = await api.publicationRefreshAll(current.id);
+      setMsg(r.skipped.length
+        ? `Refreshed ${r.refreshed}. ${r.skipped.length} could not be refreshed: ${r.skipped.map((s) => s.title).join(", ")}.`
+        : `All ${r.refreshed} published snapshot${r.refreshed === 1 ? "" : "s"} refreshed with current data and theme.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Refresh failed.");
+    }
   }, [current, load]);
 
   const download = useCallback(async (p: Publication) => {
@@ -215,6 +258,26 @@ export function Publishing() {
               {ghResult.text}
             </p>
           )}
+          {ghLive === "checking" && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden /> Checking the GitHub Pages deploy…
+            </p>
+          )}
+          {ghLive === "live" && (
+            <p className="rounded-[var(--radius-app)] border border-success/40 bg-success/5 px-3 py-2 text-xs text-success">
+              Live ✓ — deployed to GitHub Pages. Edge and browser caches can take a few minutes to catch up, so a hard refresh may be needed to see it immediately.
+            </p>
+          )}
+          {ghLive === "unknown" && (
+            <p className="text-xs text-muted-foreground">
+              Published — your site should be live in about 1–2 minutes (GitHub Pages can cache for up to ~10). A hard refresh (Ctrl/Cmd+Shift+R) forces the latest.
+            </p>
+          )}
+          {ghLive === "errored" && (
+            <p className="rounded-[var(--radius-app)] border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
+              GitHub Pages reported a build error for the last deploy — check the repository's Settings → Pages.
+            </p>
+          )}
           <p className="text-[11px] text-muted-foreground">
             Create a token at GitHub → Settings → Developer settings → Fine-grained tokens, scoped to just
             this one repository with <b>Contents: Read and write</b> (add <b>Pages: Read and write</b> to let
@@ -246,7 +309,7 @@ export function Publishing() {
         <Card><CardContent className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold">Published reports &amp; profiles</h3>
-            <Button size="sm" variant="outline" className="ml-auto" onClick={() => void act(() => api.publicationRefreshAll(current.id), "All published snapshots refreshed.")}>
+            <Button size="sm" variant="outline" className="ml-auto" onClick={() => void refreshAll()}>
               <RefreshCw className="h-4 w-4" aria-hidden /> Refresh all
             </Button>
           </div>

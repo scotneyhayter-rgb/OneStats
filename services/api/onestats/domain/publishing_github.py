@@ -24,6 +24,8 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from onestats.core.config import Settings
+from onestats.core.config import get_settings as _app_settings
 from onestats.domain import audit, publishing
 
 _GITHUB_API = "https://api.github.com"
@@ -100,10 +102,15 @@ def _ensure_pages(client: httpx.Client, owner: str, name: str, branch: str) -> s
 
 
 def publish_to_github(conn: Connection, workspace_id: UUID, actor: str,
-                      *, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
-    """Build the whole-site export and push it to the configured repo as a single commit via the Git Data
-    API. Returns the commit sha, file count and (best-effort) the live Pages URL. Raises ValueError with
-    ``github_not_configured`` / ``invalid_repo`` / ``github_push_failed: …`` on failure."""
+                      *, settings: Settings | None = None,
+                      transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    """Regenerate every published snapshot from CURRENT data + branding, then build the whole-site export
+    and push it to the configured repo as a single commit via the Git Data API. Regenerating first makes a
+    publish deterministic — it always ships current content and the current theme, never a stale stored
+    snapshot. Returns the commit sha, file count, how many items were refreshed/skipped, and (best-effort)
+    the live Pages URL. Raises ValueError with ``github_not_configured`` / ``invalid_repo`` /
+    ``github_push_failed: …`` on failure."""
+    settings = settings or _app_settings()
     s = conn.execute(
         text("SELECT github_repo, github_branch, github_token FROM workspace WHERE id = :w"),
         {"w": workspace_id},
@@ -117,7 +124,10 @@ def publish_to_github(conn: Connection, workspace_id: UUID, actor: str,
         raise ValueError("invalid_repo")
     owner, name = repo.split("/", 1)
 
-    files = publishing.site_export(conn, workspace_id)
+    # Regenerate ALL published snapshots from current data + branding BEFORE exporting, so the push is a
+    # deterministic mirror of current content and theme (not whatever happened to be stored). One failing
+    # item is reported in ``skipped``, never silently dropped and never aborting the push.
+    files, refresh = publishing.regenerate_and_export(conn, settings, workspace_id, actor)
     headers = {**_HEADERS, "Authorization": f"Bearer {token}"}
     with httpx.Client(base_url=_GITHUB_API, headers=headers, transport=transport, timeout=120.0) as client:
         # Resolve the current branch tip (if the repo already has one). A brand-new empty repo has no ref
@@ -169,6 +179,43 @@ def publish_to_github(conn: Connection, workspace_id: UUID, actor: str,
 
     audit.write_audit(conn, workspace_id, actor, "publication.github_publish", entity="workspace",
                       entity_id=str(workspace_id),
-                      after={"repo": repo, "branch": branch, "files": len(files), "commit": commit_sha})
+                      after={"repo": repo, "branch": branch, "files": len(files), "commit": commit_sha,
+                             "refreshed": refresh["refreshed"], "skipped": len(refresh["skipped"])})
     return {"committed": True, "commit": commit_sha, "files": len(files), "repo": repo,
-            "branch": branch, "pages_url": pages_url}
+            "branch": branch, "pages_url": pages_url,
+            "refreshed": refresh["refreshed"], "skipped": refresh["skipped"]}
+
+
+def pages_build_status(conn: Connection, workspace_id: UUID,
+                       *, transport: httpx.BaseTransport | None = None) -> dict[str, Any]:
+    """Best-effort GitHub Pages deploy status for the configured repo, so the UI can resolve a genuine
+    'Live ✓' after a publish by polling. **Never raises**: anything unexpected (not configured, Pages not
+    enabled, API/network error, odd payload) returns ``state: 'unknown'`` so the caller degrades to the
+    honest time-estimate message rather than hanging or showing a false failure.
+
+    ``state`` is one of ``building`` / ``built`` / ``errored`` / ``unknown`` and ``commit`` is the sha the
+    latest build deployed (the caller compares it to the commit it just pushed). NOTE: ``built`` means the
+    deploy succeeded at the origin — a CDN/browser-cache tail of a few minutes can remain, so the UI must
+    not claim every viewer sees it instantly."""
+    s = conn.execute(text("SELECT github_repo, github_token FROM workspace WHERE id = :w"),
+                     {"w": workspace_id}).mappings().first()
+    repo = (s["github_repo"] if s else None) or ""
+    token = (s["github_token"] if s else None) or ""
+    if not repo or not token or not _REPO_RE.match(repo):
+        return {"state": "unknown", "reason": "github_not_configured"}
+    owner, name = repo.split("/", 1)
+    headers = {**_HEADERS, "Authorization": f"Bearer {token}"}
+    try:
+        with httpx.Client(base_url=_GITHUB_API, headers=headers, transport=transport, timeout=15.0) as client:
+            r = client.get(f"/repos/{owner}/{name}/pages/builds/latest")
+            if r.status_code == 404:
+                return {"state": "unknown", "reason": "pages_not_enabled"}
+            if r.status_code != 200:
+                return {"state": "unknown", "reason": f"status_{r.status_code}"}
+            data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return {"state": "unknown", "reason": "unreachable"}
+    raw = str(data.get("status") or "").lower()
+    state = {"built": "built", "building": "building", "queued": "building",
+             "errored": "errored"}.get(raw, "unknown")
+    return {"state": state, "commit": data.get("commit") or None}

@@ -116,9 +116,10 @@ def set_settings_(workspace_id: UUID, body: SettingsBody, settings: SettingsDep,
 
 @router.get("/site.zip")
 def site_zip(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> Response:
-    """The entire published site as a downloadable .zip, laid out for a static host (GitHub Pages et al.)."""
+    """The entire published site as a downloadable .zip, laid out for a static host (GitHub Pages et al.).
+    Regenerates all snapshots from current data + branding first, so the download is always current."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
-        files = publishing.site_export(conn, workspace_id)
+        files, _refresh = publishing.regenerate_and_export(conn, settings, workspace_id, str(ctx.user["id"]))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, content in files.items():
@@ -152,12 +153,22 @@ def github_set(workspace_id: UUID, body: GithubBody, settings: SettingsDep, ctx:
 
 @router.post("/github/publish")
 def github_publish(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
-    """Push the whole published site to the configured GitHub repository as a single commit."""
+    """Regenerate every published snapshot from current data + branding, then push the whole site to the
+    configured GitHub repository as a single commit. Returns the commit, file count and refreshed/skipped."""
     with workspace_transaction(_engine(settings), workspace_id) as conn:
         try:
-            return publishing_github.publish_to_github(conn, workspace_id, str(ctx.user["id"]))
+            return publishing_github.publish_to_github(conn, workspace_id, str(ctx.user["id"]), settings=settings)
         except ValueError as exc:
             raise _err(exc) from exc
+
+
+@router.get("/github/pages-status")
+def github_pages_status(workspace_id: UUID, settings: SettingsDep, ctx: ManageCtx) -> dict[str, Any]:
+    """Best-effort GitHub Pages deploy status for the configured repo, so the UI can poll for a genuine
+    'Live ✓' after a publish. Never errors — returns state 'unknown' when it cannot tell, so the client
+    degrades to the time estimate."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        return publishing_github.pages_build_status(conn, workspace_id)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

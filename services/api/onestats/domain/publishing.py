@@ -1335,16 +1335,41 @@ def republish(conn: Connection, settings: Settings, workspace_id: UUID, actor: s
 
 
 def refresh_workspace(conn: Connection, settings: Settings, workspace_id: UUID, actor: str) -> dict[str, Any]:
-    """Regenerate the snapshot of every published publication (automatic update after approved-stat
-    changes). Public serving keeps using the last snapshot until this succeeds, so it never goes dark."""
-    ids = conn.execute(text("SELECT id FROM publication WHERE workspace_id = :w AND status = 'published'"),
-                       {"w": workspace_id}).scalars().all()
-    for pid in ids:
-        _store_snapshot(conn, settings, workspace_id, pid)
-    if ids:
+    """Regenerate the snapshot of every published publication from CURRENT data + CURRENT branding/theme
+    (the automatic update after approved-stat or branding changes, and the first step of every publish).
+
+    Resilient and honest: each publication is regenerated inside its own SAVEPOINT, so one failing item
+    rolls back only itself and never aborts the rest, and it is reported in ``skipped`` with a reason
+    rather than being silently left behind. Public serving keeps using each item's last good snapshot
+    until its refresh succeeds, so the site never goes dark. Returns ``{refreshed, skipped}``."""
+    rows = conn.execute(
+        text("SELECT id, title FROM publication WHERE workspace_id = :w AND status = 'published'"),
+        {"w": workspace_id}).mappings().all()
+    refreshed: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for r in rows:
+        try:
+            with conn.begin_nested():   # savepoint: a bad item rolls back alone, the loop continues
+                _store_snapshot(conn, settings, workspace_id, r["id"])
+            refreshed.append(str(r["id"]))
+        except Exception as exc:  # noqa: BLE001 - one bad publication must never abort the whole publish
+            skipped.append({"id": str(r["id"]), "title": r["title"], "reason": type(exc).__name__})
+    if rows:
         audit.write_audit(conn, workspace_id, actor, "publication.refresh", entity="workspace",
-                          entity_id=str(workspace_id), after={"refreshed": len(ids)})
-    return {"refreshed": len(ids)}
+                          entity_id=str(workspace_id),
+                          after={"refreshed": len(refreshed), "skipped": len(skipped)})
+    return {"refreshed": len(refreshed), "skipped": skipped}
+
+
+def regenerate_and_export(conn: Connection, settings: Settings, workspace_id: UUID,
+                          actor: str) -> tuple[dict[str, str], dict[str, Any]]:
+    """Regenerate every published snapshot from current data + branding, THEN build the whole-site export.
+    The single deterministic path shared by the GitHub publish and the .zip download, so a publish always
+    ships current content and the current theme — never a stale stored snapshot. Returns (files, refresh)
+    where ``refresh`` is the :func:`refresh_workspace` report (refreshed count + skipped items)."""
+    refresh = refresh_workspace(conn, settings, workspace_id, actor)
+    files = site_export(conn, workspace_id)
+    return files, refresh
 
 
 def list_publications(conn: Connection, workspace_id: UUID) -> list[dict[str, Any]]:
@@ -1505,6 +1530,10 @@ GitHub Pages
 
 When your statistics change, click "Refresh all" in OneStats, export this folder again, and re-upload it.
 Only approved, public, non-private data is ever included.
+
+Each page shows when it was generated (in the footer). After you upload, GitHub Pages rebuilds in about a
+minute, and its cache (and your browser's) can take up to ~10 minutes to show the newest version — a hard
+refresh (Ctrl/Cmd+Shift+R) forces the latest.
 """
 
 

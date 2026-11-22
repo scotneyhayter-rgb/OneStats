@@ -105,3 +105,27 @@ def test_publish_pushes_the_site_and_sets_the_public_address(conn):
     # the public site address is filled in automatically so each report's live link appears
     # (stored canonicalised without the trailing slash by set_public_base_url)
     assert publishing.get_public_base_url(conn, wid) == "https://owner.github.io/name"
+
+
+def test_pages_build_status_maps_states_and_degrades_gracefully(conn):
+    wid = _ws(conn, "GH PAGES")
+    # not configured (no repo/token) -> unknown, never raises
+    assert publishing_github.pages_build_status(conn, wid)["state"] == "unknown"
+    publishing_github.set_settings(conn, wid, ACTOR, repo="owner/name", branch="main",
+                                   token="ghp_test", token_provided=True)
+
+    def built(_r): return httpx.Response(200, json={"status": "built", "commit": "abc123"})
+    r = publishing_github.pages_build_status(conn, wid, transport=httpx.MockTransport(built))
+    assert r["state"] == "built" and r["commit"] == "abc123"
+
+    def building(_r): return httpx.Response(200, json={"status": "building", "commit": "abc123"})
+    assert publishing_github.pages_build_status(conn, wid, transport=httpx.MockTransport(building))["state"] == "building"
+
+    def errored(_r): return httpx.Response(200, json={"status": "errored"})
+    assert publishing_github.pages_build_status(conn, wid, transport=httpx.MockTransport(errored))["state"] == "errored"
+
+    def not_enabled(_r): return httpx.Response(404, json={"message": "Not Found"})
+    assert publishing_github.pages_build_status(conn, wid, transport=httpx.MockTransport(not_enabled))["state"] == "unknown"
+
+    def boom(_r): raise httpx.ConnectError("down")
+    assert publishing_github.pages_build_status(conn, wid, transport=httpx.MockTransport(boom))["state"] == "unknown"
