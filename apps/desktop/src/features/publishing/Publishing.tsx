@@ -38,6 +38,7 @@ export function Publishing() {
   // Live-✓ deploy tracking: after a push we poll GitHub Pages for a genuine "deployed" signal, degrading
   // to an honest time-estimate when it can't be determined. pollRef supersedes a prior poll / cancels on unmount.
   const [ghLive, setGhLive] = useState<"idle" | "checking" | "live" | "unknown" | "errored">("idle");
+  const [refreshing, setRefreshing] = useState(false);
   const pollRef = useRef(0);
   useEffect(() => () => { pollRef.current++; }, []);   // cancel any in-flight poll on unmount
   const [toRemove, setToRemove] = useState<Publication | null>(null);
@@ -128,6 +129,10 @@ export function Publishing() {
         text: `Regenerated ${r.refreshed} published item${r.refreshed === 1 ? "" : "s"} with the current data and theme, `
           + `and pushed to ${r.repo} (commit ${r.commit.slice(0, 7)}).${skipNote}${pagesHint}`,
       });
+      // The push is DONE here — stop the "Publishing…" button now. The Live-✓ check below is a separate,
+      // non-blocking phase (it can poll GitHub Pages for up to a few minutes) and must not keep the button
+      // stuck on "Publishing…", which looked like a stall.
+      setGhBusy(false);
       await load();
       // Best-effort "Live ✓": poll GitHub Pages for this commit's deploy. Never hangs or fails the publish —
       // on any uncertainty (Pages off, API down, timeout) it degrades to the honest time estimate.
@@ -148,12 +153,13 @@ export function Publishing() {
       }
     } catch (e) {
       setGhResult({ ok: false, text: e instanceof ApiError ? e.message : "GitHub publish failed — check the repo and token." });
-    } finally { setGhBusy(false); }
+      setGhBusy(false);
+    }
   }, [current, load]);
 
   const refreshAll = useCallback(async () => {
-    if (!current) return;
-    setError(null); setMsg(null);
+    if (!current || refreshing) return;
+    setError(null); setMsg(null); setRefreshing(true);
     try {
       const r = await api.publicationRefreshAll(current.id);
       setMsg(r.skipped.length
@@ -162,8 +168,10 @@ export function Publishing() {
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Refresh failed.");
+    } finally {
+      setRefreshing(false);
     }
-  }, [current, load]);
+  }, [current, refreshing, load]);
 
   const download = useCallback(async (p: Publication) => {
     if (!current) return;
@@ -309,8 +317,8 @@ export function Publishing() {
         <Card><CardContent className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold">Published reports &amp; profiles</h3>
-            <Button size="sm" variant="outline" className="ml-auto" onClick={() => void refreshAll()}>
-              <RefreshCw className="h-4 w-4" aria-hidden /> Refresh all
+            <Button size="sm" variant="outline" className="ml-auto" disabled={refreshing} onClick={() => void refreshAll()}>
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden /> {refreshing ? "Refreshing…" : "Refresh all"}
             </Button>
           </div>
           {pubs.length === 0 ? <p className="text-xs text-muted-foreground">Nothing published yet.</p> :
