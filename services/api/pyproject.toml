@@ -37,6 +37,11 @@ dev = [
     # rule set and fail CI on rules the code was never checked against.
     "ruff==0.17.1",
 ]
+# S3-compatible object storage (the 's3' media provider). Optional and NOT bundled in the desktop build;
+# installed in the cloud/container image. The provider degrades gracefully when boto3 is absent.
+s3 = [
+    "boto3>=1.34.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

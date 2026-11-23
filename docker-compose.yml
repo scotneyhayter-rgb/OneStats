@@ -1,0 +1,41 @@
+# Local "cloud-like" run: the OneStats web app + PostgreSQL in containers. A convenience/template for
+# trying the containerised backend end to end — NOT a hardened production setup (see docs/78-cloud-deploy.md
+# for managed Postgres, least-privilege roles, HTTPS and secrets). Needs values in a .env file beside this.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: onestats
+      POSTGRES_USER: onestats_app
+      POSTGRES_PASSWORD: ${ONESTATS_DB_PASSWORD:?set ONESTATS_DB_PASSWORD in .env}
+    volumes:
+      - onestats-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onestats_app -d onestats"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ONESTATS_DB_HOST: db
+      ONESTATS_DB_PASSWORD: ${ONESTATS_DB_PASSWORD}
+      # a persistent encryption key for secrets-at-rest (integration credentials). Generate one and keep it.
+      ONESTATS_ENCRYPTION_KEY: ${ONESTATS_ENCRYPTION_KEY:?set ONESTATS_ENCRYPTION_KEY in .env}
+      # object storage for media (optional) — uncomment and fill to store uploads in S3/R2:
+      # ONESTATS_S3_BUCKET: ${ONESTATS_S3_BUCKET}
+      # ONESTATS_S3_ENDPOINT_URL: ${ONESTATS_S3_ENDPOINT_URL}
+      # ONESTATS_S3_REGION: ${ONESTATS_S3_REGION}
+      # ONESTATS_S3_ACCESS_KEY_ID: ${ONESTATS_S3_ACCESS_KEY_ID}
+      # ONESTATS_S3_SECRET_ACCESS_KEY: ${ONESTATS_S3_SECRET_ACCESS_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  onestats-pgdata:
