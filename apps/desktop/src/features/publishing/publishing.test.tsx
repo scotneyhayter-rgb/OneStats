@@ -73,6 +73,11 @@ describe("Publishing", () => {
     expect(screen.getByText(/commit c0ffee1/i)).toBeTruthy();
     // and it begins polling for a genuine Live ✓ rather than claiming it instantly
     await screen.findByText(/Checking the GitHub Pages deploy/i);
+    // the push is done, so the button must NOT stay stuck on "Publishing…" during the Live poll —
+    // it returns to its normal, clickable state (regression guard for the "seems stalled" bug)
+    expect(screen.queryByRole("button", { name: /Publishing…/i })).toBeNull();
+    const back = screen.getByRole("button", { name: /Publish to GitHub now/i });
+    expect((back as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("surfaces items that Refresh all could not regenerate", async () => {
