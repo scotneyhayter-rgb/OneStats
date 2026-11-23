@@ -113,8 +113,15 @@ storage, and existing internal media can be **migrated** to it via the media mig
 byte-for-byte, with rollback on mismatch). A schema migration (`0076_media_provider_s3`) allows the new
 provider value — run `alembic upgrade head` on deploy.
 
-> Follow-up (not yet wired): routing *new* uploads straight to `s3` by default. Today new uploads land on
-> internal storage and can be migrated; the provider, serving and migration are all in place.
+To route **new uploads** straight to object storage (recommended in the cloud, so nothing touches local
+disk), also set:
+
+```
+ONESTATS_MEDIA_PROVIDER=s3
+```
+
+New uploads then store the original **and** its thumbnail/preview on S3; serving streams them through the
+backend. Default is `internal`, so the desktop build is unaffected.
 
 ## Notes
 

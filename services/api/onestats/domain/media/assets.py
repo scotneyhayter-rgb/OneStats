@@ -25,19 +25,30 @@ _META_COLS = (
 LINK_ENTITY_TYPES = ("match", "person", "research_source", "season", "organisation", "team", "other")
 
 
-def _derivatives(settings: Settings, workspace_id: UUID, raw: bytes, content_type: str) -> dict[str, str | None]:
-    """Generate a thumbnail + preview for images, stored as separate files. Never touches the original.
-    Returns {} refs when derivatives cannot be made (e.g. a PDF) — honest, not a fake image."""
+def _primary_provider(settings: Settings):
+    """The storage provider for NEW uploads: ``settings.media_provider`` ("internal" default, or "s3"),
+    falling back to internal for an unknown value or the register-only external provider. Returns
+    (provider, name) so the original and its derivatives land together and the asset records that provider."""
+    name = getattr(settings, "media_provider", None) or "internal"
+    if name not in providers.PROVIDERS or name == "external":
+        name = "internal"
+    return providers.get_provider(name), name
+
+
+def _derivatives(settings: Settings, workspace_id: UUID, raw: bytes, content_type: str,
+                 provider: Any) -> dict[str, str | None]:
+    """Generate a thumbnail + preview for images, stored on the SAME provider as the original (so serving
+    them uses the asset's one storage provider). Returns {} refs when derivatives cannot be made
+    (e.g. a PDF) — honest, not a fake image."""
     out: dict[str, str | None] = {"thumbnail_ref": None, "preview_ref": None}
     if not (content_type or "").lower().startswith("image/"):
         return out
     try:
         from onestats.core import images
-        internal = providers.internal_provider()
         thumb = images.make_thumbnail(raw, (256, 256))
         preview = images.make_thumbnail(raw, (1200, 1200))
-        out["thumbnail_ref"] = str(internal.put(settings, workspace_id, thumb, "image/png")["locator"])
-        out["preview_ref"] = str(internal.put(settings, workspace_id, preview, "image/png")["locator"])
+        out["thumbnail_ref"] = str(provider.put(settings, workspace_id, thumb, "image/png")["locator"])
+        out["preview_ref"] = str(provider.put(settings, workspace_id, preview, "image/png")["locator"])
     except Exception:  # noqa: BLE001 - a derivative failure must never block preserving the original
         out = {"thumbnail_ref": None, "preview_ref": None}
     return out
@@ -55,18 +66,19 @@ def find_duplicate(conn: Connection, workspace_id: UUID, sha256: str) -> UUID | 
 def create_internal_asset(conn: Connection, settings: Settings, workspace_id: UUID, actor: str, *,
                           raw: bytes, content_type: str, original_filename: str | None = None,
                           **meta: Any) -> dict[str, Any]:
-    """Store an uploaded original on the internal provider (preserved unaltered) + derive thumbnail/
-    preview, then record the media_asset. Reports ``duplicate_of`` when identical content already exists."""
-    internal = providers.internal_provider()
-    stored = internal.put(settings, workspace_id, raw, content_type)
+    """Store an uploaded original on the configured media provider (internal by default, or S3 when
+    ONESTATS_MEDIA_PROVIDER=s3) preserved unaltered, derive thumbnail/preview on the same provider, then
+    record the media_asset. Reports ``duplicate_of`` when identical content already exists."""
+    provider, pname = _primary_provider(settings)
+    stored = provider.put(settings, workspace_id, raw, content_type)
     dup = find_duplicate(conn, workspace_id, str(stored["sha256"]))
-    deriv = _derivatives(settings, workspace_id, raw, content_type)
-    aid = _insert(conn, workspace_id, actor, storage_provider="internal", storage_locator=str(stored["locator"]),
+    deriv = _derivatives(settings, workspace_id, raw, content_type, provider)
+    aid = _insert(conn, workspace_id, actor, storage_provider=pname, storage_locator=str(stored["locator"]),
                   original_filename=original_filename, content_type=content_type,
                   file_bytes=int(stored["bytes"]), sha256=str(stored["sha256"]),
                   thumbnail_ref=deriv["thumbnail_ref"], preview_ref=deriv["preview_ref"], **meta)
     audit.write_audit(conn, workspace_id, actor, "media.asset_created", entity="media_asset",
-                      entity_id=str(aid), after={"provider": "internal", "bytes": stored["bytes"]})
+                      entity_id=str(aid), after={"provider": pname, "bytes": stored["bytes"]})
     out = get_asset(conn, aid)
     out["duplicate_of"] = str(dup) if dup is not None else None
     return out

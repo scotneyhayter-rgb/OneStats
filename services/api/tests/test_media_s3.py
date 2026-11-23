@@ -83,6 +83,50 @@ def test_s3_registered_and_described():
     assert on["available"] is True and off["available"] is False
 
 
+def test_primary_provider_selection():
+    from onestats.domain.media import assets
+    # default is internal, even when s3 is *configured* but not chosen as the upload target
+    assert assets._primary_provider(NO_S3)[1] == "internal"
+    assert assets._primary_provider(S)[1] == "internal"
+    s3_default = Settings(env="test", db_password=None, _env_file=None, s3_bucket="bkt", media_provider="s3")
+    assert assets._primary_provider(s3_default)[1] == "s3"
+    # external (register-only) and unknown values fall back to internal
+    ext = Settings(env="test", db_password=None, _env_file=None, media_provider="external")
+    bad = Settings(env="test", db_password=None, _env_file=None, media_provider="nope")
+    assert assets._primary_provider(ext)[1] == "internal"
+    assert assets._primary_provider(bad)[1] == "internal"
+
+
+@pytestmark_db
+def test_new_upload_routed_to_s3_with_derivatives(monkeypatch, tmp_path):
+    import io
+
+    from PIL import Image
+    eng = create_engine(settings_db.database_url, future=True)
+    with eng.connect() as conn:
+        trans = conn.begin()
+        try:
+            store = Settings(env="test", db_password=None, media_root=str(tmp_path), _env_file=None,
+                             s3_bucket="bkt", media_provider="s3")
+            wid = conn.execute(text("INSERT INTO workspace(name, type) VALUES ('S3 UPLOAD','club') RETURNING id")).scalar_one()
+            conn.execute(text("INSERT INTO app_user(id, username) VALUES (:a,'s3up') ON CONFLICT (id) DO NOTHING"), {"a": ACTOR})
+            set_workspace(conn, wid)
+            fake = FakeS3()
+            monkeypatch.setattr(providers._S3, "_client_factory", lambda: fake)
+            buf = io.BytesIO()
+            Image.new("RGB", (80, 60), "blue").save(buf, "PNG")
+            asset = assets.create_internal_asset(conn, store, wid, ACTOR, raw=buf.getvalue(),
+                                                 content_type="image/png", original_filename="p.png")
+            assert asset["storage_provider"] == "s3"           # new upload went to object storage
+            assert asset["thumbnail_ref"]                      # derivative generated + stored on s3
+            # original and thumbnail both retrievable from object storage
+            assert providers.get_provider("s3").get(store, wid, asset["storage_locator"])
+            assert providers.get_provider("s3").get(store, wid, asset["thumbnail_ref"])
+        finally:
+            trans.rollback()
+    eng.dispose()
+
+
 @pytestmark_db
 def test_migrate_internal_asset_to_s3(monkeypatch, tmp_path):
     eng = create_engine(settings_db.database_url, future=True)
