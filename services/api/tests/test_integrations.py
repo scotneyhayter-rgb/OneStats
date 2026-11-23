@@ -29,6 +29,9 @@ KEY_NEW = crypto.new_key()
 KEY_OLD = crypto.new_key()
 TS = Settings(env="test", db_password=None, _env_file=None, encryption_key=f"{KEY_NEW},{KEY_OLD}")
 TS_OLD_ONLY = Settings(env="test", db_password=None, _env_file=None, encryption_key=KEY_OLD)
+# same keys as TS, but with a global Trove env key — for the resolve_trove fallback path
+TS_TROVE_ENV = Settings(env="test", db_password=None, _env_file=None,
+                        encryption_key=f"{KEY_NEW},{KEY_OLD}", trove_api_key="ENV-TROVE-KEY")
 
 
 # ----------------------------------------------------------------- crypto (secret-at-rest)
@@ -89,6 +92,10 @@ def test_provider_registry_lists_schemas_without_secrets():
     assert any(f["key"] == "api_key" for f in playhq["secret_fields"])
     assert any(f["key"] == "org_id" for f in playhq["config_fields"])
     assert provs["custom_api"]["custom_url"] is True
+    # Trove is a first-class provider: testable, one api_key secret, no custom URL
+    trove = provs["trove"]
+    assert trove["testable"] is True and trove["custom_url"] is False
+    assert [f["key"] for f in trove["secret_fields"]] == ["api_key"]
 
 
 # ----------------------------------------------------------------- DB-backed lifecycle / isolation
@@ -255,6 +262,71 @@ def test_bind_connector_uses_workspace_credential(conn, monkeypatch):
     assert bound._org_id() == "bound-org"                   # uses the workspace credential's org, not global
     client = bound._client()
     assert client._key == "BOUND-KEY" and client._tenant == "ca"
+
+
+# ----------------------------------------------------------------- resolve_trove (research credential)
+
+@pytestmark_db
+def test_resolve_trove_prefers_dedicated_trove_credential(conn):
+    wid = _ws(conn, "TROVE DED")
+    integrations.create_credential(conn, TS, wid, ACTOR, provider="trove", secrets={"api_key": "DEDICATED-KEY"})
+    key, base = integrations.resolve_trove(conn, TS, wid)
+    assert key == "DEDICATED-KEY"
+    assert base == TS.trove_base_url
+
+
+@pytestmark_db
+def test_resolve_trove_uses_custom_api_credential_pointed_at_trove(conn):
+    wid = _ws(conn, "TROVE CUSTOM")
+    integrations.create_credential(conn, TS, wid, ACTOR, provider="custom_api",
+                                   secrets={"api_key": "CUSTOM-TROVE-KEY"},
+                                   config={"base_url": "https://api.trove.nla.gov.au/v3"},
+                                   label="Trove Historical Newspaper Research")
+    key, base = integrations.resolve_trove(conn, TS, wid)
+    assert key == "CUSTOM-TROVE-KEY"
+    assert base == "https://api.trove.nla.gov.au/v3"
+
+
+@pytestmark_db
+def test_resolve_trove_ignores_non_trove_custom_api_and_falls_back_to_env(conn):
+    wid = _ws(conn, "TROVE OTHER")
+    # a custom_api credential for some other host must NOT be treated as a Trove key
+    integrations.create_credential(conn, TS_TROVE_ENV, wid, ACTOR, provider="custom_api",
+                                   secrets={"api_key": "OTHER-KEY"},
+                                   config={"base_url": "https://example.com/api"})
+    key, base = integrations.resolve_trove(conn, TS_TROVE_ENV, wid)
+    assert key == "ENV-TROVE-KEY"                    # fell through to the environment key
+    assert base == TS_TROVE_ENV.trove_base_url
+
+
+@pytestmark_db
+def test_resolve_trove_env_fallback_when_nothing_stored(conn):
+    wid = _ws(conn, "TROVE ENV")
+    key, _base = integrations.resolve_trove(conn, TS_TROVE_ENV, wid)
+    assert key == "ENV-TROVE-KEY"
+    # and None when neither a credential nor an env key exists
+    assert integrations.resolve_trove(conn, TS, _ws(conn, "TROVE NONE"))[0] is None
+
+
+@pytestmark_db
+def test_resolve_trove_skips_disabled_credential(conn):
+    wid = _ws(conn, "TROVE DIS")
+    row = integrations.create_credential(conn, TS_TROVE_ENV, wid, ACTOR, provider="trove",
+                                         secrets={"api_key": "DISABLED-KEY"})
+    integrations.set_enabled(conn, wid, ACTOR, uuid.UUID(row["id"]), False)
+    key, _ = integrations.resolve_trove(conn, TS_TROVE_ENV, wid)
+    assert key == "ENV-TROVE-KEY"                    # disabled credential is not used
+
+
+@pytestmark_db
+def test_test_connectivity_trove_runs_a_search(conn, monkeypatch):
+    monkeypatch.setattr("onestats.domain.research.trove.search_newspapers",
+                        lambda settings, **kw: {"total": 42, "results": []})
+    wid = _ws(conn, "TROVE TEST")
+    row = integrations.create_credential(conn, TS, wid, ACTOR, provider="trove", secrets={"api_key": "K"})
+    res = integrations.test_connectivity(conn, TS, wid, ACTOR, uuid.UUID(row["id"]))
+    assert res["test_ok"] is True and "42" in res["test_message"]
+    _no_plaintext([res], "K")
 
 
 # ----------------------------------------------------------------- API wiring / auth gating (no DB)

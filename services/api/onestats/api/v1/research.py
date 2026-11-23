@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from onestats.api.deps import RequestContext, SettingsDep, require_permission
 from onestats.db.session import get_engine
 from onestats.db.workspace import workspace_transaction
+from onestats.domain import integrations
 from onestats.domain import matches as matches_domain
 from onestats.domain import people as people_domain
 from onestats.domain.research import (
@@ -710,11 +711,14 @@ def newspaper_search(
     newspaper_title: str | None = None, n: int = 20,
 ) -> dict[str, Any]:
     """Search digitised historical newspapers (Trove) for articles to save as research sources.
-    Returns article hits only — never fabricated match data. Requires a configured Trove API key."""
+    Returns article hits only — never fabricated match data. Uses the workspace's own stored Trove
+    credential when configured, otherwise the global key."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        api_key, base_url = integrations.resolve_trove(conn, settings, workspace_id)
     try:
         return trove.search_newspapers(
             settings, query=q, year_from=year_from, year_to=year_to,
-            newspaper_title=newspaper_title, n=n,
+            newspaper_title=newspaper_title, n=n, api_key=api_key, base_url=base_url,
         )
     except trove.TroveError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
