@@ -45,11 +45,71 @@ def _resolve_tesseract_cmd() -> None:
             return
 
 
+def _otsu_threshold(img) -> int:
+    """Otsu's method: the grayscale cut that best separates faded ink from paper. Pure histogram maths."""
+    import numpy as np
+
+    hist = np.bincount(np.asarray(img, dtype=np.uint8).ravel(), minlength=256).astype(np.float64)
+    total = hist.sum()
+    if total == 0:
+        return 127
+    levels = np.arange(256)
+    sum_total = float((levels * hist).sum())
+    w_b = sum_b = 0.0
+    best_between, best_t = -1.0, 127
+    for t in range(256):
+        w_b += hist[t]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+        sum_b += t * hist[t]
+        m_b = sum_b / w_b
+        m_f = (sum_total - sum_b) / w_f
+        between = w_b * w_f * (m_b - m_f) ** 2
+        if between > best_between:
+            best_between, best_t = between, t
+    return best_t
+
+
+def _deskew(img):
+    """Correct the small rotation typical of a hand-fed scan. Estimates the angle on a downscaled copy by
+    maximising the variance of the dark-pixel row profile (text rows line up when the page is straight),
+    then rotates the full image. Bounded to ±8°, prefers 0° unless an angle clearly beats straight, and is
+    a no-op on a featureless image. Returns a PIL 'L' image."""
+    import numpy as np
+    from PIL import Image  # type: ignore
+
+    def _score(arr: np.ndarray) -> float:
+        dark = (arr < arr.mean()).sum(axis=1).astype(np.float64)
+        return float(dark.var())
+
+    small = img.copy()
+    small.thumbnail((800, 800))
+    zero_score = _score(np.asarray(small, dtype=np.float32))
+    if zero_score <= 0:                              # nothing to align (blank/flat) → leave as-is
+        return img
+    best_angle, best_score = 0.0, zero_score
+    for step in range(-16, 17):                      # -8.0° .. +8.0° in 0.5° steps
+        angle = step * 0.5
+        if angle == 0:
+            continue
+        rot = small.rotate(angle, resample=Image.BILINEAR, fillcolor=255)
+        score = _score(np.asarray(rot, dtype=np.float32))
+        if score > best_score * 1.05:                # require a clear win over straight
+            best_score, best_angle = score, angle
+    if abs(best_angle) < 0.5:
+        return img
+    return img.rotate(best_angle, resample=Image.BICUBIC, fillcolor=255)
+
+
 def _preprocess(raw: bytes):
-    """Decode source bytes into a clean grayscale image for OCR. Converts any exotic mode/format (a
-    phone-camera MPO, CMYK or palette image) to a safe mode so Tesseract never rejects it — the previous
-    code passed the raw image straight through and MPO photos failed silently — then upscales small scans
-    and stretches contrast to fight fading. Returns a PIL image."""
+    """Decode source bytes into a clean, binarised grayscale image for OCR. Converts any exotic mode/format
+    (a phone-camera MPO, CMYK or palette image) to a safe mode so Tesseract never rejects it, upscales
+    small scans, then denoises, deskews and Otsu-binarises to fight faded/skewed newsprint. The result
+    stays mode 'L' (0/255 values) which Tesseract reads cleanly. Any failure in the enhanced steps falls
+    back to the plain contrast-stretched grayscale so OCR still runs. Returns a PIL image."""
     import io
 
     from PIL import Image, ImageFilter, ImageOps  # type: ignore
@@ -65,7 +125,13 @@ def _preprocess(raw: bytes):
         scale = max(2, round(2200 / longest))
         img = img.resize((w * scale, h * scale), Image.LANCZOS)
     img = ImageOps.autocontrast(img, cutoff=2)
-    return img.filter(ImageFilter.SHARPEN)
+    try:
+        img = img.filter(ImageFilter.MedianFilter(3))             # denoise speckle
+        img = _deskew(img)                                        # straighten
+        t = _otsu_threshold(img)
+        return img.point(lambda p, _t=t: 255 if p > _t else 0)    # binarise; stays mode 'L'
+    except Exception:  # noqa: BLE001 - any enhancement failure → plain grayscale still OCRs fine
+        return img.filter(ImageFilter.SHARPEN)
 
 
 # OCR config: LSTM engine (--oem 1) and treat the clipping as a single uniform block (--psm 6), which
