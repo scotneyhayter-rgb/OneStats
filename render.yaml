@@ -45,6 +45,11 @@ services:
       - key: ONESTATS_SETUP_TOKEN
         sync: false
 
+      # Optional: once a custom domain is live (e.g. https://stats.rhymneymoystoncc.com), set this so
+      # generated public report/profile links use it. Leave unset until then. See docs/79.
+      - key: ONESTATS_PUBLIC_BASE_URL
+        sync: false
+
       # --- Media storage ---
       # 'internal' uses the container disk, which on Render's free plan is EPHEMERAL — uploaded media is
       # lost on every redeploy/restart. For persistent media, set the S3 vars below and change this to

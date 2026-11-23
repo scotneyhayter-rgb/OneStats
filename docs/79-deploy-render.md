@@ -62,7 +62,50 @@ When the health check (`/api/v1/health`) goes green, open the service URL
 3. On success the token is consumed (its hash is cleared). **Remove `ONESTATS_SETUP_TOKEN`** from the
    service environment — it's no longer needed.
 
-You're live. Add users and workspaces from the admin area as normal.
+You're live on the `onrender.com` URL. Add users and workspaces from the admin area as normal.
+
+## 5. Put it on your club domain (a Wix subdomain)
+
+The club website `rhymneymoystoncc.com` is hosted on **Wix** (nameservers `ns8/ns9.wixdns.net`), with the
+site on the apex + `www` and email on Google Workspace. **Don't move the domain or touch those** — instead
+give OneStats its **own subdomain** (e.g. `stats.rhymneymoystoncc.com`) that points at Render. The existing
+site and email are completely unaffected, and Render issues free HTTPS for the subdomain.
+
+> A subdomain (not the apex) is required here: the root `rhymneymoystoncc.com` is a Wix A-record and can't
+> be a CNAME, and it already serves your website. Pick a label: `stats`, `app`, or `onestats`.
+
+1. **In Render** → the `onestats-web` service → **Settings** → **Custom Domains** → **Add** →
+   enter `stats.rhymneymoystoncc.com`. Render shows the DNS target to point at — a hostname like
+   `onestats-web-xxxx.onrender.com` (use the **CNAME** value Render gives; copy it exactly).
+2. **In Wix** → **Settings** → **Domains** → click `rhymneymoystoncc.com` → **Advanced** →
+   **DNS Records** (manage records) → under **CNAME (Alias)** → **Add Record**:
+   - **Host / Name:** `stats`
+   - **Value / Points to:** the `onestats-web-xxxx.onrender.com` target from step 1
+   - **TTL:** leave default. Save.
+   (Leave every existing record alone — the apex `A` records, the `www` record, and the Google `MX`
+   records stay as they are.)
+3. Wait for DNS to propagate (minutes to an hour). Render detects the CNAME, **verifies the domain and
+   issues a TLS certificate automatically**. When it shows "Certificate issued", open
+   `https://stats.rhymneymoystoncc.com` — the app loads securely on your own domain.
+4. **Link it from the Wix site** (optional but recommended): in the Wix Editor add a menu item / button
+   such as **"Stats"** linking to `https://stats.rhymneymoystoncc.com` (set it to open in a new tab). Now
+   members reach OneStats straight from the club website.
+
+Because the backend serves the SPA and the API from that one origin, nothing else changes — **no CORS**,
+and the same image works on the `onrender.com` URL and the custom domain simultaneously.
+
+> If Wix won't let you add an external CNAME on your plan, the fallback is to move DNS to a free provider
+> (e.g. Cloudflare) by changing the nameservers and re-creating the existing Wix records there — heavier,
+> and it affects the whole domain, so prefer the Wix CNAME above unless it's blocked.
+
+### Make generated public links use the domain
+
+OneStats can emit public report/profile links (display/export only). Point them at the custom domain by
+setting one more env var on the Render service once the domain is live:
+
+```
+ONESTATS_PUBLIC_BASE_URL=https://stats.rhymneymoystoncc.com
+```
 
 ## Free-tier caveats (and how to remove them)
 
