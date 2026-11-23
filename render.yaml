@@ -1,0 +1,75 @@
+# OneStats on Render — one-click Blueprint.
+#
+# Creates a managed PostgreSQL and a web service that builds the repo's Dockerfile (backend + built SPA,
+# one origin) and runs it. Render injects PORT and terminates HTTPS for you; the container migrates on
+# boot then serves the whole app. See docs/79-deploy-render.md for the full walkthrough.
+#
+# After Render reads this file you must set two SECRET env vars on the web service (they are sync:false,
+# so they are never stored in git):
+#   ONESTATS_ENCRYPTION_KEY  — a Fernet key for stored integration credentials. Generate one with:
+#                                python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#   ONESTATS_SETUP_TOKEN     — a strong one-time value you choose (e.g. `openssl rand -hex 24`). Use it
+#                                once to create the Super Admin, then remove it. (Needed because Render's
+#                                filesystem is ephemeral, so the usual token FILE can't be read.)
+#
+# Free-tier caveats (see the guide): the web service sleeps after ~15 min idle (cold start ~1 min), and
+# Render's free PostgreSQL is suspended after 30 days — upgrade the DB to a paid plan, or point these DB
+# vars at a non-expiring free Postgres such as Neon instead (and drop the `databases:` block).
+
+services:
+  - type: web
+    name: onestats-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon            # change to the region nearest you: frankfurt, singapore, ohio, virginia
+    healthCheckPath: /api/v1/health
+    autoDeploy: true          # redeploy automatically on push to the connected branch
+    envVars:
+      # --- Database: wired to the managed Postgres below (app assembles a psycopg URL from the parts) ---
+      - key: ONESTATS_DB_HOST
+        fromDatabase: { name: onestats-db, property: host }
+      - key: ONESTATS_DB_PORT
+        fromDatabase: { name: onestats-db, property: port }
+      - key: ONESTATS_DB_NAME
+        fromDatabase: { name: onestats-db, property: database }
+      - key: ONESTATS_DB_USER
+        fromDatabase: { name: onestats-db, property: user }
+      - key: ONESTATS_DB_PASSWORD
+        fromDatabase: { name: onestats-db, property: password }
+
+      # --- Secrets you set in the Render dashboard (never in git) ---
+      - key: ONESTATS_ENCRYPTION_KEY
+        sync: false
+      - key: ONESTATS_SETUP_TOKEN
+        sync: false
+
+      # Optional: once a custom domain is live (e.g. https://stats.rhymneymoystoncc.com), set this so
+      # generated public report/profile links use it. Leave unset until then. See docs/79.
+      - key: ONESTATS_PUBLIC_BASE_URL
+        sync: false
+
+      # --- Media storage ---
+      # 'internal' uses the container disk, which on Render's free plan is EPHEMERAL — uploaded media is
+      # lost on every redeploy/restart. For persistent media, set the S3 vars below and change this to
+      # 's3' (Cloudflare R2 has a free 10 GB tier and is S3-compatible).
+      - key: ONESTATS_MEDIA_PROVIDER
+        value: internal
+      - key: ONESTATS_S3_BUCKET
+        sync: false
+      - key: ONESTATS_S3_ENDPOINT_URL
+        sync: false
+      - key: ONESTATS_S3_REGION
+        sync: false
+      - key: ONESTATS_S3_ACCESS_KEY_ID
+        sync: false
+      - key: ONESTATS_S3_SECRET_ACCESS_KEY
+        sync: false
+
+databases:
+  - name: onestats-db
+    databaseName: onestats
+    user: onestats
+    plan: free
+    region: oregon            # keep this the same as the web service's region
