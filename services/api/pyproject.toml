@@ -14,6 +14,10 @@ dependencies = [
     "argon2-cffi>=23.1.0",
     "cryptography>=43.0.0",
     "pillow>=10.4.0",
+    # Image maths for OCR pre-processing (Otsu binarisation + deskew in research/extraction.py). Without
+    # it those steps silently fall back to a plain sharpen, so it is a real runtime dependency — a fresh
+    # install (CI and the container image) needs it declared, not just the dev machine.
+    "numpy>=1.26.0",
     # OCR bridge to a locally-installed Tesseract binary (Research Centre source extraction). Pure
     # Python and optional at runtime — extraction.default_engine() falls back to manual transcription
     # when the Tesseract binary is absent, so this never forces a cloud/paid dependency.
