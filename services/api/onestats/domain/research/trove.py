@@ -51,11 +51,13 @@ def _pick(d: Any, *keys: str) -> Any:
 
 
 def _newspaper_name(article: dict[str, Any]) -> str | None:
-    """The newspaper title, which v3 returns as a nested {id, value} object (or sometimes a string)."""
+    """The newspaper title. Trove v3 returns it as a nested object keyed ``title`` (e.g.
+    ``{"id": "19", "title": "The Hobart Town Courier (Tas. : 1827 - 1839)"}``); older/other shapes use
+    ``value`` or ``name``; sometimes it is a plain string. Handle them all (else the name shows blank)."""
     t = article.get("title")
     if isinstance(t, str):
         return t
-    return _pick(t, "value", "name")
+    return _pick(t, "title", "value", "name")
 
 
 def _decades_in_range(year_from: int | None, year_to: int | None) -> list[str]:

@@ -23,7 +23,8 @@ SAMPLE = {
                     {
                         "id": "61812345",
                         "heading": "CRICKET. RHYMNEY v. MOYSTON.",
-                        "title": {"id": "73", "value": "Ararat Advertiser (Vic. : 1857 - 1918)"},
+                        # Trove v3 nests the newspaper name under "title" (not "value")
+                        "title": {"id": "73", "title": "Ararat Advertiser (Vic. : 1857 - 1918)"},
                         "date": "1905-01-14",
                         "page": "3",
                         "snippet": "A keenly contested match was played on Saturday...",
@@ -62,7 +63,7 @@ def test_search_parses_articles():
     assert out["source"].startswith("Trove")
     first = out["results"][0]
     assert first["heading"].startswith("CRICKET")
-    assert first["newspaper"] == "Ararat Advertiser (Vic. : 1857 - 1918)"   # nested title.value
+    assert first["newspaper"] == "Ararat Advertiser (Vic. : 1857 - 1918)"   # nested title.title (v3)
     assert first["date"] == "1905-01-14"
     assert first["url"].endswith("/article/61812345")
     assert out["results"][1]["newspaper"] == "Pleasant Creek News"          # plain-string title
