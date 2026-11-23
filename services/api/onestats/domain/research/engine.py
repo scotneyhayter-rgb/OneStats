@@ -97,9 +97,13 @@ def discover_wikipedia(queries: list[str], context: dict[str, Any] | None, *,
 
 
 def discover_trove(queries: list[str], context: dict[str, Any] | None, *,
-                   settings: Settings) -> list[dict[str, str]]:
-    """Trove historical newspapers — only if a key is configured (else yields nothing, never fabricates)."""
-    if not getattr(settings, "trove_api_key", None):
+                   settings: Settings, api_key: str | None = None,
+                   base_url: str | None = None) -> list[dict[str, str]]:
+    """Trove historical newspapers — only if a key is available (else yields nothing, never fabricates).
+    ``api_key``/``base_url`` carry the workspace's resolved Trove credential; without them it falls back
+    to the global ``ONESTATS_TROVE_API_KEY``."""
+    key = api_key or getattr(settings, "trove_api_key", None)
+    if not key:
         return []
     from onestats.domain.research import trove
     ctx = context or {}
@@ -107,7 +111,8 @@ def discover_trove(queries: list[str], context: dict[str, Any] | None, *,
     out: list[dict[str, str]] = []
     for q in queries[:2]:
         try:
-            res = trove.search_newspapers(settings, query=q, year_from=yr, year_to=yr, n=5)
+            res = trove.search_newspapers(settings, query=q, year_from=yr, year_to=yr, n=5,
+                                          api_key=key, base_url=base_url)
         except Exception:  # noqa: BLE001, S112 - a discovery provider failing must not abort the whole run
             continue
         for art in res.get("results", []):
@@ -126,16 +131,21 @@ DEPTH_PER_QUERY = {"quick": 3, "standard": 5, "deep": 8}
 
 
 def default_discovery(settings: Settings, *, fetcher: Fetcher, per_query: int = 5,
-                      allowed: list[str] | None = None) -> Discovery:
+                      allowed: list[str] | None = None, trove_key: str | None = None,
+                      trove_base_url: str | None = None) -> Discovery:
     """The built-in discovery strategy (Wikipedia always; Trove when a key exists). When a job restricts
     sources, a provider whose own host is off-list is skipped, and every candidate is filtered to the
-    allow-list — so a restricted job never even queries, nor surfaces, an off-list host."""
+    allow-list — so a restricted job never even queries, nor surfaces, an off-list host.
+
+    ``trove_key``/``trove_base_url`` are the workspace's resolved Trove credential (from
+    :func:`onestats.domain.integrations.resolve_trove`); when absent, Trove falls back to the global key."""
     def _discover(queries: list[str], context: dict[str, Any] | None) -> list[dict[str, str]]:
         found: list[dict[str, str]] = []
         if _host_allowed("en.wikipedia.org", allowed):
             found += discover_wikipedia(queries, context, fetcher=fetcher, per_query=per_query)
         if _host_allowed("api.trove.nla.gov.au", allowed):
-            found += discover_trove(queries, context, settings=settings)
+            found += discover_trove(queries, context, settings=settings,
+                                    api_key=trove_key, base_url=trove_base_url)
         # de-dup by url + drop any candidate off the allow-list, preserve order
         seen: set[str] = set()
         uniq: list[dict[str, str]] = []
@@ -233,8 +243,15 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
     # Seed the frontier once (first step). Discovery breadth scales with depth.
     if not cp.get("seeded"):
         per_query = DEPTH_PER_QUERY.get(depth, 5)
-        disc = discovery or default_discovery(settings, fetcher=_discovery_fetcher(settings),
-                                              per_query=per_query, allowed=allowed)
+        if discovery is not None:
+            disc = discovery
+        else:
+            # Resolve the workspace's own Trove credential (stored in Integrations) so discovery uses the
+            # key the user saved in the app — falling back to the global env key when none is stored.
+            from onestats.domain import integrations
+            trove_key, trove_base = integrations.resolve_trove(conn, settings, workspace_id)
+            disc = default_discovery(settings, fetcher=_discovery_fetcher(settings), per_query=per_query,
+                                     allowed=allowed, trove_key=trove_key, trove_base_url=trove_base)
         queries = generate_queries(job.get("query") or "", context)
         candidates = disc(queries, context)
         frontier = [c["url"] for c in candidates]

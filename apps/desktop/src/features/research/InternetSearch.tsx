@@ -7,7 +7,7 @@
  * finding is a lead a researcher confirms, and acceptance still flows through the existing
  * reconstruction + approval workflow. Confidence is shown as a hint; "unknown" is shown as unknown.
  */
-import { Globe, Loader2, Pause, Play, Search, StopCircle, ExternalLink } from "lucide-react";
+import { Globe, Loader2, Pause, Play, RotateCw, Search, StopCircle, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -151,7 +151,9 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
               onToggle={() => setOpenJob(openJob === j.id ? null : j.id)}
               onPause={() => void act(() => api.researchPauseJob(workspaceId, j.id))}
               onResume={() => void act(() => api.researchResumeJob(workspaceId, j.id))}
-              onCancel={() => void act(() => api.researchCancelJob(workspaceId, j.id))} />
+              onCancel={() => void act(() => api.researchCancelJob(workspaceId, j.id))}
+              onAgain={() => void act(() => api.researchStartInternetSearch(workspaceId,
+                { query: j.query, depth: j.depth, context: j.context ?? undefined }))} />
           ))}
         </CardContent>
       </Card>
@@ -159,7 +161,7 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel }: {
+function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel, onAgain }: {
   workspaceId: string;
   job: ResearchJob;
   open: boolean;
@@ -167,6 +169,7 @@ function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel 
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onAgain: () => void;
 }) {
   const p = job.progress ?? {};
   const examined = p.sources_examined ?? 0;
@@ -191,6 +194,12 @@ function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel 
           )}
           {active && (
             <Button size="sm" variant="outline" onClick={onCancel} className="gap-1"><StopCircle className="h-3.5 w-3.5" aria-hidden />Cancel</Button>
+          )}
+          {!active && (
+            <Button size="sm" variant="outline" onClick={onAgain} className="gap-1"
+              title="Run this search again with the sources available now (e.g. newly-added Trove)">
+              <RotateCw className="h-3.5 w-3.5" aria-hidden />Search again
+            </Button>
           )}
           <Button size="sm" onClick={onToggle}>{open ? "Hide findings" : `Findings${pendingReview ? ` (${pendingReview})` : ""}`}</Button>
         </span>

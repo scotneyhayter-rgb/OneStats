@@ -114,20 +114,27 @@ def search_newspapers(
     newspaper_title: str | None = None,
     n: int = 20,
     client: TroveClient | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> dict[str, Any]:
     """Search Trove's digitised newspapers. Returns {query, total, results[], source}. Raises
-    :class:`TroveError` when no key is configured or the upstream call fails."""
+    :class:`TroveError` when no key is configured or the upstream call fails.
+
+    ``api_key`` / ``base_url`` override the global settings when supplied — this is how a workspace's
+    own stored Trove credential (resolved via :mod:`onestats.domain.integrations`) is used instead of
+    the ``ONESTATS_TROVE_API_KEY`` environment key, without this module reaching into the credential store.
+    """
     q = (query or "").strip()
     if not q:
         raise TroveError("Enter something to search for.")
     if client is None:
-        key = settings.trove_api_key
+        key = api_key or settings.trove_api_key
         if not key:
             raise TroveError(
                 "No Trove API key is configured. Add a free key from trove.nla.gov.au "
                 "(Me → For developers) to search historical newspapers."
             )
-        client = TroveClient(api_key=key, base_url=settings.trove_base_url)
+        client = TroveClient(api_key=key, base_url=base_url or settings.trove_base_url)
 
     # Optionally narrow the search text to a specific newspaper by name (Trove matches it in the query).
     full_q = f'{q} "{newspaper_title.strip()}"' if newspaper_title and newspaper_title.strip() else q

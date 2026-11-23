@@ -58,6 +58,12 @@ PROVIDERS: dict[str, Provider] = {
         config_fields=(ConfigField("org_id", "Organisation ID"),
                        ConfigField("tenant", "Tenant (e.g. ca)", default="ca")),
         notes="PlayHQ public API. Cricket uses tenant 'ca' (host api.caprod.playhq.com)."),
+    "trove": Provider(
+        id="trove", name="Trove (National Library of Australia)", testable=True,
+        secret_fields=(SecretField("api_key", "Trove API key"),),
+        notes="A free, non-commercial Trove API key (trove.nla.gov.au → Me → For developers). Once saved, "
+              "it powers Newspaper Search and the Trove source in Discover Records — no restart or file "
+              "editing needed."),
     "custom_api": Provider(
         id="custom_api", name="Custom API (advanced)", testable=True, custom_url=True,
         secret_fields=(SecretField("api_key", "API key / token", required=False),),
@@ -65,6 +71,10 @@ PROVIDERS: dict[str, Provider] = {
         notes="A validated HTTPS endpoint. Internal/private addresses are refused (SSRF protection). This "
               "does not add support for arbitrary undocumented APIs — it only performs a reachability check."),
 }
+
+# Host that identifies a Trove credential stored under the generic "custom_api" provider (so a key the
+# user saved there before a first-class Trove provider existed is still picked up for research).
+_TROVE_HOST_SUFFIX = "trove.nla.gov.au"
 
 
 def providers() -> list[dict[str, Any]]:
@@ -188,6 +198,46 @@ def get_secret(conn: Connection, settings: Settings, workspace_id: UUID, provide
     return {"secrets": json.loads(crypto.decrypt(r["secret_enc"], settings)), "config": r["config"] or {}}
 
 
+def _is_trove_host(base_url: str) -> bool:
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(base_url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == _TROVE_HOST_SUFFIX or host.endswith("." + _TROVE_HOST_SUFFIX)
+
+
+def resolve_trove(conn: Connection, settings: Settings, workspace_id: UUID) -> tuple[str | None, str]:
+    """The Trove API key + base URL this workspace should use, decrypted here (backend-only, never
+    exposed). A stored integration credential wins over the global ``ONESTATS_TROVE_API_KEY``:
+    first a dedicated ``trove`` credential, then a ``custom_api`` credential whose base URL is a Trove
+    host (so a key saved there still works). Falls back to the environment key when none is stored.
+    Returns ``(api_key_or_None, base_url)``."""
+    rows = conn.execute(
+        text("SELECT provider, secret_enc, config FROM workspace_credential "
+             "WHERE workspace_id = :w AND status = 'active' AND enabled = true AND secret_enc IS NOT NULL "
+             "AND provider IN ('trove', 'custom_api')"),
+        {"w": workspace_id}).mappings().all()
+
+    def _key(r) -> str | None:
+        try:
+            return (json.loads(crypto.decrypt(r["secret_enc"], settings)) or {}).get("api_key") or None
+        except Exception:  # noqa: BLE001 - a bad/foreign ciphertext must not break research; fall through
+            return None
+
+    for r in rows:                                   # 1. a dedicated Trove credential
+        if r["provider"] == "trove":
+            k = _key(r)
+            if k:
+                return k, settings.trove_base_url
+    for r in rows:                                   # 2. a custom_api credential pointed at Trove
+        if r["provider"] == "custom_api" and _is_trove_host(str((r["config"] or {}).get("base_url", ""))):
+            k = _key(r)
+            if k:
+                return k, str((r["config"] or {}).get("base_url") or settings.trove_base_url)
+    return settings.trove_api_key, settings.trove_base_url   # 3. environment fallback
+
+
 def bind_connector(conn: Connection, settings: Settings, workspace_id: UUID, connector: Any) -> Any:
     """Return a credential-bound copy of an AutoSync connector when the workspace has a stored credential
     for its provider, else the connector unchanged. This is how a sync run uses the **workspace's own**
@@ -235,6 +285,10 @@ def _run_test(settings: Settings, provider: str, secrets: dict[str, Any], config
             client = PlayHQClient(api_key=secrets["api_key"], tenant=tenant, base_url=host_for_tenant(tenant))
             client.get(f"/v1/organisations/{config.get('org_id')}/seasons")
             return True, "Connected — PlayHQ returned data for this organisation."
+        if provider == "trove":
+            from onestats.domain.research import trove as trove_mod
+            res = trove_mod.search_newspapers(settings, query="cricket", n=1, api_key=secrets["api_key"])
+            return True, f"Connected — Trove returned {res.get('total', 0)} matching articles for a test query."
         if provider == "custom_api":
             import httpx
             url = net.validate_public_url(str(config.get("base_url", "")))   # SSRF guard before the request
