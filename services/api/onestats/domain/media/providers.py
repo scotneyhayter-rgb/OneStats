@@ -22,7 +22,7 @@ from uuid import UUID
 
 from onestats.core.config import Settings
 
-PROVIDERS = ("internal", "onevault", "external")
+PROVIDERS = ("internal", "onevault", "external", "s3")
 
 
 class MediaStorageError(ValueError):
@@ -150,10 +150,83 @@ class OneVaultProvider:
         return None
 
 
+# --- S3-compatible object storage (optional; cloud / shared deployments) ------------------------
+class S3StorageProvider:
+    """S3-compatible object storage — AWS S3, Cloudflare R2, MinIO, etc. — for cloud or shared-server
+    deployments where media must not live on one PC's disk. boto3 is imported lazily and is an *optional*
+    dependency: absent or unconfigured, every call raises :class:`ProviderUnavailable`, so the packaged
+    desktop build (which never bundles boto3) is completely unaffected. The client is injectable for tests."""
+    name = "s3"
+
+    def __init__(self, client_factory: Any = None) -> None:
+        self._client_factory = client_factory
+
+    def _bucket(self, settings: Settings) -> str:
+        b = getattr(settings, "s3_bucket", None)
+        if not b:
+            raise ProviderUnavailable("No S3 bucket configured (set ONESTATS_S3_BUCKET).")
+        return b
+
+    def _client(self, settings: Settings):
+        if self._client_factory is not None:
+            return self._client_factory()
+        self._bucket(settings)
+        try:
+            import boto3
+        except ImportError as exc:
+            raise ProviderUnavailable("boto3 is not installed; `pip install boto3` to use S3 storage.") from exc
+        return boto3.client(
+            "s3",
+            endpoint_url=(getattr(settings, "s3_endpoint_url", None) or None),
+            region_name=(getattr(settings, "s3_region", None) or None),
+            aws_access_key_id=(getattr(settings, "s3_access_key_id", None) or None),
+            aws_secret_access_key=(getattr(settings, "s3_secret_access_key", None) or None),
+        )
+
+    def _key(self, settings: Settings, workspace_id: UUID, name: str) -> str:
+        prefix = (getattr(settings, "s3_prefix", None) or "").strip("/")
+        return "/".join(p for p in (prefix, "media", str(workspace_id), name) if p)
+
+    def put(self, settings: Settings, workspace_id: UUID, raw: bytes, content_type: str) -> dict[str, Any]:
+        import uuid as _uuid
+        ext = _EXT.get((content_type or "").lower(), "bin")
+        key = self._key(settings, workspace_id, f"media-{_uuid.uuid4().hex}.{ext}")
+        self._client(settings).put_object(Bucket=self._bucket(settings), Key=key, Body=raw,
+                                          ContentType=content_type or "application/octet-stream")
+        return {"locator": key, "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+    def get(self, settings: Settings, workspace_id: UUID, locator: str) -> bytes:
+        try:
+            resp = self._client(settings).get_object(Bucket=self._bucket(settings), Key=locator)
+            return resp["Body"].read()
+        except ProviderUnavailable:
+            raise
+        except Exception as exc:  # map client/network/missing-key errors to a storage error
+            raise MediaStorageError(f"s3_get_failed:{type(exc).__name__}") from exc
+
+    def exists(self, settings: Settings, workspace_id: UUID, locator: str) -> bool:
+        try:
+            self._client(settings).head_object(Bucket=self._bucket(settings), Key=locator)
+            return True
+        except ProviderUnavailable:
+            raise
+        except Exception:  # noqa: BLE001 - a missing object or any error → treat as absent
+            return False
+
+    def delete(self, settings: Settings, workspace_id: UUID, locator: str) -> None:
+        try:
+            self._client(settings).delete_object(Bucket=self._bucket(settings), Key=locator)
+        except ProviderUnavailable:
+            raise
+        except Exception:  # noqa: BLE001, S110 - best-effort delete; a failed cleanup must not break the flow
+            pass
+
+
 _INTERNAL = InternalStorageProvider()
 _EXTERNAL = ExternalReferenceProvider()
 _ONEVAULT = OneVaultProvider()
-_REGISTRY: dict[str, Any] = {"internal": _INTERNAL, "external": _EXTERNAL, "onevault": _ONEVAULT}
+_S3 = S3StorageProvider()
+_REGISTRY: dict[str, Any] = {"internal": _INTERNAL, "external": _EXTERNAL, "onevault": _ONEVAULT, "s3": _S3}
 
 
 def get_provider(name: str):
@@ -166,6 +239,10 @@ def internal_provider() -> InternalStorageProvider:
     return _INTERNAL
 
 
+def s3_provider() -> S3StorageProvider:
+    return _S3
+
+
 def onevault_provider() -> OneVaultProvider:
     return _ONEVAULT
 
@@ -173,9 +250,12 @@ def onevault_provider() -> OneVaultProvider:
 def describe_providers(settings: Settings) -> list[dict[str, Any]]:
     """Provider availability for the UI — internal always on; external on; OneVault capability-detected."""
     ov = _ONEVAULT.detect_capabilities(settings)
+    s3_on = bool(getattr(settings, "s3_bucket", None))
     return [
         {"name": "internal", "available": True, "default": True, "note": "OneStats-managed storage"},
         {"name": "external", "available": True, "default": False, "note": "Reference to a file OneStats does not own"},
         {"name": "onevault", "available": ov["available"], "default": False,
          "note": ov.get("note") or ov.get("reason")},
+        {"name": "s3", "available": s3_on, "default": False,
+         "note": "S3-compatible object storage" if s3_on else "Set ONESTATS_S3_BUCKET (and install boto3) to enable"},
     ]

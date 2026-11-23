@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -157,14 +157,24 @@ def update_asset(workspace_id: UUID, asset_id: UUID, body: MetadataUpdate, setti
 
 
 def _serve(settings, workspace_id: UUID, asset: dict[str, Any], locator: str | None):
-    if asset["storage_provider"] != "internal":
-        raise HTTPException(status.HTTP_409_CONFLICT, "not_internal")   # external/onevault: use storage_locator
+    sp = asset["storage_provider"]
     if not locator:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
-    path = providers.internal_provider().path(settings, workspace_id, locator)
-    if path is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
-    return FileResponse(str(path))
+    if sp == "internal":
+        path = providers.internal_provider().path(settings, workspace_id, locator)
+        if path is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file")
+        return FileResponse(str(path))
+    if sp == "s3":
+        # object storage: stream the bytes through the backend (keeps auth/workspace checks in one place)
+        try:
+            raw = providers.get_provider("s3").get(settings, workspace_id, locator)
+        except providers.ProviderUnavailable as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "storage_unavailable") from exc
+        except providers.MediaStorageError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no_file") from exc
+        return Response(content=raw, media_type=asset.get("content_type") or "application/octet-stream")
+    raise HTTPException(status.HTTP_409_CONFLICT, "not_internal")   # external/onevault: use storage_locator
 
 
 @router.get("/assets/{asset_id}/file")
