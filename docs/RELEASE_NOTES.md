@@ -4,6 +4,22 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.15 — 2026-11-23
+
+Stronger historical research — find the scorecards, clear the clutter, read the clips better.
+
+**Changed since beta.14:**
+- **Discover Records actually finds match reports.** Internet search now ranks Trove results by
+  relevance (not oldest-first) and casts a wider net, so the newspaper match reports surface instead of
+  the oldest advertisements.
+- **Year filter on Search the Internet.** New Year from / Year to inputs scope a search to a period, and
+  a year or season written into your search ("1924/25", "1890s", "1950 to 1960") is used as a real date
+  filter automatically.
+- **Tidy up research runs.** Delete an individual search (with its findings), or "Clear empty" to remove
+  every finished search that found nothing.
+- **Sharper OCR on newspaper clips.** Scans are now denoised, deskewed and cleaned to black/white before
+  text recognition, so faded, slightly-rotated clippings read more accurately.
+
 ## 1.0.0-beta.14 — 2026-11-23
 
 Historical newspapers in your searches, and a tidier publish.
