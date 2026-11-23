@@ -63,3 +63,36 @@ def test_bootstrap_rejects_bad_token(conn, tmp_path):
     auth.set_setting(conn, "setup_token_hash", security.hash_token("the-real-token-123456"))
     with pytest.raises(ValueError):
         bootstrap.create_super_admin(conn, ts, "root_admin", "Sup3r-Secret-Pw!", "wrong-token-123456")
+
+
+def test_ensure_setup_token_uses_env_token_without_file(conn, tmp_path):
+    """Headless/cloud first-run: an operator-provided ONESTATS_SETUP_TOKEN becomes the setup token,
+    stored as a hash, with NO plaintext file written (so no ephemeral filesystem read is needed)."""
+    if not auth.setup_required(conn):
+        pytest.skip("a Super Administrator already exists in the database")
+    tok_file = tmp_path / "tok"
+    env_tok = "operator-chosen-token-abc123"
+    ts = Settings(_env_file=None, setup_token_file=str(tok_file), setup_token=env_tok)
+
+    bootstrap.ensure_setup_token(conn, ts)
+
+    # the operator's token is accepted, and nothing was written to the (ephemeral) file
+    assert bootstrap.verify_setup_token(conn, env_tok) is True
+    assert not tok_file.exists()
+    # and it actually creates the Super Admin
+    bootstrap.create_super_admin(conn, ts, "root_admin", "Sup3r-Secret-Pw!", env_tok)
+    assert auth.setup_required(conn) is False
+
+
+def test_ensure_setup_token_short_env_token_falls_back_to_file(conn, tmp_path):
+    """A too-short ONESTATS_SETUP_TOKEN is ignored and the random token file is used instead."""
+    if not auth.setup_required(conn):
+        pytest.skip("a Super Administrator already exists in the database")
+    tok_file = tmp_path / "tok"
+    ts = Settings(_env_file=None, setup_token_file=str(tok_file), setup_token="short")
+
+    bootstrap.ensure_setup_token(conn, ts)
+
+    assert bootstrap.verify_setup_token(conn, "short") is False   # the short value was not accepted
+    assert tok_file.exists()                                      # fell back to the generated file token
+    assert bootstrap.verify_setup_token(conn, tok_file.read_text(encoding="utf-8")) is True

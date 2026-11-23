@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     # Local file where the one-time super-admin setup token is written on first run
     # (gitignored; operator-readable). Never logged.
     setup_token_file: str = Field(default=".onestats-setup-token")
+    # Headless/cloud first-run: when set, this operator-chosen value IS the one-time setup token (only
+    # its hash is stored; the plaintext is never written to a file or logged). Needed where the container
+    # filesystem is ephemeral and unreadable (e.g. a Render free web service): set a strong value, create
+    # the Super Admin with it, then remove it. When unset, a random token is generated to the file above.
+    setup_token: str | None = Field(default=None)
 
     # Phase 15 publishing: the base URL public report/profile snapshots are served from (static host or a
     # future central service). Display/export only — None when not yet deployed. No recurring cost implied.

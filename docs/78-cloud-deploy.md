@@ -63,6 +63,13 @@ If you'd rather not install Docker locally, GitHub Actions builds the image for 
 
 A managed host can then pull that image directly — you never need Docker on your own machine.
 
+## A ready-made path: Render (free tier)
+
+For a concrete, copy-paste deployment with no local Docker, the repo ships a Render Blueprint
+([`render.yaml`](../render.yaml)) that builds this Dockerfile and provisions a managed PostgreSQL. See
+**[docs/79-deploy-render.md](79-deploy-render.md)** for the full walkthrough (secrets, first-run Super
+Admin, and the free-tier caveats + how to remove them).
+
 ## Going to a managed host
 
 1. **Build & push the image** to your registry:

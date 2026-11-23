@@ -32,6 +32,18 @@ def ensure_setup_token(conn: Connection, settings: Settings) -> None:
     if auth.get_setting(conn, _SETUP_HASH_KEY):
         log.warning("First-run setup required: use the setup token in %s", settings.setup_token_file)
         return
+    # Headless/cloud path: an operator-provided token (ONESTATS_SETUP_TOKEN) becomes the setup token so
+    # no file has to be read from an ephemeral container filesystem. Only its hash is stored; the
+    # plaintext is never written to disk or logged. A too-short value is ignored (falls back to the file).
+    env_token = (settings.setup_token or "").strip()
+    if env_token:
+        if len(env_token) < 10:
+            log.error("ONESTATS_SETUP_TOKEN is too short (min 10 chars) — ignoring it; using a token file.")
+        else:
+            auth.set_setting(conn, _SETUP_HASH_KEY, security.hash_token(env_token))
+            log.warning("First-run setup required: using the operator-provided ONESTATS_SETUP_TOKEN "
+                        "(no token file written).")
+            return
     token = security.generate_token()
     auth.set_setting(conn, _SETUP_HASH_KEY, security.hash_token(token))
     try:
