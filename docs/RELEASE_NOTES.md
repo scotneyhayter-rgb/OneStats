@@ -4,6 +4,19 @@ Versioning is kept in sync across `apps/desktop/package.json`, `apps/desktop/src
 and `apps/desktop/src/lib/version.ts`. Installer checksums (SHA-256) are published with each build
 (`scripts/compute-installer-checksums.ps1`).
 
+## 1.0.0-beta.14 — 2026-11-23
+
+Historical newspapers in your searches, and a tidier publish.
+
+**Changed since beta.13:**
+- **Trove powers your searches.** The Trove API key you save in Settings → API & Integrations now feeds
+  both Newspaper Search and Discover Records — no file editing or restart. Trove is also a first-class
+  integration provider now, and its "Test connection" runs a real search.
+- **"Search again".** Any finished research run has a Search again button that re-runs it with the sources
+  available now — so an old search can pick up Trove once your key is in.
+- **Publishing no longer looks stuck.** The "Publish to web" button returns to normal as soon as the site
+  is pushed (the Live-✓ check continues on its own), and "Refresh all" shows its own progress.
+
 ## 1.0.0-beta.13 — 2026-11-22
 
 Report accuracy and a dependable publish — the reports now honour every filter, link to the match, and the
