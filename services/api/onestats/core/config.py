@@ -39,6 +39,14 @@ class Settings(BaseSettings):
         ]
     )
 
+    # --- Web-app serving (optional) ---
+    # When True, the backend also serves the built frontend SPA so the whole app runs from ONE origin
+    # (http://<host>:<port>/ serves the app, /api/... the API) — no CORS needed. Off by default so the
+    # packaged desktop build is unaffected. frontend_dist points at the built SPA (apps/desktop/dist);
+    # None → a best-effort guess next to the repo.
+    serve_frontend: bool = Field(default=False)
+    frontend_dist: str | None = Field(default=None)
+
     # --- Database (least-privilege onestats_app role) ---
     db_host: str = Field(default="localhost")
     db_port: int = Field(default=5432)

@@ -8,10 +8,11 @@ system yet (deliberately — a fake auth system is not created in this phase).
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from onestats import __version__
 from onestats.api.v1.router import api_v1
@@ -128,11 +129,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(api_v1, prefix=settings.api_v1_prefix)
 
-    @app.get("/", include_in_schema=False)
-    def root() -> dict:
-        return {"service": settings.app_name, "version": __version__, "docs": "/docs"}
+    # Optional one-origin web app: when configured, serve the built SPA so the browser loads the app and
+    # calls the API from the same host (no CORS). Off by default → the JSON root is kept for the desktop
+    # build and health checks. See docs/77-web-app.md.
+    front = _frontend_dir(settings)
+    if front is not None:
+        _serve_frontend(app, front)
+    else:
+        @app.get("/", include_in_schema=False)
+        def root() -> dict:
+            return {"service": settings.app_name, "version": __version__, "docs": "/docs"}
 
     return app
+
+
+def _frontend_dir(settings: Settings) -> Path | None:
+    """The directory of the built SPA to serve, or None when web-app serving is off or no build is present
+    (so a misconfiguration never breaks API startup)."""
+    if not settings.serve_frontend:
+        return None
+    if settings.frontend_dist:
+        p = Path(settings.frontend_dist)
+    else:  # best-effort default: apps/desktop/dist next to the repo
+        p = Path(__file__).resolve().parents[3] / "apps" / "desktop" / "dist"
+    try:
+        return p if (p / "index.html").is_file() else None
+    except OSError:
+        return None
+
+
+def _serve_frontend(app: FastAPI, front: Path) -> None:
+    """Mount the SPA: hashed assets as static files, every other non-API path falls back to index.html
+    (client-side routing). API, docs and asset paths are never shadowed."""
+    from fastapi.staticfiles import StaticFiles
+
+    root = front.resolve()
+    index = root / "index.html"
+    assets = root / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        # never serve the SPA for API/docs/asset routes — let those 404 as themselves
+        if full_path == "api" or full_path.startswith(("api/", "docs", "redoc", "openapi.json", "assets/")):
+            raise HTTPException(status_code=404)
+        candidate = (root / full_path).resolve() if full_path else index
+        if full_path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(str(candidate))      # a real static file (favicon, manifest, …)
+        return FileResponse(str(index))               # client route → SPA entry point
 
 
 app = create_app()
