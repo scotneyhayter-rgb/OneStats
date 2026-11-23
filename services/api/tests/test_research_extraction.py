@@ -118,6 +118,21 @@ def test_preprocess_grayscales_and_upscales():
     assert max(out.size) >= 240       # small scans are upscaled (120 -> >=240)
 
 
+def test_preprocess_binarises_to_black_and_white():
+    # Enhanced preprocessing Otsu-binarises (still mode 'L', values only 0/255) — pure Pillow/numpy.
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    arr = np.tile(np.linspace(0, 255, 300, dtype=np.uint8), (40, 1))   # left→right gradient
+    buf = io.BytesIO()
+    Image.fromarray(arr, mode="L").save(buf, "PNG")
+    out = extraction._preprocess(buf.getvalue())
+    assert out.mode == "L"
+    assert set(np.asarray(out).ravel().tolist()).issubset({0, 255})
+
+
 def test_preprocess_coerces_exotic_mode():
     # A palette-mode ('P') image must be coerced to a safe mode rather than raising — this mirrors the
     # phone-camera MPO/CMYK sources that previously made OCR fail silently.
