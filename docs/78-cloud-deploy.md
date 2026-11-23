@@ -4,8 +4,11 @@ This is the final cloud-prep step after [docs/77-web-app.md](77-web-app.md). It 
 (backend + built SPA, one origin) into a single container image and runs it against a managed PostgreSQL
 and (optionally) S3-compatible object storage — removing the dependency on a home PC.
 
-> The `Dockerfile` and `docker-compose.yml` were authored but **not `docker build`-tested** in the dev
-> environment. Build and iterate on a machine with Docker; the commands below are the intended flow.
+> The `Dockerfile` and `docker-compose.yml` were authored in a dev environment **without** Docker. You do
+> **not** need Docker on your own PC to build the image: the `Docker image` GitHub Actions workflow
+> (`.github/workflows/docker-image.yml`) builds it in the cloud on every PR and push to `main` — see
+> [Build it in CI](#build-it-in-ci-no-local-docker) below. The local commands here are the equivalent flow
+> if you do have Docker.
 
 ## What's in the image
 
@@ -35,6 +38,25 @@ docker compose up --build
 
 Open `http://localhost:8000/`. The `db` service is a local PostgreSQL; the `api` service migrates and
 serves. This compose file is a **convenience/template**, not a hardened setup.
+
+## Build it in CI (no local Docker)
+
+If you'd rather not install Docker locally, GitHub Actions builds the image for you — free for this repo:
+
+- The **`Docker image`** workflow (`.github/workflows/docker-image.yml`) runs automatically.
+  - On a **pull request** that touches the app or the Dockerfile, it only **builds** the image — a
+    pass/fail check that the Dockerfile is valid. Nothing is published.
+  - On a **push to `main`** (or a manual **Run workflow** / `workflow_dispatch`), it builds **and pushes**
+    the image to **GitHub Container Registry** at `ghcr.io/<owner>/onestats-web`, tagged `latest` and with
+    the commit SHA.
+- No secrets to configure: it uses the built-in `GITHUB_TOKEN` (with `packages: write`).
+- The published package appears under the repo's **Packages**; make it public or pull it while
+  authenticated:
+  ```bash
+  docker pull ghcr.io/scotneyhayter-rgb/onestats-web:latest
+  ```
+
+A managed host can then pull that image directly — you never need Docker on your own machine.
 
 ## Going to a managed host
 
