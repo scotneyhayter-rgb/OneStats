@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     s3_access_key_id: str | None = Field(default=None)
     s3_secret_access_key: str | None = Field(default=None)
     s3_prefix: str | None = Field(default=None)
+    # Where NEW media uploads are stored: "internal" (default, local disk) or "s3" (object storage).
+    # Serving and migration handle any provider; set this to "s3" in the cloud so uploads skip local disk.
+    media_provider: str = Field(default="internal")
     max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
     # Player/person profile photos — larger than logos (phone photos), still bounded for safety.

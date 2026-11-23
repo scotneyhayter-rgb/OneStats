@@ -47,7 +47,8 @@ serves. This compose file is a **convenience/template**, not a hardened setup.
    discrete settings (`ONESTATS_DB_HOST`, `ONESTATS_DB_NAME`, `ONESTATS_DB_USER`, `ONESTATS_DB_PASSWORD`,
    `ONESTATS_DB_PORT`) or a full `ONESTATS_DB_URL`. The entrypoint runs migrations on deploy.
 3. **Object storage for media** (optional but recommended in the cloud): set the `ONESTATS_S3_*` values
-   (see docs/77). Migrate any existing internal media to `s3` via the media migration flow.
+   and `ONESTATS_MEDIA_PROVIDER=s3` so new uploads go straight to object storage (see docs/77). Migrate
+   any existing internal media to `s3` via the media migration flow.
 4. **Secrets**: provide `ONESTATS_ENCRYPTION_KEY` (and DB/S3 creds) through the platform's secret store,
    never baked into the image.
 5. **HTTPS + domain**: terminate TLS at the platform's load balancer / ingress (or put Cloudflare in
