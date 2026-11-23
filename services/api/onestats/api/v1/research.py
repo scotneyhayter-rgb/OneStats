@@ -220,6 +220,18 @@ def cancel_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep,
     return _job_action(research_jobs.cancel_job, workspace_id, job_id, settings, ctx)
 
 
+@router.delete("/jobs/{job_id}")
+def delete_research_job(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx) -> dict[str, Any]:
+    """Permanently remove a research job and its findings/fetch records (clearing a duplicate or
+    irrelevant search). Review-only data; nothing in official statistics is affected."""
+    with workspace_transaction(_engine(settings), workspace_id) as conn:
+        job = research_jobs.get_job(conn, job_id)
+        if job is None or job["workspace_id"] != workspace_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "job_not_found")
+        research_jobs.delete_job(conn, workspace_id, str(ctx.user["id"]), job_id)
+    return {"deleted": True, "id": str(job_id)}
+
+
 @router.get("/jobs/{job_id}/findings")
 def list_job_findings(workspace_id: UUID, job_id: UUID, settings: SettingsDep, ctx: Ctx,
                       status_filter: str | None = None) -> list[dict[str, Any]]:

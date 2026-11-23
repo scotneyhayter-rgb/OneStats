@@ -168,6 +168,23 @@ def test_pause_resume_cancel(conn):
     assert jobs.claim_next_job(conn, wid, ACTOR) is None
 
 
+def test_delete_job_removes_job_and_its_findings_and_fetches(conn):
+    wid = _ws(conn, "ENG_DELETE")
+    job = jobs.create_job(conn, wid, ACTOR, query="duplicate search", depth="quick")
+    jid = job["id"]
+    jobs.record_fetch(conn, wid, jid, url="https://example.com/a", outcome="fetched", http_status=200)
+    jobs.record_finding(conn, wid, jid, url="https://example.com/a", kind="result", title="A result")
+    assert len(jobs.list_findings(conn, wid, job_id=jid)) == 1
+
+    assert jobs.delete_job(conn, wid, ACTOR, jid) is True
+    assert jobs.get_job(conn, jid) is None                      # job row gone
+    assert jobs.list_findings(conn, wid, job_id=jid) == []      # findings gone
+    from sqlalchemy import text as _t
+    assert conn.execute(_t("SELECT count(*) FROM research_fetch WHERE job_id = :j"),
+                        {"j": jid}).scalar_one() == 0           # fetch records gone
+    assert jobs.delete_job(conn, wid, ACTOR, jid) is False      # deleting again is a no-op
+
+
 def test_image_finding_via_injected_ocr(conn):
     wid = _ws(conn, "ENG_OCR")
     jobs.create_job(conn, wid, ACTOR, query="scanned clipping", depth="quick")

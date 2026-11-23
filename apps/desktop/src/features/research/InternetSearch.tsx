@@ -7,7 +7,7 @@
  * finding is a lead a researcher confirms, and acceptance still flows through the existing
  * reconstruction + approval workflow. Confidence is shown as a hint; "unknown" is shown as unknown.
  */
-import { Globe, Loader2, Pause, Play, RotateCw, Search, StopCircle, ExternalLink } from "lucide-react";
+import { Globe, Loader2, Pause, Play, RotateCw, Search, StopCircle, Trash2, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -37,12 +37,20 @@ const CLASS_VARIANT: Record<string, "success" | "warning" | "muted" | "brand" | 
   conflicting: "danger", insufficient: "muted",
 };
 
+// Total findings across all statuses for a job (0 = the search turned up nothing).
+function jobFindingTotal(j: ResearchJob): number {
+  return Object.values(j.finding_counts ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+}
+
 export function InternetSearch({ workspaceId }: { workspaceId: string }) {
   const [query, setQuery] = useState("");
   const [depth, setDepth] = useState("standard");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
   const [jobs, setJobs] = useState<ResearchJob[]>([]);
   const [openJob, setOpenJob] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -70,12 +78,23 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
     };
   }, [jobs, loadJobs]);
 
+  // Build the optional year-range context from the two year inputs (year_to defaults to year_from).
+  const yearContext = (): Record<string, number> | undefined => {
+    const yf = parseInt(yearFrom, 10);
+    const yt = parseInt(yearTo, 10);
+    const ctx: Record<string, number> = {};
+    if (!Number.isNaN(yf)) ctx.year_from = yf;
+    if (!Number.isNaN(yt)) ctx.year_to = yt;
+    else if (!Number.isNaN(yf)) ctx.year_to = yf;
+    return Object.keys(ctx).length ? ctx : undefined;
+  };
+
   const start = async () => {
     if (!query.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await api.researchStartInternetSearch(workspaceId, { query: query.trim(), depth });
+      await api.researchStartInternetSearch(workspaceId, { query: query.trim(), depth, context: yearContext() });
       setQuery("");
       await loadJobs();
     } catch (e) {
@@ -88,6 +107,23 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
   const act = async (fn: () => Promise<unknown>) => {
     try { await fn(); await loadJobs(); }
     catch (e) { setError(e instanceof ApiError ? e.message : "Action failed."); }
+  };
+
+  // One-click declutter: delete every finished search that found nothing.
+  const emptyJobs = jobs.filter((j) => !ACTIVE.includes(j.status) && jobFindingTotal(j) === 0);
+  const clearEmpty = async () => {
+    if (emptyJobs.length === 0) return;
+    if (!window.confirm(`Delete ${emptyJobs.length} search${emptyJobs.length === 1 ? "" : "es"} that found nothing? This cannot be undone.`)) return;
+    setClearing(true);
+    setError(null);
+    try {
+      for (const j of emptyJobs) await api.researchDeleteJob(workspaceId, j.id);
+      await loadJobs();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not clear searches.");
+    } finally {
+      setClearing(false);
+    }
   };
 
   return (
@@ -119,6 +155,18 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
                 {DEPTHS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
               </Select>
             </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground">Year from</span>
+              <input type="number" inputMode="numeric" value={yearFrom} onChange={(e) => setYearFrom(e.target.value)}
+                placeholder="e.g. 1924" min={1700} max={2099}
+                className="w-24 rounded-[var(--radius-app)] border border-border bg-background p-2 text-sm" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground">Year to</span>
+              <input type="number" inputMode="numeric" value={yearTo} onChange={(e) => setYearTo(e.target.value)}
+                placeholder="(optional)" min={1700} max={2099}
+                className="w-28 rounded-[var(--radius-app)] border border-border bg-background p-2 text-sm" />
+            </label>
             <Button disabled={busy || !query.trim()} onClick={() => void start()} className="gap-1.5">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Search className="h-4 w-4" aria-hidden />}
               Search the Internet
@@ -139,7 +187,15 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
       {/* Research activity */}
       <Card>
         <CardContent className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold">Research activity</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Research activity</h3>
+            {emptyJobs.length > 0 && (
+              <Button size="sm" variant="outline" disabled={clearing} onClick={() => void clearEmpty()} className="gap-1">
+                {clearing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+                Clear empty ({emptyJobs.length})
+              </Button>
+            )}
+          </div>
           {jobs.length === 0 && (
             <p className="text-xs text-muted-foreground">
               No internet research yet. Start a search above to discover records from online sources.
@@ -153,7 +209,11 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
               onResume={() => void act(() => api.researchResumeJob(workspaceId, j.id))}
               onCancel={() => void act(() => api.researchCancelJob(workspaceId, j.id))}
               onAgain={() => void act(() => api.researchStartInternetSearch(workspaceId,
-                { query: j.query, depth: j.depth, context: j.context ?? undefined }))} />
+                { query: j.query, depth: j.depth, context: j.context ?? undefined }))}
+              onDelete={() => {
+                if (window.confirm("Delete this search and its findings? This cannot be undone."))
+                  void act(() => api.researchDeleteJob(workspaceId, j.id));
+              }} />
           ))}
         </CardContent>
       </Card>
@@ -161,7 +221,7 @@ export function InternetSearch({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel, onAgain }: {
+function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel, onAgain, onDelete }: {
   workspaceId: string;
   job: ResearchJob;
   open: boolean;
@@ -170,6 +230,7 @@ function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel,
   onResume: () => void;
   onCancel: () => void;
   onAgain: () => void;
+  onDelete: () => void;
 }) {
   const p = job.progress ?? {};
   const examined = p.sources_examined ?? 0;
@@ -199,6 +260,12 @@ function JobRow({ workspaceId, job, open, onToggle, onPause, onResume, onCancel,
             <Button size="sm" variant="outline" onClick={onAgain} className="gap-1"
               title="Run this search again with the sources available now (e.g. newly-added Trove)">
               <RotateCw className="h-3.5 w-3.5" aria-hidden />Search again
+            </Button>
+          )}
+          {!active && (
+            <Button size="sm" variant="outline" onClick={onDelete} aria-label="Delete search"
+              title="Delete this search and its findings" className="gap-1 text-danger">
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />Delete
             </Button>
           )}
           <Button size="sm" onClick={onToggle}>{open ? "Hide findings" : `Findings${pendingReview ? ` (${pendingReview})` : ""}`}</Button>

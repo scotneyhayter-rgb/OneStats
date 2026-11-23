@@ -19,6 +19,7 @@ A workspace's own seed URLs and paid providers can be layered in later without c
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -75,6 +76,49 @@ def generate_queries(query: str, context: dict[str, Any] | None) -> list[str]:
     return uniq[:6]
 
 
+# Pull a year / season / decade out of a free-text subject so it can drive a real Trove date facet
+# (rather than being matched as a literal word in article text, which over-constrains the search).
+_SEASON_RE = re.compile(r"\b(1[7-9]\d{2}|20\d{2})\s*(?:[/\-–]|\s+to\s+|\s+and\s+)\s*(\d{2,4})\b", re.IGNORECASE)
+_DECADE_RE = re.compile(r"\b(1[7-9]\d|20\d)0s\b")
+_YEAR_RE = re.compile(r"\b(1[7-9]\d{2}|20\d{2})\b")
+
+
+def extract_year_range(text: str) -> tuple[int | None, int | None]:
+    """A (year_from, year_to) inclusive range parsed from free text, or (None, None).
+    "1924/25" / "1924-1925" / "1924 to 1925" → (1924, 1925); "1890s" → (1890, 1899); "1924" → (1924, 1924)."""
+    t = text or ""
+    m = _SEASON_RE.search(t)
+    if m:
+        y1 = int(m.group(1))
+        tail = m.group(2)
+        if len(tail) == 2:                       # "1924/25" → 1925 (next year, with century rollover)
+            y2 = int(str(y1)[:2] + tail)
+            if y2 < y1:
+                y2 += 100
+        else:
+            y2 = int(tail)
+        return (y1, y2) if y1 <= y2 else (y2, y1)
+    m = _DECADE_RE.search(t)
+    if m:
+        d = int(m.group(1)) * 10
+        return d, d + 9
+    m = _YEAR_RE.search(t)
+    if m:
+        y = int(m.group(1))
+        return y, y
+    return None, None
+
+
+def strip_years(text: str) -> str:
+    """Remove year/season/decade tokens (and a lone 'season' filler word) from a query, so the remaining
+    keywords match newspaper article text while the year is applied as a date facet instead."""
+    t = _SEASON_RE.sub(" ", text or "")
+    t = _DECADE_RE.sub(" ", t)
+    t = _YEAR_RE.sub(" ", t)
+    t = re.sub(r"\bseason\b", " ", t, flags=re.IGNORECASE)
+    return " ".join(t.split())
+
+
 def discover_wikipedia(queries: list[str], context: dict[str, Any] | None, *,
                        fetcher: Fetcher, per_query: int = 5) -> list[dict[str, str]]:
     """Wikipedia OpenSearch: free, no key, intended for programmatic use. Returns article URLs."""
@@ -97,22 +141,25 @@ def discover_wikipedia(queries: list[str], context: dict[str, Any] | None, *,
 
 
 def discover_trove(queries: list[str], context: dict[str, Any] | None, *,
-                   settings: Settings, api_key: str | None = None,
-                   base_url: str | None = None) -> list[dict[str, str]]:
+                   settings: Settings, api_key: str | None = None, base_url: str | None = None,
+                   n: int = 12, max_queries: int = 2) -> list[dict[str, str]]:
     """Trove historical newspapers — only if a key is available (else yields nothing, never fabricates).
     ``api_key``/``base_url`` carry the workspace's resolved Trove credential; without them it falls back
-    to the global ``ONESTATS_TROVE_API_KEY``."""
+    to the global ``ONESTATS_TROVE_API_KEY``. Results are ranked by relevance (not oldest-first), honour a
+    ``year_from``/``year_to`` (or ``year``) date facet from the context, and ``n`` per query scales with
+    search depth so specific searches surface the match reports rather than a handful of the oldest hits."""
     key = api_key or getattr(settings, "trove_api_key", None)
     if not key:
         return []
     from onestats.domain.research import trove
     ctx = context or {}
-    yr = ctx.get("year")
+    yf = ctx.get("year_from") or ctx.get("year")
+    yt = ctx.get("year_to") or ctx.get("year") or yf
     out: list[dict[str, str]] = []
-    for q in queries[:2]:
+    for q in queries[:max_queries]:
         try:
-            res = trove.search_newspapers(settings, query=q, year_from=yr, year_to=yr, n=5,
-                                          api_key=key, base_url=base_url)
+            res = trove.search_newspapers(settings, query=q, year_from=yf, year_to=yt, n=n,
+                                          sortby="relevance", api_key=key, base_url=base_url)
         except Exception:  # noqa: BLE001, S112 - a discovery provider failing must not abort the whole run
             continue
         for art in res.get("results", []):
@@ -128,11 +175,16 @@ def _q(s: str) -> str:
 
 # How many candidate links each discovery query yields, by search depth.
 DEPTH_PER_QUERY = {"quick": 3, "standard": 5, "deep": 8}
+# Trove articles per query, and how many queries to run, by depth (Trove is the richest cricket source,
+# so it gets a higher cap than the general web).
+DEPTH_TROVE_N = {"quick": 6, "standard": 12, "deep": 25}
+DEPTH_TROVE_QUERIES = {"quick": 1, "standard": 2, "deep": 3}
 
 
 def default_discovery(settings: Settings, *, fetcher: Fetcher, per_query: int = 5,
                       allowed: list[str] | None = None, trove_key: str | None = None,
-                      trove_base_url: str | None = None) -> Discovery:
+                      trove_base_url: str | None = None, trove_n: int = 12,
+                      trove_max_queries: int = 2) -> Discovery:
     """The built-in discovery strategy (Wikipedia always; Trove when a key exists). When a job restricts
     sources, a provider whose own host is off-list is skipped, and every candidate is filtered to the
     allow-list — so a restricted job never even queries, nor surfaces, an off-list host.
@@ -145,7 +197,8 @@ def default_discovery(settings: Settings, *, fetcher: Fetcher, per_query: int = 
             found += discover_wikipedia(queries, context, fetcher=fetcher, per_query=per_query)
         if _host_allowed("api.trove.nla.gov.au", allowed):
             found += discover_trove(queries, context, settings=settings,
-                                    api_key=trove_key, base_url=trove_base_url)
+                                    api_key=trove_key, base_url=trove_base_url,
+                                    n=trove_n, max_queries=trove_max_queries)
         # de-dup by url + drop any candidate off the allow-list, preserve order
         seen: set[str] = set()
         uniq: list[dict[str, str]] = []
@@ -243,6 +296,15 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
     # Seed the frontier once (first step). Discovery breadth scales with depth.
     if not cp.get("seeded"):
         per_query = DEPTH_PER_QUERY.get(depth, 5)
+        raw_query = job.get("query") or ""
+        # A year/season in the subject becomes a real Trove date facet; strip it from the query text so
+        # the keywords match article text. An explicit year_from/year_to in the job context wins.
+        query_text = raw_query
+        if not any(context.get(k) for k in ("year", "year_from", "year_to")):
+            yf, yt = extract_year_range(raw_query)
+            if yf:
+                context = {**context, "year_from": yf, "year_to": yt}
+                query_text = strip_years(raw_query)
         if discovery is not None:
             disc = discovery
         else:
@@ -251,8 +313,10 @@ def run_step(conn: Connection, workspace_id: UUID, actor: str, job: dict[str, An
             from onestats.domain import integrations
             trove_key, trove_base = integrations.resolve_trove(conn, settings, workspace_id)
             disc = default_discovery(settings, fetcher=_discovery_fetcher(settings), per_query=per_query,
-                                     allowed=allowed, trove_key=trove_key, trove_base_url=trove_base)
-        queries = generate_queries(job.get("query") or "", context)
+                                     allowed=allowed, trove_key=trove_key, trove_base_url=trove_base,
+                                     trove_n=DEPTH_TROVE_N.get(depth, 12),
+                                     trove_max_queries=DEPTH_TROVE_QUERIES.get(depth, 2))
+        queries = generate_queries(query_text, context)
         candidates = disc(queries, context)
         frontier = [c["url"] for c in candidates]
         cp["seeded"] = True

@@ -70,6 +70,17 @@ def test_search_parses_articles():
     # the 1900s decade facet was applied
     assert ("l-decade", "190") in fake.last_params
     assert ("category", "newspaper") in fake.last_params
+    # results are ranked by relevance by default (not oldest-first), so match reports surface
+    assert ("sortby", "relevance") in fake.last_params
+
+
+def test_sortby_override_and_invalid_fallback():
+    fake = FakeClient(SAMPLE)
+    trove.search_newspapers(Settings(_env_file=None), query="cricket", sortby="dateasc", client=fake)
+    assert ("sortby", "dateasc") in fake.last_params
+    fake2 = FakeClient(SAMPLE)
+    trove.search_newspapers(Settings(_env_file=None), query="cricket", sortby="bogus", client=fake2)
+    assert ("sortby", "relevance") in fake2.last_params   # unknown sort falls back to relevance
 
 
 def test_empty_query_rejected():

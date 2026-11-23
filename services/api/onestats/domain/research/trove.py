@@ -115,6 +115,7 @@ def search_newspapers(
     year_to: int | None = None,
     newspaper_title: str | None = None,
     n: int = 20,
+    sortby: str = "relevance",
     client: TroveClient | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
@@ -145,7 +146,7 @@ def search_newspapers(
         ("category", "newspaper"),
         ("encoding", "json"),
         ("n", max(1, min(n, 100))),
-        ("sortby", "dateasc"),
+        ("sortby", sortby if sortby in ("relevance", "dateasc", "datedesc") else "relevance"),
     ]
     for decade in _decades_in_range(year_from, year_to):
         params.append(("l-decade", decade))
