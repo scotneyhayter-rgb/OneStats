@@ -1,9 +1,12 @@
-# OneStats web-app image — builds the single-origin container (backend + built SPA) from the Dockerfile.
+# OneStats web-app image — builds the single-origin container (backend + built SPA) from the Dockerfile,
+# smoke-tests that it actually boots, and (off pull requests) publishes it.
 #
-# Why this exists: it builds the image IN THE CLOUD so no local Docker is needed. On a pull request it
-# only BUILDS (the first real `docker build` of the Dockerfile — it was authored but never build-tested,
-# see docs/78-cloud-deploy.md), giving a pass/fail without publishing anything. On a push to main, and on
-# manual dispatch, it also PUSHES the image to GitHub Container Registry (ghcr.io) — free for this repo.
+# Why this exists: it builds the image IN THE CLOUD so no local Docker is needed. Every run:
+#   1. BUILDS the image from the Dockerfile (the first/only real `docker build`),
+#   2. SMOKE-TESTS it — starts the container against a throwaway Postgres, lets the entrypoint run
+#      `alembic upgrade head`, then asserts the API is live, the DB is reachable, and the SPA is served,
+#   3. on a push to main / manual dispatch, PUSHES the tested image to GitHub Container Registry
+#      (ghcr.io) — so a container that does not boot is never published.
 #
 # This is NOT the desktop release (that stays in release.yml, signed + manual). It touches no signing key
 # and ships no installer. Pulling the published image later:
@@ -14,7 +17,6 @@ name: Docker image
 on:
   push:
     branches: [main]
-    # only rebuild when something that affects the image changes
     paths:
       - 'Dockerfile'
       - '.dockerignore'
@@ -22,6 +24,7 @@ on:
       - 'apps/desktop/**'
       - 'services/api/**'
       - '.github/workflows/docker-image.yml'
+      - '.github/scripts/ci_db_bootstrap.py'
   pull_request:
     branches: [main]
     paths:
@@ -31,6 +34,7 @@ on:
       - 'apps/desktop/**'
       - 'services/api/**'
       - '.github/workflows/docker-image.yml'
+      - '.github/scripts/ci_db_bootstrap.py'
   workflow_dispatch: {}
 
 concurrency:
@@ -43,25 +47,40 @@ env:
 
 jobs:
   build:
-    name: Build${{ github.event_name != 'pull_request' && ' + push' || '' }} image
+    name: Build, smoke-test${{ github.event_name != 'pull_request' && ' + push' || '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write          # needed only to push to ghcr (not used on pull_request builds)
+
+    # A throwaway Postgres the booted container migrates against and serves from. Mirrors the backend CI
+    # job: the container's superuser is the OWNER/migrator role (runs DDL); a bootstrap step then creates
+    # the non-superuser onestats_app runtime role so the app connects exactly as it does in production.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: onestats_migrator
+          POSTGRES_PASSWORD: ci_migrator_not_a_secret
+          POSTGRES_DB: onestats
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U onestats_migrator"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+
+    env:
+      ONESTATS_DB_HOST: localhost
+      ONESTATS_DB_PORT: '5432'
+      ONESTATS_DB_NAME: onestats
+      ONESTATS_DB_USER: onestats_app
+      ONESTATS_DB_PASSWORD: ci_app_not_a_secret
+      ONESTATS_MIGRATOR_PASSWORD: ci_migrator_not_a_secret
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
-
-      # Only authenticate for real pushes — PR builds never publish.
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Image tags & labels
         id: meta
@@ -73,13 +92,90 @@ jobs:
             type=ref,event=branch
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build (and push on main / dispatch)
+      # Build once and load into the local Docker daemon so the smoke test can run it. Single-platform
+      # (linux/amd64) so `load` works; the gha cache is shared with the later push so nothing builds twice.
+      - name: Build image (load locally for the smoke test)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          load: true
+          tags: onestats:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Provision the non-superuser onestats_app runtime role (exactly as the backend CI job does) so the
+      # migrated schema's default privileges reach it and the container can connect as it would in prod.
+      - name: Provision runtime role (onestats_app)
+        run: |
+          python -m pip install --quiet "psycopg[binary]>=3.2.0"
+          python .github/scripts/ci_db_bootstrap.py
+
+      - name: Smoke-test the container (migrate → serve → health → SPA)
+        run: |
+          set -euo pipefail
+          # Host networking: the container reaches the Postgres service at localhost:5432, and the runner
+          # reaches the app at localhost:8000. ONESTATS_ENCRYPTION_KEY is intentionally unset — the app
+          # falls back to a dev key (with a warning), which is fine for a boot test.
+          docker run -d --name onestats --network host \
+            -e ONESTATS_DB_HOST=localhost \
+            -e ONESTATS_DB_PORT=5432 \
+            -e ONESTATS_DB_NAME=onestats \
+            -e ONESTATS_DB_USER=onestats_app \
+            -e ONESTATS_DB_PASSWORD=ci_app_not_a_secret \
+            -e ONESTATS_MIGRATOR_PASSWORD=ci_migrator_not_a_secret \
+            onestats:smoke
+
+          # Always surface the container logs, however this step ends.
+          trap 'echo "----- container logs -----"; docker logs onestats || true' EXIT
+
+          # 1) Liveness — the API process came up (entrypoint ran migrations, then uvicorn).
+          up=""
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/api/v1/health >/dev/null 2>&1; then up=1; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' onestats 2>/dev/null)" != "true" ]; then
+              echo "::error::container exited before becoming healthy"; exit 1
+            fi
+            sleep 2
+          done
+          [ -n "$up" ] || { echo "::error::API did not become live within 120s"; exit 1; }
+          echo "liveness: $(curl -fsS http://localhost:8000/api/v1/health)"
+
+          # 2) Readiness — DB reachable (migrations applied, runtime role connects). /health/db returns 200
+          #    even when the DB is down, so assert on the body.
+          db="$(curl -fsS http://localhost:8000/api/v1/health/db)"
+          echo "readiness: $db"
+          echo "$db" | grep -q '"database_connected":true' \
+            || { echo "::error::database not connected from the container"; exit 1; }
+
+          # 3) The SPA is served from the same origin (one-origin web app).
+          code="$(curl -s -o /tmp/index.html -w '%{http_code}' http://localhost:8000/)"
+          echo "GET / -> $code"
+          [ "$code" = "200" ] || { echo "::error::SPA root did not return 200"; exit 1; }
+          grep -qi 'id="root"\|<!doctype html' /tmp/index.html \
+            || { echo "::error::SPA root did not return the app HTML"; exit 1; }
+
+          echo "✅ container booted: migrated, API live, DB connected, SPA served."
+
+      # Authenticate and push only after the smoke test passed, and never on a pull request. Reuses the
+      # gha cache from the build above, so this republishes the exact tested image without rebuilding.
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the tested image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

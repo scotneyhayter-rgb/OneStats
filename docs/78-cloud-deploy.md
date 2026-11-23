@@ -44,11 +44,16 @@ serves. This compose file is a **convenience/template**, not a hardened setup.
 If you'd rather not install Docker locally, GitHub Actions builds the image for you — free for this repo:
 
 - The **`Docker image`** workflow (`.github/workflows/docker-image.yml`) runs automatically.
-  - On a **pull request** that touches the app or the Dockerfile, it only **builds** the image — a
-    pass/fail check that the Dockerfile is valid. Nothing is published.
-  - On a **push to `main`** (or a manual **Run workflow** / `workflow_dispatch`), it builds **and pushes**
-    the image to **GitHub Container Registry** at `ghcr.io/<owner>/onestats-web`, tagged `latest` and with
-    the commit SHA.
+  - On **every** run it **builds** the image and then **smoke-tests** it: it starts the container against
+    a throwaway Postgres, lets the entrypoint run `alembic upgrade head`, and asserts the API is live
+    (`/api/v1/health`), the database is reachable (`/api/v1/health/db` → `database_connected:true`), and
+    the SPA is served from the same origin (`GET /` → the app HTML). A container that does not boot fails
+    the check.
+  - On a **pull request** it stops there — nothing is published.
+  - On a **push to `main`** (or a manual **Run workflow** / `workflow_dispatch`), it then **pushes** the
+    tested image to **GitHub Container Registry** at `ghcr.io/<owner>/onestats-web`, tagged `latest` and
+    with the commit SHA. Because the push happens only after the smoke test, a broken image is never
+    published.
 - No secrets to configure: it uses the built-in `GITHUB_TOKEN` (with `packages: write`).
 - The published package appears under the repo's **Packages**; make it public or pull it while
   authenticated:
