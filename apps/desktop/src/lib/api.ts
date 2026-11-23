@@ -2069,6 +2069,8 @@ export const api = {
     request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/resume`, { method: "POST" }),
   researchCancelJob: (w: string, jobId: string) =>
     request<ResearchJob>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/cancel`, { method: "POST" }),
+  researchDeleteJob: (w: string, jobId: string) =>
+    request<{ deleted: boolean; id: string }>(`/api/v1/workspaces/${w}/research/jobs/${jobId}`, { method: "DELETE" }),
   researchJobFindings: (w: string, jobId: string, statusFilter?: string) =>
     request<ResearchFinding[]>(`/api/v1/workspaces/${w}/research/jobs/${jobId}/findings${statusFilter ? `?status_filter=${statusFilter}` : ""}`),
   researchFindings: (w: string, statusFilter?: string) =>

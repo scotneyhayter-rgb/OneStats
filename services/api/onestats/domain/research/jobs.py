@@ -211,6 +211,23 @@ def cancel_job(conn: Connection, workspace_id: UUID, actor: str, job_id: UUID) -
     return _row(conn, job_id)
 
 
+def delete_job(conn: Connection, workspace_id: UUID, actor: str, job_id: UUID) -> bool:
+    """Permanently remove a research job and everything it produced (findings + fetch records) — for
+    clearing duplicate or irrelevant searches. Workspace-scoped and audited. Returns True when a job was
+    actually deleted. Nothing in official statistics is touched; findings are review-only leads."""
+    conn.execute(text("DELETE FROM research_fetch WHERE workspace_id = :w AND job_id = :id"),
+                 {"w": workspace_id, "id": job_id})
+    conn.execute(text("DELETE FROM research_finding WHERE workspace_id = :w AND job_id = :id"),
+                 {"w": workspace_id, "id": job_id})
+    res = conn.execute(text("DELETE FROM research_job WHERE id = :id AND workspace_id = :w"),
+                       {"id": job_id, "w": workspace_id})
+    deleted = bool(res.rowcount)
+    if deleted:
+        audit.write_audit(conn, workspace_id, actor, "research.job_deleted", entity="research_job",
+                          entity_id=str(job_id))
+    return deleted
+
+
 def reconcile_stale_jobs(conn: Connection, workspace_id: UUID, actor: str) -> dict[str, int]:
     """Recover jobs left 'running' with an expired lease (e.g. after a PC shutdown): requeue those with
     retries left (status 'interrupted' → re-claimable), fail the rest. Nothing is falsely running."""
