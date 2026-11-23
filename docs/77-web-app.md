@@ -93,6 +93,29 @@ The cloud move is then: containerize the backend, point `ONESTATS_DB_*` at a man
 media provider to object storage, and deploy. The SPA is unchanged (still same-origin, or point
 `VITE_ONESTATS_API_URL` at the cloud API).
 
+### Object storage for media (S3 / Cloudflare R2 / MinIO)
+
+OneStats has an **`s3` media provider** so uploaded originals can live in object storage instead of a
+PC's disk. It needs `boto3` installed (`pip install boto3` — it is **not** bundled in the desktop build)
+and these settings:
+
+```
+ONESTATS_S3_BUCKET=your-bucket
+ONESTATS_S3_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com   # omit for AWS S3
+ONESTATS_S3_REGION=auto
+ONESTATS_S3_ACCESS_KEY_ID=...
+ONESTATS_S3_SECRET_ACCESS_KEY=...
+ONESTATS_S3_PREFIX=onestats          # optional key prefix
+```
+
+Once configured, the `s3` provider shows as available, assets are served through the backend from object
+storage, and existing internal media can be **migrated** to it via the media migration flow (verified
+byte-for-byte, with rollback on mismatch). A schema migration (`0076_media_provider_s3`) allows the new
+provider value — run `alembic upgrade head` on deploy.
+
+> Follow-up (not yet wired): routing *new* uploads straight to `s3` by default. Today new uploads land on
+> internal storage and can be migrated; the provider, serving and migration are all in place.
+
 ## Notes
 
 - The desktop app is unaffected: `serve_frontend` defaults off, and the updater page simply detects it is

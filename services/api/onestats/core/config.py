@@ -65,6 +65,15 @@ class Settings(BaseSettings):
 
     # --- Media / logo uploads (workspace-isolated; deliverable 9/20) ---
     media_root: str = Field(default="media")
+    # --- S3-compatible object storage (optional; cloud / shared deployments) ---
+    # When s3_bucket is set the 's3' media provider becomes available (needs boto3 installed). endpoint_url
+    # targets R2/MinIO (omit for AWS). Credentials come from env (ONESTATS_S3_*) and are never committed.
+    s3_bucket: str | None = Field(default=None)
+    s3_endpoint_url: str | None = Field(default=None)
+    s3_region: str | None = Field(default=None)
+    s3_access_key_id: str | None = Field(default=None)
+    s3_secret_access_key: str | None = Field(default=None)
+    s3_prefix: str | None = Field(default=None)
     max_logo_bytes: int = Field(default=2_000_000)  # 2 MB
     max_logo_pixels: int = Field(default=4096)  # per side; anti decompression-bomb
     # Player/person profile photos — larger than logos (phone photos), still bounded for safety.
