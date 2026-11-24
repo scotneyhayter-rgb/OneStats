@@ -22,6 +22,11 @@ export function Modal({
   footer?: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Read onClose through a ref so the focus effect below depends only on `open`. Callers commonly
+  // pass a fresh inline onClose each render; if it were an effect dependency, every parent re-render
+  // (e.g. a keystroke in a field inside the dialog) would re-run the effect and steal focus.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +35,7 @@ export function Modal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab") {
@@ -57,14 +62,17 @@ export function Modal({
       }
     };
     document.addEventListener("keydown", onKey);
-    // Move focus into the dialog so keyboard users land inside it and Escape works immediately.
-    dialogRef.current?.focus();
+    // Move focus into the dialog so keyboard users land inside it and Escape works immediately —
+    // but only if nothing inside already has focus (e.g. an autoFocus input), so we don't fight it.
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       // Return focus to the control that opened the dialog, if it is still around.
       if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
     };
-  }, [open, onClose]);
+    // Depends only on `open`: run when the dialog opens/closes, never on every parent re-render.
+  }, [open]);
 
   if (!open) return null;
   return (
